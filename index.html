@@ -29,6 +29,14 @@
           /* not fatal — app still works online; see console */
         });
       });
+      // When a new version of Dash takes over, reload once so we never run a
+      // mix of old and new code (which caused subtle bugs after updates).
+      let reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (reloadedForUpdate) return;
+        reloadedForUpdate = true;
+        window.location.reload();
+      });
     }
   </script>
 </body>

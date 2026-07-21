@@ -77,6 +77,10 @@ export function openSettings(store, sync) {
       const tokenInput = el("input", { type: "password", placeholder: "Paste your Dropbox access token", "aria-label": "Dropbox access token",
         autocomplete: "off", spellcheck: "false" });
       const connectBtn = el("button", { class: "btn btn-primary", text: "Connect", onclick: async () => {
+        if (!sync || typeof sync.connectDropbox !== "function") {
+          toast("Please fully reload Dash first (close and reopen the tab), then try connecting again.", "error", 9000);
+          return;
+        }
         connectBtn.textContent = "Connecting…"; connectBtn.disabled = true;
         const okThis = await sync.connectDropbox(tokenInput.value);
         connectBtn.textContent = "Connect"; connectBtn.disabled = false;
