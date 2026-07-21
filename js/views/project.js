@@ -19,13 +19,13 @@ export const projectView = {
     container.innerHTML = "";
     const store = ctx.store;
     const state = ctx.viewLocal;
-    const projectLike = store.all(); // any item can be a "project home" — no special type required
+    const projects = store.projects(); // only items of type "project"
 
-    if (projectLike.length === 0) {
+    if (projects.length === 0) {
       container.appendChild(emptyState(
         "No projects yet",
-        "Create an item — a project, a goal, anything — then open it here to gather its tasks, notes, and files in one place.",
-        "New item", ctx.onNew));
+        "Create your first project, then assign entries — tasks, notes, files — to it. An entry can belong to more than one project.",
+        "＋ New project", () => createProject(store, ctx)));
       return;
     }
 
@@ -38,37 +38,65 @@ export const projectView = {
   },
 };
 
+function createProject(store, ctx) {
+  const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
+  const nameInput = el("input", { type: "text", placeholder: "Project name", "aria-label": "New project name" });
+  const go = () => {
+    const title = nameInput.value.trim();
+    if (!title) { nameInput.focus(); return; }
+    const pid = store.createItem({ title, type: "project" });
+    scrim.remove();
+    ctx.viewLocal.projectId = pid; // jump straight into the new project
+    ctx.rerender();
+  };
+  nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } });
+  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "New project" }, [
+    el("h2", { text: "New project" }),
+    el("div", { class: "field" }, [el("label", { text: "Name" }), nameInput]),
+    el("div", { class: "modal-actions" }, [
+      el("div", { class: "spacer" }),
+      el("button", { class: "btn", text: "Cancel", onclick: () => scrim.remove() }),
+      el("button", { class: "btn btn-primary", text: "Create", onclick: go }),
+    ]),
+  ]);
+  scrim.appendChild(modal);
+  document.body.appendChild(scrim);
+  nameInput.focus();
+}
+
 function renderPicker(store, state, ctx) {
   const wrap = el("div", {});
-  wrap.appendChild(el("h2", { text: "Open a project", style: "font-family:var(--font-ui); font-size:var(--text-lg); margin-bottom:var(--space-3)" }));
-  const search = el("input", { type: "search", placeholder: "Search your items…", "aria-label": "Search projects",
+  const head = el("div", { style: "display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3)" }, [
+    el("h2", { text: "Projects", style: "font-family:var(--font-ui); font-size:var(--text-lg); margin:0; flex:1" }),
+    el("button", { class: "btn btn-primary", text: "＋ New project", onclick: () => createProject(store, ctx) }),
+  ]);
+  wrap.appendChild(head);
+  const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects",
     style: "width:100%; max-width:28rem; margin-bottom:var(--space-3)" });
   const list = el("div", {});
 
   function draw() {
     list.innerHTML = "";
     const q = search.value.toLowerCase();
-    const items = store.all()
-      .filter(i => (i.title || "").toLowerCase().includes(q))
-      .sort((a, b) => (b.dates.modified || "").localeCompare(a.dates.modified || ""))
-      .slice(0, 60);
+    const items = store.projects()
+      .filter(i => (i.title || "").toLowerCase().includes(q));
     for (const it of items) {
-      const count = linkedItems(store, it.id).length;
+      const count = membersOf(store, it.id).length;
       list.appendChild(el("div", {
         class: "item-row", role: "button", tabindex: "0",
         onclick: () => { state.projectId = it.id; ctx.rerender(); },
       }, [
-        el("div", { class: "item-swatch", style: "background:var(--accent-1)" }),
+        el("div", { class: "item-swatch", style: "background:var(--color-green)" }),
         el("div", { class: "item-main" }, [
-          el("h3", { class: "item-title", text: it.title || "Untitled" }),
+          el("h3", { class: "item-title", text: it.title || "Untitled project" }),
           el("div", { class: "item-meta" }, [
-            typeChip(store, it),
-            el("span", { class: "chip", text: `${count} connected` }),
+            el("span", { class: "chip", text: `${count} ${count === 1 ? "entry" : "entries"}` }),
+            store.statusChip ? null : null,
           ]),
         ]),
       ]));
     }
-    if (items.length === 0) list.appendChild(el("p", { class: "item-body-preview", text: "No matches." }));
+    if (items.length === 0) list.appendChild(el("p", { class: "item-body-preview", text: "No matching projects." }));
   }
   search.addEventListener("input", draw);
   draw();
@@ -91,22 +119,22 @@ function renderDetail(store, state, ctx) {
   ]);
   wrap.appendChild(header);
 
-  const linked = linkedItems(store, project.id);
+  const linked = membersOf(store, project.id);
 
-  const addBar = el("div", { style: "display:flex; gap:var(--space-2); margin-bottom:var(--space-4)" }, [
-    el("button", { class: "btn btn-primary", text: "＋ New linked item", onclick: () => {
+  const addBar = el("div", { style: "display:flex; gap:var(--space-2); margin-bottom:var(--space-4); flex-wrap:wrap" }, [
+    el("button", { class: "btn btn-primary", text: "＋ New entry in this project", onclick: () => {
       const newId = store.createItem({ title: "" });
-      store.addToSet(newId, "links", { target: project.id, label: "part of" });
+      store.assignToProject(newId, project.id);
       openEditor(store, newId, { onClose: ctx.rerender, sync: ctx.sync });
     } }),
-    el("button", { class: "btn", text: "＋ Link an existing item", onclick: () => openLinkPicker(store, project.id, ctx.rerender) }),
+    el("button", { class: "btn", text: "＋ Add existing entry", onclick: () => openAssignPicker(store, project.id, ctx.rerender) }),
   ]);
   wrap.appendChild(addBar);
 
   if (linked.length === 0) {
     wrap.appendChild(emptyState(
-      "Nothing linked yet",
-      "Add a task, note, or file and link it here — this page will gather everything connected to this project automatically.",
+      "Nothing in this project yet",
+      "Add a task, note, or file — this page gathers everything assigned to this project automatically.",
       null, null));
     return wrap;
   }
@@ -133,46 +161,42 @@ function renderDetail(store, state, ctx) {
   return wrap;
 }
 
-// Items connected to `projectId` in EITHER link direction — this item links
-// to it, or it links to this item. A project page shouldn't care which way
-// the arrow points; either means "this belongs here."
-function linkedItems(store, projectId) {
-  const project = store.get(projectId);
-  if (!project) return [];
-  const out = new Map();
-  for (const l of project.links) {
-    const it = store.get(l.target);
-    if (it) out.set(it.id, it);
-  }
+// Entries that are members of this project — i.e. they link to it with the
+// project-membership relationship. (A plain "see also" connection does NOT
+// make something a project member; membership is explicit.) The project
+// itself is never a member of itself.
+function membersOf(store, projectId) {
+  const out = [];
   for (const it of store.all()) {
     if (it.id === projectId) continue;
-    if (it.links.some(l => l.target === projectId)) out.set(it.id, it);
+    if (it.links.some(l => l.target === projectId && l.label === "in project")) out.push(it);
   }
-  return [...out.values()];
+  return out;
 }
 
-function openLinkPicker(store, projectId, onDone) {
-  const others = store.all().filter(i => i.id !== projectId);
+function openAssignPicker(store, projectId, onDone) {
+  // Only non-project entries that aren't already members.
+  const members = new Set(membersOf(store, projectId).map(i => i.id));
+  const candidates = store.all().filter(i => i.id !== projectId && i.type !== "project" && !members.has(i.id));
   const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
-  const search = el("input", { type: "text", placeholder: "Search items…", "aria-label": "Search items to link" });
+  const search = el("input", { type: "text", placeholder: "Search entries…", "aria-label": "Search entries to add" });
   const list = el("div", {});
   function draw() {
     list.innerHTML = "";
     const q = search.value.toLowerCase();
-    for (const it of others.filter(i => (i.title || "").toLowerCase().includes(q)).slice(0, 40)) {
+    const matches = candidates.filter(i => (i.title || "").toLowerCase().includes(q)).slice(0, 40);
+    for (const it of matches) {
       list.appendChild(el("div", {
         class: "finder-entry",
-        onclick: () => {
-          store.addToSet(it.id, "links", { target: projectId, label: "part of" });
-          scrim.remove(); onDone();
-        },
+        onclick: () => { store.assignToProject(it.id, projectId); scrim.remove(); onDone(); },
       }, [it.title || "Untitled"]));
     }
+    if (matches.length === 0) list.appendChild(el("p", { class: "item-body-preview", text: "No entries to add." }));
   }
   search.addEventListener("input", draw);
   draw();
-  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Link an item" }, [
-    el("h2", { text: "Link an existing item" }),
+  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Add entry to project" }, [
+    el("h2", { text: "Add an existing entry" }),
     search, list,
     el("div", { class: "modal-actions" }, [el("div", { class: "spacer" }), el("button", { class: "btn", text: "Close", onclick: () => scrim.remove() })]),
   ]);

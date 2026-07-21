@@ -77,6 +77,43 @@ export function openEditor(store, itemId, opts = {}) {
   }
   tagWrap.appendChild(tagInput);
 
+  // --- projects: dedicated assignment field (multi-select) ---
+  // Shown only for non-project items (a project isn't assigned to itself).
+  // An entry can be in several projects at once, so this is a set of chips
+  // plus an "add" dropdown — mirroring how tags work, but constrained to
+  // existing projects (with a quick "New project…" escape hatch).
+  const projectWrap = el("div", { class: "chip-input" });
+  function renderProjects() {
+    projectWrap.querySelectorAll(".chip, .project-adder").forEach(n => n.remove());
+    const assigned = store.projectsOf(id);
+    for (const p of assigned) {
+      const chip = el("span", { class: "chip", style: `background:var(--tint-green); color:var(--color-green)` }, [
+        `◆ ${p.title || "Untitled project"}`,
+        el("button", { type: "button", "aria-label": `Remove from ${p.title}`, text: "✕",
+          onclick: () => { store.unassignFromProject(id, p.id); renderProjects(); } }),
+      ]);
+      projectWrap.appendChild(chip);
+    }
+    // adder: a select of projects this item isn't already in, + New project
+    const assignedIds = new Set(assigned.map(p => p.id));
+    const available = store.projects().filter(p => p.id !== id && !assignedIds.has(p.id));
+    const adder = el("select", { class: "project-adder", "aria-label": "Assign to a project",
+      onchange: (e) => {
+        const v = e.target.value;
+        if (v === "__new") { createProjectInline(store, (newId) => { store.assignToProject(id, newId); renderProjects(); }); }
+        else if (v) { store.assignToProject(id, v); renderProjects(); }
+        e.target.value = "";
+      },
+    }, [
+      el("option", { value: "", text: assigned.length ? "＋ Add to another project…" : "＋ Assign to a project…" }),
+      ...available.map(p => el("option", { value: p.id, text: p.title || "Untitled project" })),
+      el("option", { value: "__new", text: "＋ New project…" }),
+    ]);
+    projectWrap.appendChild(adder);
+  }
+
+  const isProjectItem = store.get(id)?.type === "project";
+
   // --- links (connect to another item §2.1) ---
   const linkWrap = el("div", { class: "chip-input" });
   function renderLinks() {
@@ -150,6 +187,7 @@ export function openEditor(store, itemId, opts = {}) {
     field("Notes", body),
     field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
       "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
+    isProjectItem ? null : field("Projects", projectWrap, "Assign this to one or more projects. An entry can live in several projects at once."),
     field("Tags", tagWrap, "One item can carry many tags — that's how things relate without folders."),
     field("Connections", linkWrap, "Link this to related items — ideas to projects, projects to goals."),
     el("div", { class: "modal-actions" }, [del, el("div", { class: "spacer" }), done]),
@@ -158,6 +196,7 @@ export function openEditor(store, itemId, opts = {}) {
   renderTags();
   renderLinks();
   renderAttachments();
+  if (!isProjectItem) renderProjects();
 
   scrim.appendChild(modal);
   document.body.appendChild(scrim);
@@ -178,6 +217,33 @@ function field(label, control, hint) {
     control,
     hint ? el("div", { class: "hint", text: hint }) : null,
   ]);
+}
+
+// Create a new project inline (from the item editor's Projects field) without
+// leaving the current item. Just needs a name; type is forced to "project".
+function createProjectInline(store, onCreated) {
+  const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
+  const nameInput = el("input", { type: "text", placeholder: "Project name", "aria-label": "New project name" });
+  const create = () => {
+    const title = nameInput.value.trim();
+    if (!title) { nameInput.focus(); return; }
+    const pid = store.createItem({ title, type: "project" });
+    scrim.remove();
+    onCreated(pid);
+  };
+  nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } });
+  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "New project" }, [
+    el("h2", { text: "New project" }),
+    field("Name", nameInput),
+    el("div", { class: "modal-actions" }, [
+      el("div", { class: "spacer" }),
+      el("button", { class: "btn", text: "Cancel", onclick: () => scrim.remove() }),
+      el("button", { class: "btn btn-primary", text: "Create", onclick: create }),
+    ]),
+  ]);
+  scrim.appendChild(modal);
+  document.body.appendChild(scrim);
+  nameInput.focus();
 }
 
 // Renders one attached file: an image gets a small thumbnail preview;

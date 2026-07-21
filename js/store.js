@@ -23,6 +23,12 @@ import { now as clockNow, compare as clockCompare } from "./clock.js";
 
 export const FORMAT_VERSION = 1;
 
+// The dedicated "Project" type. An entry assigned to a project links to it
+// with the PROJECT_LINK relationship label, which lets us tell project
+// membership apart from generic "see also" connections.
+export const PROJECT_TYPE = "project";
+export const PROJECT_LINK = "in project";
+
 // ---- op kinds (extend, never repurpose — §13.2 #1) ----
 export const OP = {
   CREATE: "create",   // value = full skeleton item
@@ -88,6 +94,48 @@ export class Store {
   statuses() { return this.registry.statuses; }
   typeDef(key) { return this.registry.types.find(t => t.key === key) || null; }
   statusDef(key) { return this.registry.statuses.find(s => s.key === key) || null; }
+
+  // ---- Projects (§ dedicated Project type) ----
+  // A "project" is simply any item whose type is PROJECT_TYPE. Assignment is a
+  // link from the entry to the project, so one entry can belong to many
+  // projects at once (links is a set). These helpers keep that rule in ONE
+  // place so the editor, the Project view, and counts all agree.
+  projects() {
+    return this.all()
+      .filter(it => it.type === PROJECT_TYPE)
+      .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  }
+  isProject(id) { const it = this.get(id); return !!it && it.type === PROJECT_TYPE; }
+
+  // the projects an entry is assigned to (only membership links count, and
+  // each project appears once even if linked more than once)
+  projectsOf(id) {
+    const it = this.get(id);
+    if (!it) return [];
+    const seen = new Set();
+    const out = [];
+    for (const l of it.links) {
+      if (l.label !== PROJECT_LINK) continue;      // ignore generic "see also" links
+      if (seen.has(l.target)) continue;            // dedupe
+      const p = this.get(l.target);
+      if (p && p.type === PROJECT_TYPE) { seen.add(l.target); out.push(p); }
+    }
+    return out;
+  }
+
+  // assign / unassign an entry to a project (idempotent; safe to call twice)
+  assignToProject(entryId, projectId) {
+    if (entryId === projectId) return; // a project can't be its own member
+    const already = this.get(entryId)?.links.some(l => l.target === projectId && l.label === PROJECT_LINK);
+    if (!already) this.addToSet(entryId, "links", { target: projectId, label: PROJECT_LINK });
+  }
+  unassignFromProject(entryId, projectId) {
+    const it = this.get(entryId);
+    if (!it) return;
+    for (const l of it.links.filter(l => l.target === projectId)) {
+      this.removeFromSet(entryId, "links", l);
+    }
+  }
 
   // =====================================================
   //  WRITING  (each produces one or more ops)
@@ -344,7 +392,7 @@ function defaultRegistry() {
   return {
     types: [
       { key: "quick-idea",  label: "Quick idea",      icon: "⚡", color: "ochre" },
-      { key: "project",     label: "Active project",  icon: "◆",  color: "green" },
+      { key: "project",     label: "Project",         icon: "◆",  color: "green" },
       { key: "strategy",    label: "Long-term goal",  icon: "◎",  color: "blue" },
       { key: "note",        label: "Note",            icon: "•",  color: "slate" },
     ],
