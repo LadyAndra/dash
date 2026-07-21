@@ -22,10 +22,12 @@
 import { getDeviceSlug } from "./device.js";
 import { toast } from "./ui/toast.js";
 import { allHashes, getBlob, putBlob } from "./blobs.js";
+import { Dropbox, DropboxAuthError } from "./dropbox.js";
 
 const SNAPSHOT_NAME = "snapshot.json";
 const LOG_PREFIX = "log-";
 const LOG_EXT = ".jsonl";
+const DBX_TOKEN_KEY = "dash.dropbox.token"; // localStorage; per-device, never in code
 
 // ---- IndexedDB helpers (portable backend + folder-handle persistence) ----
 const IDB_NAME = "dash";
@@ -64,11 +66,17 @@ export class Sync {
   constructor(store) {
     this.store = store;
     this.dirHandle = null;
-    this.mode = supportsFolder() ? "folder" : "portable";
     this.logSlug = getDeviceSlug();
     this.readOffsets = {};   // logFileName -> bytes already applied
     this.status = "idle";
     this._statusListeners = new Set();
+
+    // If the user has connected Dropbox on this device, that's the backend —
+    // and it's the ONLY one that's automatic on all three devices. Otherwise
+    // fall back to the Mac folder backend, or portable export/import.
+    const token = getDropboxToken();
+    this.dbx = token ? new Dropbox(token) : null;
+    this.mode = this.dbx ? "dropbox" : (supportsFolder() ? "folder" : "portable");
   }
 
   onStatus(fn) { this._statusListeners.add(fn); return () => this._statusListeners.delete(fn); }
@@ -81,18 +89,96 @@ export class Sync {
       const localSnap = await idbGet("snapshot");
       if (localSnap) this.store.loadSnapshot(localSnap);
 
-      if (this.mode === "folder") {
+      if (this.mode === "dropbox") {
+        await this.pullDropbox();
+        this._setStatus("ok");
+      } else if (this.mode === "folder") {
         // try to silently re-acquire a previously granted folder handle
         const saved = await idbGet("dirHandle");
         if (saved && (await verifyPermission(saved))) {
           this.dirHandle = saved;
           await this.pull();
         }
+        this._setStatus(this.dirHandle ? "ok" : "needs-folder");
+      } else {
+        this._setStatus("ok");
       }
-      this._setStatus(this.dirHandle || this.mode === "portable" ? "ok" : "needs-folder");
     } catch (err) {
-      reportError("Couldn't load your saved data", err);
-      this._setStatus("error");
+      if (err instanceof DropboxAuthError) {
+        this._setStatus("auth");
+        reportError("Dropbox needs a fresh token", err);
+      } else {
+        reportError("Couldn't load your saved data", err);
+        this._setStatus("error");
+      }
+    }
+  }
+
+  // ---------- Dropbox: connect (all devices) ----------
+  // Called from Settings after the user pastes their token. Verifies it,
+  // saves it on THIS device only, does a first full sync.
+  async connectDropbox(token) {
+    const trimmed = (token || "").trim();
+    if (!trimmed) { toast("Paste your Dropbox token first.", "info"); return false; }
+    const dbx = new Dropbox(trimmed);
+    try {
+      await dbx.check();
+      setDropboxToken(trimmed);
+      this.dbx = dbx;
+      this.mode = "dropbox";
+      await this.pullDropbox();
+      await this.flush();
+      this._setStatus("ok");
+      toast("Dropbox connected. Dash now syncs automatically on this device.", "success");
+      return true;
+    } catch (err) {
+      reportError("Couldn't connect Dropbox", err);
+      this._setStatus("auth");
+      return false;
+    }
+  }
+
+  disconnectDropbox() {
+    clearDropboxToken();
+    this.dbx = null;
+    this.mode = supportsFolder() ? "folder" : "portable";
+    this._setStatus("idle");
+    toast("Dropbox disconnected on this device.", "info");
+  }
+
+  // ---------- Dropbox: read all logs + snapshot, replay unseen tails ----------
+  async pullDropbox() {
+    if (this.mode !== "dropbox" || !this.dbx) return;
+    // snapshot first (fast base state)
+    const snapText = await this.dbx.downloadText("/data/snapshot.json");
+    if (snapText) {
+      try { this.store.loadSnapshot(JSON.parse(snapText)); } catch { /* torn snapshot; logs will rebuild */ }
+    }
+    // every device log — replay only the unseen tail, tracked by byte length
+    const entries = await this.dbx.list("/data");
+    for (const e of entries) {
+      if (!e.name.startsWith(LOG_PREFIX) || !e.name.endsWith(LOG_EXT)) continue;
+      const seen = this.readOffsets[e.name] || 0;
+      if (e.size <= seen) continue;
+      const text = await this.dbx.downloadText(`/data/${e.name}`);
+      if (text == null) continue;
+      // replay only the portion we haven't applied yet
+      const tail = seen > 0 ? text.slice(seen) : text;
+      this.store.replayLog(parseJSONL(tail));
+      this.readOffsets[e.name] = text.length;
+    }
+    await idbSet("snapshot", this.store.toSnapshot());
+    await this._pullBlobsFromDropbox();
+  }
+
+  async _pullBlobsFromDropbox() {
+    const entries = await this.dbx.list("/assets");
+    const have = new Set(await allHashes());
+    for (const e of entries) {
+      const m = /^([0-9a-f]{64})\.([a-z0-9]+)$/i.exec(e.name);
+      if (!m || have.has(m[1])) continue;
+      const buf = await this.dbx.downloadBinary(`/assets/${e.name}`);
+      if (buf) await putBlob(m[1], buf, guessMime(m[2]));
     }
   }
 
@@ -118,6 +204,7 @@ export class Sync {
 
   // ---------- folder backend: read others' logs + snapshot ----------
   async pull() {
+    if (this.mode === "dropbox") return this.pullDropbox();
     if (this.mode !== "folder" || !this.dirHandle) return;
     try {
       const dataDir = await this.dirHandle.getDirectoryHandle("data", { create: true });
@@ -160,6 +247,17 @@ export class Sync {
     // always keep a local snapshot cache regardless of backend
     await idbSet("snapshot", this.store.toSnapshot());
 
+    if (this.mode === "dropbox" && this.dbx) {
+      try {
+        await this._flushDropbox(lines);
+        this._setStatus("ok");
+      } catch (err) {
+        if (err instanceof DropboxAuthError) { this._setStatus("auth"); reportError("Dropbox needs a fresh token", err); }
+        else { this._setStatus("error"); reportError("Couldn't save to Dropbox", err); }
+      }
+      return;
+    }
+
     if (this.mode === "folder" && this.dirHandle) {
       try {
         const dataDir = await this.dirHandle.getDirectoryHandle("data", { create: true });
@@ -189,9 +287,44 @@ export class Sync {
     }
   }
 
-  // write any locally-ingested files into Dash/assets/<hash>.<ext> (§3).
+  // Upload this device's own log (append by read-modify-write; safe because
+  // each device owns its own log file, so no one else writes it — §6.1) plus
+  // a refreshed merged snapshot, plus any new asset blobs.
+  async _flushDropbox(lines) {
+    const logPath = `/data/${LOG_PREFIX}${this.logSlug}${LOG_EXT}`;
+    if (lines.length) {
+      let existing = await this.dbx.downloadText(logPath);
+      if (existing == null) existing = "";
+      const sep = existing && !existing.endsWith("\n") ? "\n" : "";
+      const next = existing + sep + lines.join("\n") + "\n";
+      await this.dbx.upload(logPath, next, { mode: "overwrite" });
+      this.readOffsets[`${LOG_PREFIX}${this.logSlug}${LOG_EXT}`] = next.length;
+      // refresh merged snapshot (cheap at this scale — §2.3)
+      await this.dbx.upload("/data/snapshot.json", JSON.stringify(this.store.toSnapshot()), { mode: "overwrite" });
+    }
+    await this._flushBlobsToDropbox();
+  }
+
+  async _flushBlobsToDropbox() {
+    const pending = (await idbGet("blobOutbox")) || [];
+    if (pending.length === 0) return;
+    const remaining = [];
+    for (const { hash, ext } of pending) {
+      const rec = await getBlob(hash);
+      if (!rec) { remaining.push({ hash, ext }); continue; }
+      try {
+        await this.dbx.upload(`/assets/${hash}.${ext}`, rec.bytes, { mode: "overwrite" });
+      } catch (err) {
+        remaining.push({ hash, ext }); // retry next flush
+      }
+    }
+    await idbSet("blobOutbox", remaining);
+  }
   // Content-addressed means "does this file already exist" is a cheap check
   // and never a conflict (§6.1).
+  // write any locally-ingested files into Dash/assets/<hash>.<ext> (§3),
+  // folder-backend version (Mac). Content-addressed means "does this file
+  // already exist" is a cheap check and never a conflict (§6.1).
   async _flushBlobsToFolder() {
     const pending = (await idbGet("blobOutbox")) || [];
     if (pending.length === 0) return;
@@ -340,6 +473,22 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(a); a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ---- Dropbox token storage (per-device, localStorage, never in code) ----
+function getDropboxToken() {
+  try { return localStorage.getItem(DBX_TOKEN_KEY) || null; } catch { return null; }
+}
+function setDropboxToken(t) { try { localStorage.setItem(DBX_TOKEN_KEY, t); } catch {} }
+function clearDropboxToken() { try { localStorage.removeItem(DBX_TOKEN_KEY); } catch {} }
+
+function guessMime(ext) {
+  const map = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+    webp: "image/webp", svg: "image/svg+xml", heic: "image/heic",
+    pdf: "application/pdf", md: "text/markdown", txt: "text/plain", markdown: "text/markdown",
+  };
+  return map[(ext || "").toLowerCase()] || "application/octet-stream";
 }
 
 function bufToBase64(buf) {

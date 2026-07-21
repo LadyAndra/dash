@@ -12,7 +12,7 @@ import { toast } from "./ui/toast.js";
 const COLOR_NAMES = ["green", "clay", "blue", "ochre", "plum", "slate", "gray"];
 const ICONS = ["⚡", "◆", "◎", "•", "★", "❏", "✎", "◈", "❐", "▲"];
 
-export function openSettings(store) {
+export function openSettings(store, sync) {
   const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
   const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Settings" });
 
@@ -57,11 +57,48 @@ export function openSettings(store) {
   drawTypes();
   drawStatuses();
 
+  // ---- Dropbox automatic sync ----
+  const dbxWrap = el("div", {});
+  function drawDropbox() {
+    dbxWrap.innerHTML = "";
+    const connected = sync && sync.mode === "dropbox" && sync.dbx;
+    if (connected) {
+      dbxWrap.append(
+        el("div", { class: "sync-pill ok", style: "margin-bottom:var(--space-2)" }, [
+          el("span", { class: "dot" }), el("span", { text: "Connected — syncing automatically on this device" }),
+        ]),
+        el("button", { class: "btn", text: "Disconnect Dropbox on this device", onclick: () => {
+          if (confirm("Disconnect Dropbox on this device? Your data stays, but this device will stop syncing automatically until you reconnect.")) {
+            sync.disconnectDropbox(); drawDropbox();
+          }
+        }}),
+      );
+    } else {
+      const tokenInput = el("input", { type: "password", placeholder: "Paste your Dropbox access token", "aria-label": "Dropbox access token",
+        autocomplete: "off", spellcheck: "false" });
+      const connectBtn = el("button", { class: "btn btn-primary", text: "Connect", onclick: async () => {
+        connectBtn.textContent = "Connecting…"; connectBtn.disabled = true;
+        const okThis = await sync.connectDropbox(tokenInput.value);
+        connectBtn.textContent = "Connect"; connectBtn.disabled = false;
+        if (okThis) drawDropbox();
+      }});
+      dbxWrap.append(
+        el("div", { class: "row", style: "align-items:flex-end" }, [
+          el("div", { class: "field", style: "flex:1; margin:0" }, [tokenInput]),
+          connectBtn,
+        ]),
+      );
+    }
+  }
+  drawDropbox();
+
   modal.append(
     el("h2", { text: "Settings" }),
     field("Text size", scale, "Bigger text, less eye strain. Applies everywhere instantly."),
     field("Appearance", darkBtn),
     field("This device's name", deviceInput, "Shown in sync and merge notes so you can tell devices apart."),
+    el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
+    field("Automatic sync (Dropbox)", dbxWrap, "Paste your Dropbox token once on each device. After that, Dash syncs across all your devices automatically — no buttons."),
     el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
     field("Types", typesWrap, "Add your own item types. New types appear everywhere immediately."),
     field("Statuses", statusWrap, "Add your own statuses. Each status becomes a Kanban column."),

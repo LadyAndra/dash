@@ -55,7 +55,9 @@ store.subscribe(() => {
   }
   render();
   // periodic pull on the Mac so other devices' changes appear
-  if (sync.mode === "folder") setInterval(() => sync.dirHandle && sync.pull(), 8000);
+  // periodic pull so other devices' changes appear automatically
+  if (sync.mode === "dropbox") setInterval(() => sync.pull(), 10000);
+  else if (sync.mode === "folder") setInterval(() => sync.dirHandle && sync.pull(), 8000);
 })();
 
 // ===================================================
@@ -73,7 +75,7 @@ function buildChrome() {
   sidebar.appendChild(nav);
 
   const footer = el("div", { class: "sidebar-footer" }, [
-    el("button", { class: "btn", text: "⚙ Settings", onclick: () => openSettings(store) }),
+    el("button", { class: "btn", text: "⚙ Settings", onclick: () => openSettings(store, sync) }),
     el("button", { class: "btn", text: "🔊 Read this view", onclick: readCurrentView }),
   ]);
   sidebar.appendChild(footer);
@@ -219,7 +221,10 @@ function renderSidebarFilters() {
 //  SYNC UI
 // ===================================================
 function onSyncButton() {
-  if (sync.mode === "folder") {
+  if (sync.mode === "dropbox") {
+    sync.pull().then(() => sync.flush());
+    toast("Syncing with Dropbox…", "info", 2500);
+  } else if (sync.mode === "folder") {
     if (!sync.dirHandle) sync.connectFolder();
     else { sync.pull().then(() => sync.flush()); toast("Synced with your Dash folder.", "success"); }
   } else {
@@ -233,16 +238,19 @@ function updateSyncUI() {
   const label = document.getElementById("sync-label");
   if (!btn || !pill || !label) return;
 
-  if (sync.mode === "folder") {
+  if (sync.mode === "dropbox") {
+    btn.textContent = "⟳ Sync now";
+  } else if (sync.mode === "folder") {
     btn.textContent = sync.dirHandle ? "⟳ Sync now" : "Connect Dash folder";
   } else {
     btn.textContent = "⇅ Sync (export / import)";
   }
 
   const map = {
-    ok: ["ok", "Up to date"],
+    ok: ["ok", sync.mode === "dropbox" ? "Synced via Dropbox" : "Up to date"],
     dirty: ["dirty", "Unsynced changes"],
     "needs-folder": ["", "Not connected"],
+    auth: ["", "Dropbox: reconnect needed"],
     error: ["", "Sync problem"],
     idle: ["", ""],
   };
