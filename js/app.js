@@ -16,8 +16,9 @@ import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { kanbanView } from "./views/kanban.js";
 import { finderView } from "./views/finder.js";
+import { projectView } from "./views/project.js";
 
-const VIEWS = [listView, boardView, kanbanView, finderView];
+const VIEWS = [listView, boardView, kanbanView, finderView, projectView];
 
 // ---------------- app state ----------------
 const state = {
@@ -100,7 +101,7 @@ function buildChrome() {
   const search = el("input", { type: "search", placeholder: "Search everything…", "aria-label": "Search",
     oninput: (e) => { state.filter.text = e.target.value.trim() || undefined; render(); } });
 
-  const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render }) });
+  const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
 
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
@@ -156,8 +157,8 @@ function render() {
   const viewport = document.getElementById("viewport");
   const ctx = {
     store,
-    onOpen: (id) => openEditor(store, id, { onClose: render }),
-    onNew: () => openEditor(store, null, { onClose: render }),
+    onOpen: (id) => openEditor(store, id, { onClose: render, sync }),
+    onNew: () => openEditor(store, null, { onClose: render, sync }),
     isCollapsed: (k) => state.collapsed.has(k),
     toggleCollapse: (k) => {
       state.collapsed.has(k) ? state.collapsed.delete(k) : state.collapsed.add(k);
@@ -166,6 +167,7 @@ function render() {
     },
     viewLocal: state.viewLocal,
     rerender: render,
+    sync,
   };
   view.render(result, ctx, viewport);
 }

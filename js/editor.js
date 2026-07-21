@@ -10,6 +10,7 @@ import { el } from "./views/shared.js";
 import { colorToken } from "./theme.js";
 import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
+import { ingestFile, blobObjectURL } from "./blobs.js";
 
 export function openEditor(store, itemId, opts = {}) {
   const isNew = !itemId;
@@ -58,14 +59,22 @@ export function openEditor(store, itemId, opts = {}) {
   const tagInput = el("input", {
     type: "text", placeholder: "Add a tag, press Enter", "aria-label": "Add tag",
     onkeydown: (e) => {
-      if (e.key === "Enter" && e.target.value.trim()) {
-        e.preventDefault();
-        store.addToSet(id, "tags", e.target.value.trim());
-        e.target.value = "";
-        renderTags();
-      }
+      if (e.key === "Enter") { e.preventDefault(); commitPendingTag(); }
     },
+    // Commit on blur too, so a tag typed then tapped-away-from still saves.
+    onblur: () => commitPendingTag(),
   });
+
+  // Save whatever is currently typed in the tag box as a tag. Called from
+  // Enter, from blur, and from close() — so a tag can never be silently lost
+  // just because the user didn't press Enter before moving on.
+  function commitPendingTag() {
+    const val = tagInput.value.trim();
+    if (!val) return;
+    store.addToSet(id, "tags", val);
+    tagInput.value = "";
+    renderTags();
+  }
   tagWrap.appendChild(tagInput);
 
   // --- links (connect to another item §2.1) ---
@@ -88,6 +97,36 @@ export function openEditor(store, itemId, opts = {}) {
     onclick: () => pickLink(store, id, () => renderLinks()) });
   linkWrap.appendChild(linkBtn);
 
+  // --- attachments: images, PDFs, markdown, text — anything (§9 generalized) ---
+  const attachWrap = el("div", { class: "attach-list" });
+  const fileInput = el("input", {
+    type: "file", multiple: "true", accept: "image/*,.pdf,.md,.txt,.markdown",
+    style: "display:none",
+    onchange: async (e) => {
+      for (const file of e.target.files) {
+        try {
+          const rec = await ingestFile(file);
+          store.addToSet(id, "attachments", rec);
+          opts.sync?.queueBlob(rec.hash, rec.ext);
+        } catch (err) {
+          toast(`Couldn't attach "${file.name}".`, "error", 7000, err.message);
+        }
+      }
+      fileInput.value = "";
+      renderAttachments();
+    },
+  });
+  const attachBtn = el("button", { type: "button", class: "btn", text: "＋ Attach files",
+    onclick: () => fileInput.click() });
+
+  async function renderAttachments() {
+    attachWrap.innerHTML = "";
+    const current = store.get(id);
+    for (const a of current.attachments) {
+      attachWrap.appendChild(await attachmentChip(a, () => { store.removeFromSet(id, "attachments", a); renderAttachments(); }));
+    }
+  }
+
   // --- read aloud (voice out §10) ---
   const readBtn = el("button", { class: "icon-btn", "aria-label": "Read this item aloud", title: "Read aloud", text: "🔊",
     onclick: () => readAloud(itemToSpeech(store.get(id), store)) });
@@ -109,6 +148,8 @@ export function openEditor(store, itemId, opts = {}) {
     field("Title", title),
     el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
     field("Notes", body),
+    field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
+      "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
     field("Tags", tagWrap, "One item can carry many tags — that's how things relate without folders."),
     field("Connections", linkWrap, "Link this to related items — ideas to projects, projects to goals."),
     el("div", { class: "modal-actions" }, [del, el("div", { class: "spacer" }), done]),
@@ -116,12 +157,14 @@ export function openEditor(store, itemId, opts = {}) {
 
   renderTags();
   renderLinks();
+  renderAttachments();
 
   scrim.appendChild(modal);
   document.body.appendChild(scrim);
   title.focus();
 
   function close() {
+    commitPendingTag(); // don't lose a tag the user typed but didn't Enter
     document.body.removeChild(scrim);
     opts.onClose && opts.onClose();
   }
@@ -135,6 +178,25 @@ function field(label, control, hint) {
     control,
     hint ? el("div", { class: "hint", text: hint }) : null,
   ]);
+}
+
+// Renders one attached file: an image gets a small thumbnail preview;
+// a document (PDF/MD/TXT/etc.) gets an icon + name. Both open the real
+// file in a new tab on click (browsers render PDFs/images/text natively —
+// no viewer needs to be built). §9's "napkin" markup tool is a later phase;
+// this is just safe, reliable storage + access.
+async function attachmentChip(att, onRemove) {
+  const url = await blobObjectURL(att.hash);
+  const isImage = att.role === "image";
+  const inner = isImage
+    ? el("img", { src: url, alt: att.name || "attached image", class: "attach-thumb" })
+    : el("div", { class: "attach-doc" }, [
+        el("span", { class: "attach-doc-ext", text: (att.ext || "file").toUpperCase() }),
+        el("span", { class: "attach-doc-name", text: att.name || `${att.hash.slice(0, 8)}.${att.ext}` }),
+      ]);
+  const link = el("a", { href: url || "#", target: "_blank", rel: "noopener", class: "attach-link" }, [inner]);
+  const remove = el("button", { type: "button", class: "attach-remove", "aria-label": `Remove ${att.name || "attachment"}`, text: "✕", onclick: onRemove });
+  return el("div", { class: "attach-chip" }, [link, remove]);
 }
 
 function selectFromRegistry(list, value, onChange, aria) {

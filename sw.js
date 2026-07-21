@@ -3,7 +3,7 @@
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
 
-const CACHE_VERSION = "dash-v1";
+const CACHE_VERSION = "dash-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -20,6 +20,7 @@ const SHELL = [
   "./js/device.js",
   "./js/editor.js",
   "./js/settings.js",
+  "./js/blobs.js",
   "./js/ui/toast.js",
   "./js/ui/readaloud.js",
   "./js/views/shared.js",
@@ -27,7 +28,11 @@ const SHELL = [
   "./js/views/board.js",
   "./js/views/kanban.js",
   "./js/views/finder.js",
+  "./js/views/project.js",
   "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png",
 ];
 
 self.addEventListener("install", (e) => {

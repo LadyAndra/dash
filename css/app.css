@@ -368,6 +368,44 @@ button, input, textarea, select {
 .btn-danger { color: var(--color-clay); border-color: var(--color-clay); background: transparent; }
 .btn-danger:hover { background: var(--tint-clay); }
 
+/* ---------- Attachments (files/images) ---------- */
+.attach-list {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.attach-chip {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+.attach-link { display: block; text-decoration: none; color: inherit; }
+.attach-thumb { width: 88px; height: 88px; object-fit: cover; display: block; }
+.attach-doc {
+  width: 88px; height: 88px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-1); padding: var(--space-2); text-align: center;
+}
+.attach-doc-ext {
+  font-family: var(--font-ui); font-weight: 700; font-size: var(--text-sm);
+  color: var(--accent-3); background: var(--tint-blue);
+  padding: 2px var(--space-2); border-radius: var(--radius-sm);
+}
+.attach-doc-name {
+  font-family: var(--font-ui); font-size: var(--text-sm); color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;
+}
+.attach-remove {
+  position: absolute; top: 2px; right: 2px;
+  min-height: 22px; min-width: 22px; height: 22px; width: 22px;
+  border-radius: 50%; border: none;
+  background: rgba(30,28,22,0.65); color: #fff;
+  cursor: pointer; font-size: 0.7rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+
 /* ---------- Toast / error banner (§13.1 fail loudly) ---------- */
 #toasts {
   position: fixed; left: 50%; bottom: var(--space-5);

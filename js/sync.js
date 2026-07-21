@@ -21,6 +21,7 @@
 
 import { getDeviceSlug } from "./device.js";
 import { toast } from "./ui/toast.js";
+import { allHashes, getBlob, putBlob } from "./blobs.js";
 
 const SNAPSHOT_NAME = "snapshot.json";
 const LOG_PREFIX = "log-";
@@ -137,8 +138,19 @@ export class Sync {
         this.readOffsets[name] = file.size;
       }
       await idbSet("snapshot", this.store.toSnapshot()); // cache locally too
+      await this._pullBlobsFromFolder();
     } catch (err) {
       reportError("Couldn't read the latest from your Dash folder", err);
+    }
+  }
+
+  // ---------- files/images: queue a locally-ingested blob for sync ----------
+  // Called by the editor right after blobs.ingestFile() stores bytes locally.
+  async queueBlob(hash, ext) {
+    const pending = (await idbGet("blobOutbox")) || [];
+    if (!pending.some(p => p.hash === hash)) {
+      pending.push({ hash, ext });
+      await idbSet("blobOutbox", pending);
     }
   }
 
@@ -149,16 +161,18 @@ export class Sync {
     await idbSet("snapshot", this.store.toSnapshot());
 
     if (this.mode === "folder" && this.dirHandle) {
-      if (lines.length === 0) return;
       try {
         const dataDir = await this.dirHandle.getDirectoryHandle("data", { create: true });
-        const logName = `${LOG_PREFIX}${this.logSlug}${LOG_EXT}`;
-        await appendLines(dataDir, logName, lines);
-        // account for our own appended bytes so pull() won't re-apply them
-        const f = await (await dataDir.getFileHandle(logName)).getFile();
-        this.readOffsets[logName] = f.size;
-        // periodically rewrite the merged snapshot (cheap at this scale — §2.3)
-        await writeJSONFile(dataDir, SNAPSHOT_NAME, this.store.toSnapshot());
+        if (lines.length) {
+          const logName = `${LOG_PREFIX}${this.logSlug}${LOG_EXT}`;
+          await appendLines(dataDir, logName, lines);
+          // account for our own appended bytes so pull() won't re-apply them
+          const f = await (await dataDir.getFileHandle(logName)).getFile();
+          this.readOffsets[logName] = f.size;
+          // periodically rewrite the merged snapshot (cheap at this scale — §2.3)
+          await writeJSONFile(dataDir, SNAPSHOT_NAME, this.store.toSnapshot());
+        }
+        await this._flushBlobsToFolder();
         this._setStatus("ok");
       } catch (err) {
         reportError("Couldn't save to your Dash folder", err);
@@ -166,7 +180,8 @@ export class Sync {
       }
     } else {
       // portable: mark that there are unsynced changes for the UI
-      if (lines.length) {
+      const pendingBlobs = (await idbGet("blobOutbox")) || [];
+      if (lines.length || pendingBlobs.length) {
         const queued = (await idbGet("outbox")) || [];
         await idbSet("outbox", queued.concat(lines));
         this._setStatus("dirty");
@@ -174,22 +189,77 @@ export class Sync {
     }
   }
 
+  // write any locally-ingested files into Dash/assets/<hash>.<ext> (§3).
+  // Content-addressed means "does this file already exist" is a cheap check
+  // and never a conflict (§6.1).
+  async _flushBlobsToFolder() {
+    const pending = (await idbGet("blobOutbox")) || [];
+    if (pending.length === 0) return;
+    const assetsDir = await this.dirHandle.getDirectoryHandle("assets", { create: true });
+    const remaining = [];
+    for (const { hash, ext } of pending) {
+      const filename = `${hash}.${ext}`;
+      try {
+        await assetsDir.getFileHandle(filename); // already there — nothing to do
+      } catch {
+        const rec = await getBlob(hash);
+        if (rec) {
+          const h = await assetsDir.getFileHandle(filename, { create: true });
+          const w = await h.createWritable();
+          await w.write(rec.bytes);
+          await w.close();
+        } else {
+          remaining.push({ hash, ext }); // blob not local yet (e.g. came from an import); retry later
+        }
+      }
+    }
+    await idbSet("blobOutbox", remaining);
+  }
+
+  // pull any assets from the folder into local IndexedDB so this device can
+  // preview files another device added (Mac writes; any device can read).
+  async _pullBlobsFromFolder() {
+    if (this.mode !== "folder" || !this.dirHandle) return;
+    try {
+      const assetsDir = await this.dirHandle.getDirectoryHandle("assets", { create: true });
+      const have = new Set(await allHashes());
+      for await (const [name, entry] of assetsDir.entries()) {
+        const m = /^([0-9a-f]{64})\.([a-z0-9]+)$/i.exec(name);
+        if (!m) continue;
+        const [, hash] = m;
+        if (have.has(hash)) continue;
+        const file = await entry.getFile();
+        await putBlob(hash, await file.arrayBuffer(), file.type);
+      }
+    } catch { /* assets dir not ready yet; fine */ }
+  }
+
   // ---------- portable backend: Export / Import (iPhone/iPad) ----------
   async exportForSync() {
     // Produce a single JSON the user drops into Dash/data/ via Files sheet.
     // It carries this device's full log tail (outbox) + a snapshot, so the
     // Mac can merge it. Deterministic merge means order doesn't matter (§6.1).
+    // Files (photos, PDFs, etc.) ride along as base64 so a phone photo can
+    // reach the Mac's iCloud folder without ever needing a server (§1a/§9).
     const outbox = (await idbGet("outbox")) || [];
+    const pendingBlobs = (await idbGet("blobOutbox")) || [];
+    const blobs = [];
+    for (const { hash, ext } of pendingBlobs) {
+      const rec = await getBlob(hash);
+      if (rec) blobs.push({ hash, ext, mime: rec.mime, dataBase64: bufToBase64(rec.bytes) });
+    }
     const payload = {
       formatVersion: 1,
       device: this.logSlug,
       exportedAt: new Date().toISOString(),
       ops: outbox.map(l => JSON.parse(l)),
       snapshot: this.store.toSnapshot(),
+      blobs,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     const fname = `dash-sync-${this.logSlug}-${Date.now()}.json`;
     downloadBlob(blob, fname);
+    await idbSet("blobOutbox", []); // the Mac now owns writing these to assets/
     toast("Saved a sync file. Move it into your Dash folder, then Import on your Mac.", "success", 8000);
   }
 
@@ -199,7 +269,12 @@ export class Sync {
       const payload = JSON.parse(text);
       if (payload.snapshot) this.store.loadSnapshot(payload.snapshot);
       if (Array.isArray(payload.ops)) this.store.replayLog(payload.ops);
+      for (const b of payload.blobs || []) {
+        await putBlob(b.hash, base64ToBuf(b.dataBase64), b.mime);
+        if (this.mode === "folder" && this.dirHandle) await this.queueBlob(b.hash, b.ext);
+      }
       await idbSet("snapshot", this.store.toSnapshot());
+      if (this.mode === "folder" && this.dirHandle) await this._flushBlobsToFolder();
       this._setStatus("ok");
       toast("Merged the sync file. Everything's up to date.", "success");
     } catch (err) {
@@ -265,6 +340,23 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(a); a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function bufToBase64(buf) {
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBuf(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 function reportError(human, err) {

@@ -1,9 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#3f6f5b"/>
-  <circle cx="176" cy="176" r="52" fill="#f7f6f3"/>
-  <circle cx="336" cy="176" r="52" fill="#b5623a"/>
-  <circle cx="176" cy="336" r="52" fill="#8a6d3b"/>
-  <circle cx="336" cy="336" r="52" fill="#4a6b8a"/>
-  <path d="M176 176 L336 176 M176 176 L176 336 M176 336 L336 336 M336 176 L336 336 M176 176 L336 336"
-        stroke="#f7f6f3" stroke-width="10" stroke-opacity="0.5" fill="none"/>
+  <defs>
+    <clipPath id="roundedSquare">
+      <rect width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#roundedSquare)">
+    <rect width="512" height="512" fill="#3f6f5b"/>
+
+    <!-- cameo medallion -->
+    <circle cx="256" cy="256" r="200" fill="#f7f6f3"/>
+    <circle cx="256" cy="256" r="200" fill="none" stroke="#3f6f5b" stroke-width="5" opacity="0.45"/>
+    <circle cx="256" cy="256" r="184" fill="none" stroke="#3f6f5b" stroke-width="2" opacity="0.3"/>
+
+    <!-- Cocker spaniel bust, profile facing right. Built from simple
+         overlapping primitives (more reliable than one long hand path). -->
+    <g transform="translate(78,88)" fill="#1c1b17">
+
+      <!-- chest / neck / shoulders (drawn first, sits behind head) -->
+      <path d="
+        M 118 205
+        C 84 232, 62 270, 62 322
+        C 62 322, 340 322, 340 322
+        C 338 276, 316 240, 282 213
+        C 262 197, 240 187, 218 183
+        C 195 179, 155 185, 118 205
+        Z"/>
+
+      <!-- ear, drooping from the top of the head down past the jaw -->
+      <path d="
+        M 158 108
+        C 122 118, 96 156, 98 200
+        C 100 238, 122 268, 152 270
+        C 146 240, 142 202, 148 168
+        C 152 145, 162 122, 178 106
+        C 172 105, 165 106, 158 108
+        Z"/>
+
+      <!-- head -->
+      <circle cx="196" cy="160" r="78"/>
+
+      <!-- snout -->
+      <path d="
+        M 258 150
+        C 292 152, 320 168, 332 190
+        C 340 205, 336 218, 322 222
+        C 300 228, 272 218, 254 198
+        C 244 186, 244 165, 258 150
+        Z"/>
+
+      <!-- nose tip -->
+      <circle cx="326" cy="200" r="13"/>
+
+      <!-- eye cutout -->
+      <circle cx="228" cy="140" r="7" fill="#f7f6f3"/>
+    </g>
+
+    <!-- base line, classic cameo convention -->
+    <rect x="120" y="386" width="272" height="4" rx="2" fill="#3f6f5b" opacity="0.5"/>
+  </g>
 </svg>
