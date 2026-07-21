@@ -1,0 +1,13 @@
+{
+  "name": "Dash Default",
+  "note": "This is an EXAMPLE theme. Copy it into your Dash/themes/ folder as 'default.json' to customize. Change any token value and the whole app restyles — no code edits. When you write your brand guide later, this is the one file you edit.",
+  "tokens": {
+    "--surface": "#f7f6f3",
+    "--surface-raised": "#ffffff",
+    "--accent-1": "#3f6f5b",
+    "--accent-2": "#b5623a",
+    "--text-primary": "#26241f",
+    "--text-base": "1.125rem",
+    "--radius": "12px"
+  }
+}

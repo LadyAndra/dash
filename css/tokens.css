@@ -1,0 +1,119 @@
+/* ============================================================
+   tokens.css — the ONE place visual values are defined (§10)
+   ------------------------------------------------------------
+   Components may ONLY reference these semantic tokens, never raw
+   colors / sizes / fonts. A theme JSON file in Dash/themes/ can
+   override any of these at runtime (see js/theme.js), which is how
+   the whole app gets restyled without touching component code.
+
+   Accessibility defaults are baked in HERE so every current and
+   future view inherits them (§10):
+     - 18px text floor, scaled by --text-scale (a settings slider)
+     - AA-contrast color pairs in the default theme
+     - 44px minimum tap targets via --tap-min
+   ============================================================ */
+
+:root {
+  /* ---- text scale multiplier (settings slider writes this) ---- */
+  --text-scale: 1;
+
+  /* ---- surfaces ---- */
+  --surface:        #f7f6f3;   /* app background — warm paper, low glare */
+  --surface-raised: #ffffff;   /* cards, panels */
+  --surface-sunken: #eeece6;   /* wells, inputs */
+  --border:         #d9d6cd;
+  --border-strong:  #b7b3a7;
+
+  /* ---- text (all AA+ on the surfaces above) ---- */
+  --text-primary: #26241f;
+  --text-muted:   #6b675d;
+  --text-faint:   #918c80;
+  --text-on-accent: #ffffff;
+
+  /* ---- accents (also referenced by type/status colors) ---- */
+  --accent-1: #3f6f5b;   /* deep green */
+  --accent-2: #b5623a;   /* clay */
+  --accent-3: #4a6b8a;   /* slate blue */
+  --accent-4: #8a6d3b;   /* ochre */
+
+  /* named status/type palette — data references these by name
+     (e.g. registry color:"green"); see js/theme.js colorToken() */
+  --color-green:  #3f6f5b;
+  --color-clay:   #b5623a;
+  --color-blue:   #4a6b8a;
+  --color-ochre:  #8a6d3b;
+  --color-plum:   #6d4a6b;
+  --color-slate:  #5c6066;
+  --color-gray:   #918c80;
+
+  /* soft tint backgrounds for chips/columns (derived, low-sat) */
+  --tint-green: #e5ede9;
+  --tint-clay:  #f3e4dc;
+  --tint-blue:  #e5ecf2;
+  --tint-ochre: #efe7d7;
+  --tint-plum:  #ece4ec;
+  --tint-slate: #e9eaec;
+  --tint-gray:  #edece8;
+
+  /* ---- typography ---- */
+  --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-ui:      -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* type scale — floor is 18px, everything scales with --text-scale */
+  --text-base: calc(1.125rem * var(--text-scale)); /* 18px */
+  --text-sm:   calc(1rem     * var(--text-scale)); /* 16px — never smaller */
+  --text-lg:   calc(1.375rem * var(--text-scale)); /* 22px */
+  --text-xl:   calc(1.75rem  * var(--text-scale)); /* 28px */
+  --text-2xl:  calc(2.25rem  * var(--text-scale)); /* 36px */
+  --leading:   1.55;
+
+  /* ---- spacing ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2.5rem;
+
+  /* ---- shape & depth ---- */
+  --radius:      12px;
+  --radius-sm:   8px;
+  --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(30,28,22,0.06), 0 1px 3px rgba(30,28,22,0.05);
+  --shadow-2: 0 4px 12px rgba(30,28,22,0.10);
+
+  /* ---- interaction ---- */
+  --tap-min: 44px;            /* minimum tap target (§10) */
+  --focus-ring: 0 0 0 3px rgba(74,107,138,0.55);
+  --transition: 140ms ease;
+}
+
+/* A theme JSON may set data-theme-dark; provided as a sensible
+   built-in dark option that still meets contrast. */
+:root[data-theme="dark"] {
+  --surface:        #1b1a17;
+  --surface-raised: #262420;
+  --surface-sunken: #141310;
+  --border:         #3a372f;
+  --border-strong:  #524e43;
+
+  --text-primary: #f0ede5;
+  --text-muted:   #b3aea1;
+  --text-faint:   #837e72;
+
+  --tint-green: #23302a;
+  --tint-clay:  #34261f;
+  --tint-blue:  #232c34;
+  --tint-ochre: #302a1d;
+  --tint-plum:  #2d2430;
+  --tint-slate: #26282b;
+  --tint-gray:  #2a2925;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 4px 14px rgba(0,0,0,0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --transition: 0ms; }
+}

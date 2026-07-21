@@ -1,0 +1,13 @@
+{
+  "name": "Dash",
+  "short_name": "Dash",
+  "description": "Your personal dashboard and visual inbox.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f6f3",
+  "theme_color": "#3f6f5b",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
