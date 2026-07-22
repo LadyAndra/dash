@@ -61,7 +61,7 @@ export function openSettings(store, sync) {
   const dbxWrap = el("div", {});
   function drawDropbox() {
     dbxWrap.innerHTML = "";
-    const connected = sync && sync.mode === "dropbox" && sync.dbx;
+    const connected = sync && sync.isDropboxConnected && sync.isDropboxConnected();
     if (connected) {
       dbxWrap.append(
         el("div", { class: "sync-pill ok", style: "margin-bottom:var(--space-2)" }, [
@@ -74,23 +74,17 @@ export function openSettings(store, sync) {
         }}),
       );
     } else {
-      const tokenInput = el("input", { type: "password", placeholder: "Paste your Dropbox access token", "aria-label": "Dropbox access token",
-        autocomplete: "off", spellcheck: "false" });
-      const connectBtn = el("button", { class: "btn btn-primary", text: "Connect", onclick: async () => {
-        if (!sync || typeof sync.connectDropbox !== "function") {
-          toast("Please fully reload Dash first (close and reopen the tab), then try connecting again.", "error", 9000);
-          return;
-        }
-        connectBtn.textContent = "Connecting…"; connectBtn.disabled = true;
-        const okThis = await sync.connectDropbox(tokenInput.value);
-        connectBtn.textContent = "Connect"; connectBtn.disabled = false;
-        if (okThis) drawDropbox();
-      }});
       dbxWrap.append(
-        el("div", { class: "row", style: "align-items:flex-end" }, [
-          el("div", { class: "field", style: "flex:1; margin:0" }, [tokenInput]),
-          connectBtn,
-        ]),
+        el("button", { class: "btn btn-primary", text: "Connect to Dropbox", onclick: () => {
+          if (!sync || typeof sync.connectDropbox !== "function") {
+            toast("Please fully reload Dash first (close and reopen the tab), then try again.", "error", 9000);
+            return;
+          }
+          toast("Taking you to Dropbox to approve…", "info", 3000);
+          sync.connectDropbox(); // navigates to Dropbox, returns automatically
+        }}),
+        el("p", { class: "hint", style: "margin-top:var(--space-2)",
+          text: "You'll pop over to Dropbox to approve once, then come right back. No tokens to copy, and it stays connected — no more expiring." }),
       );
     }
   }
@@ -102,7 +96,7 @@ export function openSettings(store, sync) {
     field("Appearance", darkBtn),
     field("This device's name", deviceInput, "Shown in sync and merge notes so you can tell devices apart."),
     el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
-    field("Automatic sync (Dropbox)", dbxWrap, "Paste your Dropbox token once on each device. After that, Dash syncs across all your devices automatically — no buttons."),
+    field("Automatic sync (Dropbox)", dbxWrap, "Connect once on each device. After that, Dash syncs across all your devices automatically — and stays connected."),
     el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
     field("Types", typesWrap, "Add your own item types. New types appear everywhere immediately."),
     field("Statuses", statusWrap, "Add your own statuses. Each status becomes a Kanban column."),

@@ -23,6 +23,7 @@ import { getDeviceSlug } from "./device.js";
 import { toast } from "./ui/toast.js";
 import { allHashes, getBlob, putBlob } from "./blobs.js";
 import { Dropbox, DropboxAuthError } from "./dropbox.js";
+import * as dbxAuth from "./dropbox-auth.js";
 
 const SNAPSHOT_NAME = "snapshot.json";
 const LOG_PREFIX = "log-";
@@ -71,12 +72,21 @@ export class Sync {
     this.status = "idle";
     this._statusListeners = new Set();
 
-    // If the user has connected Dropbox on this device, that's the backend —
-    // and it's the ONLY one that's automatic on all three devices. Otherwise
-    // fall back to the Mac folder backend, or portable export/import.
-    const token = getDropboxToken();
-    this.dbx = token ? new Dropbox(token) : null;
-    this.mode = this.dbx ? "dropbox" : (supportsFolder() ? "folder" : "portable");
+    // Automatic sync via Dropbox. Prefer the new OAuth connection (a refresh
+    // token that never expires); fall back to a legacy manual token if one is
+    // still saved from before. Either way the client gets a *current* access
+    // token per request so expiry is handled invisibly.
+    const legacyToken = getDropboxToken();
+    if (dbxAuth.isConnected()) {
+      this.dbx = new Dropbox(() => dbxAuth.getAccessToken());
+      this.mode = "dropbox";
+    } else if (legacyToken) {
+      this.dbx = new Dropbox(legacyToken);
+      this.mode = "dropbox";
+    } else {
+      this.dbx = null;
+      this.mode = supportsFolder() ? "folder" : "portable";
+    }
   }
 
   onStatus(fn) { this._statusListeners.add(fn); return () => this._statusListeners.delete(fn); }
@@ -85,12 +95,26 @@ export class Sync {
   // ---------- startup ----------
   async init() {
     try {
+      // If we're returning from the Dropbox approval page (URL has ?code=…),
+      // finish the handshake first, then switch into dropbox mode.
+      try {
+        const justConnected = await dbxAuth.completeConnectIfReturning();
+        if (justConnected) {
+          this.dbx = new Dropbox(() => dbxAuth.getAccessToken());
+          this.mode = "dropbox";
+          toast("Dropbox connected. Dash now syncs automatically on this device.", "success");
+        }
+      } catch (err) {
+        reportError("Dropbox sign-in didn't complete", err);
+      }
+
       // load local snapshot first so the app opens instantly with last state
       const localSnap = await idbGet("snapshot");
       if (localSnap) this.store.loadSnapshot(localSnap);
 
       if (this.mode === "dropbox") {
         await this.pullDropbox();
+        await this.flush();
         this._setStatus("ok");
       } else if (this.mode === "folder") {
         // try to silently re-acquire a previously granted folder handle
@@ -115,36 +139,26 @@ export class Sync {
   }
 
   // ---------- Dropbox: connect (all devices) ----------
-  // Called from Settings after the user pastes their token. Verifies it,
-  // saves it on THIS device only, does a first full sync.
-  async connectDropbox(token) {
-    const trimmed = (token || "").trim();
-    if (!trimmed) { toast("Paste your Dropbox token first.", "info"); return false; }
-    const dbx = new Dropbox(trimmed);
+  // Kicks off the approval flow — sends the user to Dropbox to say "allow".
+  // They come back to the app with a code that init() finishes automatically.
+  async connectDropbox() {
     try {
-      await dbx.check();
-      setDropboxToken(trimmed);
-      this.dbx = dbx;
-      this.mode = "dropbox";
-      await this.pullDropbox();
-      await this.flush();
-      this._setStatus("ok");
-      toast("Dropbox connected. Dash now syncs automatically on this device.", "success");
-      return true;
+      await dbxAuth.beginConnect(); // navigates away to Dropbox
     } catch (err) {
-      reportError("Couldn't connect Dropbox", err);
-      this._setStatus("auth");
-      return false;
+      reportError("Couldn't start Dropbox connection", err);
     }
   }
 
   disconnectDropbox() {
+    dbxAuth.disconnect();
     clearDropboxToken();
     this.dbx = null;
     this.mode = supportsFolder() ? "folder" : "portable";
     this._setStatus("idle");
     toast("Dropbox disconnected on this device.", "info");
   }
+
+  isDropboxConnected() { return this.mode === "dropbox" && !!this.dbx; }
 
   // ---------- Dropbox: read all logs + snapshot, replay unseen tails ----------
   async pullDropbox() {

@@ -20,19 +20,26 @@ const CONTENT = "https://content.dropboxapi.com/2";
 const RPC = "https://api.dropboxapi.com/2";
 
 export class Dropbox {
-  constructor(token) { this.token = token; }
+  // tokenSource can be either a plain string (legacy manual token) or an async
+  // function returning a current access token (the auto-refreshing flow).
+  constructor(tokenSource) { this.tokenSource = tokenSource; }
 
-  get hasToken() { return !!this.token; }
+  get hasToken() { return !!this.tokenSource; }
 
-  _headers(extra = {}) {
-    return { Authorization: `Bearer ${this.token}`, ...extra };
+  async _token() {
+    return typeof this.tokenSource === "function" ? await this.tokenSource() : this.tokenSource;
+  }
+
+  async _headers(extra = {}) {
+    const token = await this._token();
+    return { Authorization: `Bearer ${token}`, ...extra };
   }
 
   // Verify the token works and has folder access. Returns {ok, account} or throws.
   async check() {
     const res = await fetch(`${RPC}/users/get_current_account`, {
       method: "POST",
-      headers: this._headers(),
+      headers: await this._headers(),
     });
     if (res.status === 401) throw new DropboxAuthError("Dropbox token was rejected (401). Generate a fresh token and paste it again.");
     if (!res.ok) throw new Error(`Dropbox check failed (${res.status}).`);
@@ -43,7 +50,7 @@ export class Dropbox {
   async downloadText(path) {
     const res = await fetch(`${CONTENT}/files/download`, {
       method: "POST",
-      headers: this._headers({ "Dropbox-API-Arg": JSON.stringify({ path }) }),
+      headers: await this._headers({ "Dropbox-API-Arg": JSON.stringify({ path }) }),
     });
     if (res.status === 409) return null;      // path not found — normal on first run
     if (res.status === 401) throw new DropboxAuthError("Dropbox token was rejected.");
@@ -55,7 +62,7 @@ export class Dropbox {
   async downloadBinary(path) {
     const res = await fetch(`${CONTENT}/files/download`, {
       method: "POST",
-      headers: this._headers({ "Dropbox-API-Arg": JSON.stringify({ path }) }),
+      headers: await this._headers({ "Dropbox-API-Arg": JSON.stringify({ path }) }),
     });
     if (res.status === 409) return null;
     if (!res.ok) throw new Error(`Dropbox download failed for ${path} (${res.status}).`);
@@ -67,7 +74,7 @@ export class Dropbox {
   async upload(path, body, { mode = "overwrite" } = {}) {
     const res = await fetch(`${CONTENT}/files/upload`, {
       method: "POST",
-      headers: this._headers({
+      headers: await this._headers({
         "Content-Type": "application/octet-stream",
         "Dropbox-API-Arg": JSON.stringify({ path, mode, mute: true, autorename: false }),
       }),
@@ -86,7 +93,7 @@ export class Dropbox {
     const out = [];
     let res = await fetch(`${RPC}/files/list_folder`, {
       method: "POST",
-      headers: this._headers({ "Content-Type": "application/json" }),
+      headers: await this._headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ path, recursive: false }),
     });
     if (res.status === 409) return []; // folder doesn't exist yet
@@ -98,7 +105,7 @@ export class Dropbox {
     while (data.has_more) {
       res = await fetch(`${RPC}/files/list_folder/continue`, {
         method: "POST",
-        headers: this._headers({ "Content-Type": "application/json" }),
+        headers: await this._headers({ "Content-Type": "application/json" }),
         body: JSON.stringify({ cursor: data.cursor }),
       });
       if (!res.ok) break;
