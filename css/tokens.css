@@ -1,15 +1,24 @@
 /* ============================================================
    tokens.css — the ONE place visual values are defined (§10)
    ------------------------------------------------------------
+   "Specimen archive" system (approved July 2026). Warm cream is the
+   primary ground; near-black appears as a *material* (the mount board),
+   not a mode. One ember accent is an INDICATOR only — overdue, stale,
+   sync trouble — never decoration. Serif carries content; a mono voice
+   carries every label, number, and date.
+
    Components may ONLY reference these semantic tokens, never raw
    colors / sizes / fonts. A theme JSON file in Dash/themes/ can
-   override any of these at runtime (see js/theme.js), which is how
-   the whole app gets restyled without touching component code.
+   override any of these at runtime (see js/theme.js).
 
-   Accessibility defaults are baked in HERE so every current and
-   future view inherits them (§10):
-     - 18px text floor, scaled by --text-scale (a settings slider)
-     - AA-contrast color pairs in the default theme
+   Token NAMES are unchanged from earlier versions on purpose, so
+   theme.js, sketch.js and every view keep working — only the VALUES
+   moved. New tokens (--mount*, --ember*, --rule*, --text-label) were
+   added for the new elements.
+
+   Accessibility defaults still baked in HERE (§10):
+     - 18px text floor, scaled by --text-scale
+     - AA-contrast pairs verified on every ground, cream and mount
      - 44px minimum tap targets via --tap-min
    ============================================================ */
 
@@ -17,43 +26,58 @@
   /* ---- text scale multiplier (settings slider writes this) ---- */
   --text-scale: 1;
 
-  /* ---- surfaces ---- */
-  --surface:        #f7f6f3;   /* app background — warm paper, low glare */
-  --surface-raised: #ffffff;   /* cards, panels */
-  --surface-sunken: #eeece6;   /* wells, inputs */
-  --border:         #d9d6cd;
-  --border-strong:  #b7b3a7;
+  /* ---- surfaces: warm paper stock ---- */
+  --surface:        #f2ece0;   /* app ground — warm cream */
+  --surface-raised: #f8f4ea;   /* mounted sheet / entry field */
+  --surface-sunken: #e8e0d0;   /* wells, inputs, the instrument strip */
+  --border:         #cfc6b2;   /* hairline rule */
+  --border-strong:  #a89d84;   /* stronger rule / control outline */
 
-  /* ---- text (all AA+ on the surfaces above) ---- */
-  --text-primary: #26241f;
-  --text-muted:   #6b675d;
-  --text-faint:   #918c80;
-  --text-on-accent: #ffffff;
+  /* ---- the mount board (near-black material, not "dark mode") ---- */
+  --mount:          #17150f;
+  --mount-soft:     #211e16;
+  --rule-mount:     #3a352a;
+  --ink-on-mount:       #efe8d8;
+  --ink-on-mount-muted: #a89f8a;
 
-  /* ---- accents (also referenced by type/status colors) ---- */
-  --accent-1: #3f6f5b;   /* deep green */
-  --accent-2: #b5623a;   /* clay */
-  --accent-3: #4a6b8a;   /* slate blue */
-  --accent-4: #8a6d3b;   /* ochre */
+  /* ---- ink (all AA on the paper grounds above) ---- */
+  --text-primary:  #1c1a14;
+  --text-muted:    #4d4738;   /* body previews, secondary content */
+  --text-faint:    #6a6252;   /* counts, hints, dates */
+  --text-on-accent:#f8f4ea;
+
+  /* ---- THE accent: ember. Indicator only. AA on paper. ---- */
+  --accent-2:      #b23a14;   /* ember — legacy name kept; = indicator red */
+  --ember:         #b23a14;
+  --ember-soft:    #e8d2c4;
+  --ember-on-mount:#ef7a4e;   /* same lamp, legible on the mount */
+  --warn-on-mount: #c9a24f;   /* mid-band "aging", mount ground only */
+
+  /* ---- quiet accents (kept for compatibility; demoted) ---- */
+  --accent-1: #4a6353;   /* green — primary type/status ink */
+  --accent-3: #4c6076;   /* slate blue */
+  --accent-4: #7d6538;   /* ochre */
 
   /* named status/type palette — data references these by name
-     (e.g. registry color:"green"); see js/theme.js colorToken() */
-  --color-green:  #3f6f5b;
-  --color-clay:   #b5623a;
-  --color-blue:   #4a6b8a;
-  --color-ochre:  #8a6d3b;
-  --color-plum:   #6d4a6b;
-  --color-slate:  #5c6066;
-  --color-gray:   #918c80;
+     (registry color:"green"); see js/theme.js colorToken().
+     Re-valued to quiet, AA inks that read as dot-marks. */
+  --color-green:  #4a6353;
+  --color-clay:   #87502f;
+  --color-blue:   #4c6076;
+  --color-ochre:  #6f5a2e;
+  --color-plum:   #5f4a5c;
+  --color-slate:  #575a5e;
+  --color-gray:   #6a6252;
 
-  /* soft tint backgrounds for chips/columns (derived, low-sat) */
-  --tint-green: #e5ede9;
-  --tint-clay:  #f3e4dc;
-  --tint-blue:  #e5ecf2;
-  --tint-ochre: #efe7d7;
-  --tint-plum:  #ece4ec;
-  --tint-slate: #e9eaec;
-  --tint-gray:  #edece8;
+  /* soft tint backgrounds — now barely-there, cream-biased. Used by the
+     kanban column wells and the finder selection only. */
+  --tint-green: #e6e6d8;
+  --tint-clay:  #ece0d3;
+  --tint-blue:  #e2e6da;
+  --tint-ochre: #ece4d2;
+  --tint-plum:  #e8e0da;
+  --tint-slate: #e6e4dc;
+  --tint-gray:  #eae4d6;
 
   /* ---- typography ---- */
   --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -64,9 +88,11 @@
   --text-base: calc(1.125rem * var(--text-scale)); /* 18px */
   --text-sm:   calc(1rem     * var(--text-scale)); /* 16px — never smaller */
   --text-lg:   calc(1.375rem * var(--text-scale)); /* 22px */
-  --text-xl:   calc(1.75rem  * var(--text-scale)); /* 28px */
-  --text-2xl:  calc(2.25rem  * var(--text-scale)); /* 36px */
-  --leading:   1.55;
+  --text-xl:   calc(1.875rem * var(--text-scale)); /* 30px */
+  --text-2xl:  calc(2.5rem   * var(--text-scale)); /* 40px */
+  /* the mono label voice — tiny letterspaced caps for ALL metadata */
+  --text-label:calc(0.6875rem * var(--text-scale));/* 11px */
+  --leading:   1.5;
 
   /* ---- spacing ---- */
   --space-1: 0.25rem;
@@ -76,58 +102,71 @@
   --space-5: 1.5rem;
   --space-6: 2.5rem;
 
-  /* ---- shape & depth ---- */
-  --radius:      12px;
-  --radius-sm:   8px;
-  --radius-pill: 999px;
-  --shadow-1: 0 1px 2px rgba(30,28,22,0.06), 0 1px 3px rgba(30,28,22,0.05);
-  --shadow-2: 0 4px 12px rgba(30,28,22,0.10);
+  /* ---- shape & depth: sharper corners, hairlines over shadows ---- */
+  --radius:      2px;
+  --radius-sm:   2px;
+  --radius-pill: 999px;      /* small round dots only */
+  --shadow-1: none;
+  --shadow-2: 0 6px 24px rgba(23,21,15,0.16);   /* modals only */
 
-  /* ---- sketch / journal (§9) ----
-     The drawing page is meant to feel like warm notebook paper, not a stark
-     digital canvas. Ink colors are read by js/sketch.js so a re-theme
-     restyles the pens too. */
-  --sketch-paper:      #f4efe4;   /* warm cream page */
-  --sketch-paper-edge: #e7dfcd;   /* soft page shadow toward the edges */
-  --sketch-ink:        #2b2822;   /* soft black, not pure #000 */
-  --sketch-ink-accent: #4a6b8a;   /* faded blue — the single accent pen */
+  /* ---- sketch / journal (§9) — unchanged intent, warm paper ---- */
+  --sketch-paper:      #f4efe4;
+  --sketch-paper-edge: #e7dfcd;
+  --sketch-ink:        #2b2822;
+  --sketch-ink-accent: #4a6b8a;
 
   /* ---- interaction ---- */
-  --tap-min: 44px;            /* minimum tap target (§10) */
-  --focus-ring: 0 0 0 3px rgba(74,107,138,0.55);
+  --tap-min: 44px;
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--ember);
   --transition: 140ms ease;
 }
 
-/* A theme JSON may set data-theme-dark; provided as a sensible
-   built-in dark option that still meets contrast. */
+/* Dark = the mount becomes the ground (the black-monoprint theme). Kept
+   AA and warm so a sketch made by day still reads at night. */
 :root[data-theme="dark"] {
-  --surface:        #1b1a17;
-  --surface-raised: #262420;
-  --surface-sunken: #141310;
-  --border:         #3a372f;
-  --border-strong:  #524e43;
+  --surface:        #17150f;
+  --surface-raised: #211e16;
+  --surface-sunken: #100e09;
+  --border:         #3a352a;
+  --border-strong:  #524c3d;
 
-  --text-primary: #f0ede5;
-  --text-muted:   #b3aea1;
-  --text-faint:   #837e72;
+  --mount:          #100e09;
+  --mount-soft:     #191710;
+  --rule-mount:     #3a352a;
+  --ink-on-mount:       #efe8d8;
+  --ink-on-mount-muted: #a89f8a;
 
-  --tint-green: #23302a;
-  --tint-clay:  #34261f;
-  --tint-blue:  #232c34;
-  --tint-ochre: #302a1d;
-  --tint-plum:  #2d2430;
-  --tint-slate: #26282b;
-  --tint-gray:  #2a2925;
+  --text-primary: #efe8d8;
+  --text-muted:   #c3bba7;
+  --text-faint:   #928a76;
+  --text-on-accent:#17150f;
 
-  /* Dark mode keeps a warm-but-dim page and lighter ink, so a sketch made in
-     the day still reads at night (ink is saved transparent, so it recolors). */
+  --ember:         #ef7a4e;
+  --accent-2:      #ef7a4e;
+
+  --color-green:  #7fa38c;
+  --color-clay:   #cf8a63;
+  --color-blue:   #7f9bb8;
+  --color-ochre:  #c9a24f;
+  --color-plum:   #a988a6;
+  --color-slate:  #9ca0a6;
+  --color-gray:   #928a76;
+
+  --tint-green: #232a24;
+  --tint-clay:  #2c241d;
+  --tint-blue:  #222a30;
+  --tint-ochre: #2a271b;
+  --tint-plum:  #282230;
+  --tint-slate: #24262a;
+  --tint-gray:  #262319;
+
   --sketch-paper:      #2a2620;
   --sketch-paper-edge: #211d18;
   --sketch-ink:        #ece7db;
   --sketch-ink-accent: #8fb3d4;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-2: 0 4px 14px rgba(0,0,0,0.5);
+  --shadow-1: none;
+  --shadow-2: 0 6px 24px rgba(0,0,0,0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
