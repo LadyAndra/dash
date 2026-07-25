@@ -47,16 +47,13 @@ export function swatch(store, item) {
   return el("div", { class: "item-swatch", style: `background:${colorToken(t?.color)}` });
 }
 
-// A stable, deterministic 4-digit accession number for an item, derived from
-// its immutable id. Same id → same number on every device, forever, with no
-// data migration (the number is display-only, never stored). Not guaranteed
-// unique across thousands of items — it's a catalog affordance, like a
-// specimen tag, not an identifier (the ULID remains the real id).
-export function catalogNo(item) {
-  const id = item.id || "";
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return String(h % 10000).padStart(4, "0");
+// The catalog accession number: the item's position in creation order,
+// 1-based and zero-padded. Delegated to the store, which keeps the register
+// stable (deletions don't renumber; new items take the next number). See
+// Store.accessionNo. Display-only — the ULID remains the real id, so no data
+// migration and it stays consistent across devices.
+export function catalogNo(store, item) {
+  return store.accessionNo(item.id);
 }
 
 // Short uppercase date for the mono meta line, e.g. "16 JUL". Falls back to
@@ -93,7 +90,7 @@ function sketchThumb(item, cls) {
 // Hairline-separated rather than boxed (§ specimen-archive design).
 export function itemRow(store, item, onOpen) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
-  const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(item)}` });
+  const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
 
   const meta = el("div", { class: "item-meta" }, [
     typeChip(store, item),
@@ -121,7 +118,7 @@ export function itemRow(store, item, onOpen) {
 export function itemCard(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "card-sketch-thumb");
   const header = el("div", { class: "card-head" }, [
-    el("span", { class: "item-no", text: `№ ${catalogNo(item)}` }),
+    el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` }),
     el("span", { class: "num", text: shortDate(item) }),
   ]);
   const marks = el("div", { class: "item-meta" }, [

@@ -90,6 +90,26 @@ export class Store {
     return [...set].sort((a, b) => a.localeCompare(b));
   }
 
+  // ---- Accession numbers (the catalog № on every entry) ----
+  // A permanent register: each item's number is its position in creation
+  // order, 1-based. ULIDs sort lexicographically by creation time, so the
+  // order is just the sorted ids. Tombstoned (deleted) items are KEPT in the
+  // ranking on purpose — that's what keeps numbers stable: removing an item
+  // never renumbers the ones after it, and a new capture always takes the
+  // next number up. Same item set → same numbers on every device (§ eventual
+  // consistency). Cheap: the index is cached and only rebuilt when the number
+  // of known items changes.
+  accessionNo(id) {
+    if (!this._accession || this._accession.size !== this.items.size) {
+      const ids = [...this.items.keys()].sort();   // ULID order = creation order
+      const map = new Map();
+      ids.forEach((k, i) => map.set(k, i + 1));
+      this._accession = { size: this.items.size, map };
+    }
+    const n = this._accession.map.get(id);
+    return n ? String(n).padStart(4, "0") : "----";
+  }
+
   types() { return this.registry.types; }
   statuses() { return this.registry.statuses; }
   typeDef(key) { return this.registry.types.find(t => t.key === key) || null; }
