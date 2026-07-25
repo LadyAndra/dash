@@ -114,18 +114,13 @@ function buildChrome() {
 
   const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
 
-  // Quick-capture a drawing: opens a new sketch item straight into the canvas
-  // (§9 "a frictionless capture path"). Same editor, just pre-typed as a sketch.
-  const sketchBtn = el("button", { class: "btn", text: "✎ Sketch",
-    onclick: () => openEditor(store, null, { onClose: render, sync, initialType: "sketch" }) });
-
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
   const topbar = el("div", { class: "topbar" }, [
     viewTabs, groupSel,
     el("div", { class: "search-wrap" }, [search]),
-    newBtn, sketchBtn, syncBtn, syncPill,
+    newBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });

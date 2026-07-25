@@ -15,9 +15,7 @@ import { createSketchPad } from "./sketch.js";
 
 export function openEditor(store, itemId, opts = {}) {
   const isNew = !itemId;
-  // opts.initialType lets the "Sketch" quick-capture button open a new item
-  // already set to the sketch type, so the canvas is there immediately.
-  const id = itemId || store.createItem(opts.initialType ? { type: opts.initialType } : {});
+  const id = itemId || store.createItem({});
   const item = store.get(id);
   if (!item) { toast("That item couldn't be found.", "error"); return; }
 
@@ -34,11 +32,7 @@ export function openEditor(store, itemId, opts = {}) {
   });
 
   // --- type + status selects (from the editable registry §2.2) ---
-  // Changing the type to/from "sketch" shows or hides the drawing page.
-  const typeSel = selectFromRegistry(store.types(), item.type, (v) => {
-    store.setField(id, "type", v);
-    updateSketchVisibility(v);
-  }, "Type");
+  const typeSel = selectFromRegistry(store.types(), item.type, (v) => store.setField(id, "type", v), "Type");
   const statusSel = selectFromRegistry(store.statuses(), item.status, (v) => store.setField(id, "status", v), "Status");
 
   // --- body (dictation-friendly textarea) ---
@@ -181,7 +175,7 @@ export function openEditor(store, itemId, opts = {}) {
   let sketchBgUrl = null; // object URL for the loaded existing drawing (revoke on close)
   const sketchHolder = el("div", {});
   const sketchField = field("Sketch", sketchHolder,
-    "Draw with your finger or Apple Pencil. It saves itself as you go.");
+    "Draw with your finger or Apple Pencil — on any note. It saves itself as you go.");
 
   function currentSketchAtt() {
     return (store.get(id)?.attachments || []).find(a => a.role === "sketch") || null;
@@ -224,12 +218,6 @@ export function openEditor(store, itemId, opts = {}) {
     }
   }
 
-  function updateSketchVisibility(type) {
-    const show = type === "sketch";
-    sketchField.style.display = show ? "" : "none";
-    if (show) ensureSketchPad();
-  }
-
   // --- read aloud (voice out §10) ---
   const readBtn = el("button", { class: "icon-btn", "aria-label": "Read this item aloud", title: "Read aloud", text: "🔊",
     onclick: () => readAloud(itemToSpeech(store.get(id), store)) });
@@ -250,8 +238,8 @@ export function openEditor(store, itemId, opts = {}) {
     ]),
     field("Title", title),
     el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
-    sketchField,
     field("Notes", body),
+    sketchField,
     field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
       "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
     isProjectItem ? null : field("Projects", projectWrap, "Assign this to one or more projects. An entry can live in several projects at once."),
@@ -264,14 +252,12 @@ export function openEditor(store, itemId, opts = {}) {
   renderLinks();
   renderAttachments();
   if (!isProjectItem) renderProjects();
-  updateSketchVisibility(store.get(id)?.type);
+  // The drawing page is part of every item now, so set it up unconditionally.
+  ensureSketchPad();
 
   scrim.appendChild(modal);
   document.body.appendChild(scrim);
-  // For a fresh sketch, don't steal focus into the title (which pops the
-  // keyboard on iPad) — leave the pen ready. Otherwise focus the title.
-  if (store.get(id)?.type === "sketch" && isNew) { /* leave canvas ready */ }
-  else title.focus();
+  title.focus();
 
   async function close() {
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter

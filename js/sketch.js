@@ -93,40 +93,61 @@ export function createSketchPad({ onDirty } = {}) {
     for (const s of strokes) paintStroke(s);
   }
 
-  function paintStroke(stroke) {
-    const pts = stroke.points;
-    if (pts.length === 0) return;
+  // ---- low-level ink drawing ----------------------------------------------
+  // The "corners" in the first version came from drawing dead-straight lines
+  // between sampled points. Real pens curve. So instead of point-to-point
+  // lines we route the path through the MIDPOINTS of each pair of samples,
+  // using the sample itself as a quadratic control point. That turns a jagged
+  // polyline into a smooth curve automatically — the standard trick for
+  // signature/drawing canvases — while still letting each little segment carry
+  // its own width, so the taper survives.
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  function beginInk(stroke) {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-
     if (stroke.tool === "eraser") {
-      ctx.save();
       ctx.globalCompositeOperation = "destination-out";
       ctx.strokeStyle = "rgba(0,0,0,1)";
-      strokePath(pts, ERASER_WIDTH);
-      ctx.restore();
-      return;
-    }
-
-    ctx.strokeStyle = stroke.color;
-    // Variable width: draw as many short segments, each with its own width,
-    // so the line tapers smoothly instead of being one flat thickness.
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      ctx.beginPath();
-      ctx.lineWidth = (a.w + b.w) / 2;
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = stroke.color;
     }
   }
-
-  function strokePath(pts, width) {
-    ctx.beginPath();
-    ctx.lineWidth = width;
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  function lineSeg(stroke, a, b, w) {
+    beginInk(stroke);
+    ctx.beginPath(); ctx.lineWidth = w;
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  function quadSeg(stroke, from, ctrl, to, w) {
+    beginInk(stroke);
+    ctx.beginPath(); ctx.lineWidth = w;
+    ctx.moveTo(from.x, from.y);
+    ctx.quadraticCurveTo(ctrl.x, ctrl.y, to.x, to.y);
     ctx.stroke();
+  }
+  function widthAt(stroke, i) {
+    return stroke.tool === "eraser" ? ERASER_WIDTH : stroke.points[i].w;
+  }
+
+  // Repaint a whole stroke as a smooth, variable-width curve.
+  function paintStroke(stroke) {
+    const p = stroke.points;
+    if (p.length === 0) return;
+    if (p.length === 1) { // a dot
+      lineSeg(stroke, p[0], { x: p[0].x + 0.01, y: p[0].y + 0.01 }, widthAt(stroke, 0));
+      return;
+    }
+    if (p.length === 2) { lineSeg(stroke, p[0], p[1], (widthAt(stroke,0)+widthAt(stroke,1))/2); return; }
+    // start cap: first point to the first midpoint
+    lineSeg(stroke, p[0], mid(p[0], p[1]), widthAt(stroke, 0));
+    // interior: midpoint -> (control = sample) -> next midpoint
+    for (let i = 1; i < p.length - 1; i++) {
+      quadSeg(stroke, mid(p[i - 1], p[i]), p[i], mid(p[i], p[i + 1]), widthAt(stroke, i));
+    }
+    // end cap: last midpoint to the last point
+    const n = p.length;
+    lineSeg(stroke, mid(p[n - 2], p[n - 1]), p[n - 1], widthAt(stroke, n - 1));
   }
 
   // --- pointer handling ---
@@ -192,39 +213,35 @@ export function createSketchPad({ onDirty } = {}) {
       // skip near-duplicate points (finger jitter)
       if (Math.hypot(pt.x - prev.x, pt.y - prev.y) < 0.6) continue;
       current.points.push({ x: pt.x, y: pt.y, w });
-      // Incrementally paint just the new segment for responsiveness.
-      paintSegment(current, prev, current.points[current.points.length - 1]);
+      // Draw the newly-completed smooth segment (through midpoints) so the
+      // live line curves as you go, matching the final render.
+      paintIncrement(current);
       lastPt = pt;
     }
     e.preventDefault();
   }
 
-  function paintSegment(stroke, a, b) {
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (stroke.tool === "eraser") {
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-      ctx.beginPath();
-      ctx.lineWidth = ERASER_WIDTH;
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.restore();
-      return;
-    }
-    ctx.strokeStyle = stroke.color;
-    ctx.beginPath();
-    ctx.lineWidth = (a.w + b.w) / 2;
-    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  // Draw just the latest smooth segment of the in-progress stroke, without
+  // repainting the whole canvas. Once a point has both neighbors we can draw
+  // the curve centered on it; before that we lay a short straight lead.
+  function paintIncrement(stroke) {
+    const p = stroke.points;
+    const n = p.length;
+    if (n < 3) { lineSeg(stroke, p[n - 2], p[n - 1], (widthAt(stroke, n - 2) + widthAt(stroke, n - 1)) / 2); return; }
+    const b = p[n - 2]; // the point that just gained a right neighbor
+    quadSeg(stroke, mid(p[n - 3], b), b, mid(b, p[n - 1]), widthAt(stroke, n - 2));
   }
 
   function onUp() {
     if (!current) return;
-    if (current.points.length === 1) {
-      // a tap = a dot: give it a tiny second point so it renders
-      const p = current.points[0];
-      current.points.push({ x: p.x + 0.01, y: p.y + 0.01, w: p.w });
-      paintStroke(current);
+    const p = current.points;
+    if (p.length === 1) {
+      paintStroke(current); // a tap = a dot
+    } else if (p.length >= 3) {
+      // paintIncrement stops at the last midpoint; draw the final cap so the
+      // live stroke ends exactly where the saved render will.
+      const n = p.length;
+      lineSeg(current, mid(p[n - 2], p[n - 1]), p[n - 1], widthAt(current, n - 1));
     }
     strokes.push(current);
     current = null;
