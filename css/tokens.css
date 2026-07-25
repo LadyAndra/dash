@@ -83,6 +83,15 @@
   --shadow-1: 0 1px 2px rgba(30,28,22,0.06), 0 1px 3px rgba(30,28,22,0.05);
   --shadow-2: 0 4px 12px rgba(30,28,22,0.10);
 
+  /* ---- sketch / journal (§9) ----
+     The drawing page is meant to feel like warm notebook paper, not a stark
+     digital canvas. Ink colors are read by js/sketch.js so a re-theme
+     restyles the pens too. */
+  --sketch-paper:      #f4efe4;   /* warm cream page */
+  --sketch-paper-edge: #e7dfcd;   /* soft page shadow toward the edges */
+  --sketch-ink:        #2b2822;   /* soft black, not pure #000 */
+  --sketch-ink-accent: #4a6b8a;   /* faded blue — the single accent pen */
+
   /* ---- interaction ---- */
   --tap-min: 44px;            /* minimum tap target (§10) */
   --focus-ring: 0 0 0 3px rgba(74,107,138,0.55);
@@ -109,6 +118,13 @@
   --tint-plum:  #2d2430;
   --tint-slate: #26282b;
   --tint-gray:  #2a2925;
+
+  /* Dark mode keeps a warm-but-dim page and lighter ink, so a sketch made in
+     the day still reads at night (ink is saved transparent, so it recolors). */
+  --sketch-paper:      #2a2620;
+  --sketch-paper-edge: #211d18;
+  --sketch-ink:        #ece7db;
+  --sketch-ink-accent: #8fb3d4;
 
   --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
   --shadow-2: 0 4px 14px rgba(0,0,0,0.5);

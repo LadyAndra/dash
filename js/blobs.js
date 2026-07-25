@@ -72,6 +72,16 @@ export async function ingestFile(file) {
   return { hash, ext, role: roleForExt(ext), name: file.name, size: file.size };
 }
 
+// Same idea as ingestFile, but for bytes that didn't come from a file picker —
+// the sketch canvas's rendered PNG. role is forced to "sketch" (distinct from
+// role:"image") so the editor and card thumbnails can find the one canonical
+// drawing on an item without guessing from the file extension.
+export async function ingestSketchPNG(arrayBuffer) {
+  const hash = await sha256Hex(arrayBuffer);
+  await putBlob(hash, arrayBuffer, "image/png");
+  return { hash, ext: "png", role: "sketch", name: "sketch.png", size: arrayBuffer.byteLength };
+}
+
 // Object URL for previewing/opening a stored blob. Caller should revoke
 // it when done (e.g. on modal close) to avoid piling up memory.
 export async function blobObjectURL(hash, mimeHint) {

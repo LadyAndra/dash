@@ -3,6 +3,7 @@
 // Views MUST NOT read raw colors; they call colorToken()/tintToken() (§10).
 
 import { colorToken, tintToken } from "../theme.js";
+import { blobObjectURL } from "../blobs.js";
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -43,10 +44,29 @@ export function swatch(store, item) {
   return el("div", { class: "item-swatch", style: `background:${colorToken(t?.color)}` });
 }
 
+// The drawing attached to a sketch item, if any.
+function sketchAtt(item) {
+  return (item.attachments || []).find(a => a.role === "sketch") || null;
+}
+
+// A small preview of a sketch, on warm paper, that fills in asynchronously
+// (blobs live in IndexedDB). Returns null if the item has no drawing, so
+// callers can decide whether to fall back to text.
+function sketchThumb(item, cls) {
+  const att = sketchAtt(item);
+  if (!att) return null;
+  const box = el("div", { class: cls });
+  blobObjectURL(att.hash).then((url) => {
+    if (url) box.appendChild(el("img", { src: url, alt: item.title || "sketch", class: "sketch-thumb-img" }));
+  });
+  return box;
+}
+
 // A full item row for the list view.
 export function itemRow(store, item, onOpen) {
+  const thumb = sketchThumb(item, "item-sketch-thumb");
   const main = el("div", { class: "item-main" }, [
-    el("h3", { class: "item-title", text: item.title || "Untitled" }),
+    el("h3", { class: "item-title", text: item.title || (thumb ? "Sketch" : "Untitled") }),
     item.body ? el("p", { class: "item-body-preview", text: item.body }) : null,
     el("div", { class: "item-meta" }, [
       typeChip(store, item),
@@ -60,7 +80,7 @@ export function itemRow(store, item, onOpen) {
     tabindex: "0",
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
-  }, [swatch(store, item), main]);
+  }, [thumb || swatch(store, item), main]);
 }
 
 // A compact card for board / kanban.
@@ -73,7 +93,8 @@ export function itemCard(store, item, onOpen, opts = {}) {
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
   }, [
-    el("h3", { class: "item-title", text: item.title || "Untitled" }),
+    sketchThumb(item, "card-sketch-thumb"),
+    el("h3", { class: "item-title", text: item.title || (sketchAtt(item) ? "Sketch" : "Untitled") }),
     item.body ? el("p", { class: "item-body-preview", text: item.body }) : null,
     el("div", { class: "item-meta" }, [
       opts.hideType ? null : typeChip(store, item),

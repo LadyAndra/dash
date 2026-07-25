@@ -10,11 +10,14 @@ import { el } from "./views/shared.js";
 import { colorToken } from "./theme.js";
 import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
-import { ingestFile, blobObjectURL } from "./blobs.js";
+import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
+import { createSketchPad } from "./sketch.js";
 
 export function openEditor(store, itemId, opts = {}) {
   const isNew = !itemId;
-  const id = itemId || store.createItem({});
+  // opts.initialType lets the "Sketch" quick-capture button open a new item
+  // already set to the sketch type, so the canvas is there immediately.
+  const id = itemId || store.createItem(opts.initialType ? { type: opts.initialType } : {});
   const item = store.get(id);
   if (!item) { toast("That item couldn't be found.", "error"); return; }
 
@@ -31,7 +34,11 @@ export function openEditor(store, itemId, opts = {}) {
   });
 
   // --- type + status selects (from the editable registry §2.2) ---
-  const typeSel = selectFromRegistry(store.types(), item.type, (v) => store.setField(id, "type", v), "Type");
+  // Changing the type to/from "sketch" shows or hides the drawing page.
+  const typeSel = selectFromRegistry(store.types(), item.type, (v) => {
+    store.setField(id, "type", v);
+    updateSketchVisibility(v);
+  }, "Type");
   const statusSel = selectFromRegistry(store.statuses(), item.status, (v) => store.setField(id, "status", v), "Status");
 
   // --- body (dictation-friendly textarea) ---
@@ -160,8 +167,67 @@ export function openEditor(store, itemId, opts = {}) {
     attachWrap.innerHTML = "";
     const current = store.get(id);
     for (const a of current.attachments) {
+      if (a.role === "sketch") continue; // the drawing has its own Sketch field
       attachWrap.appendChild(await attachmentChip(a, () => { store.removeFromSet(id, "attachments", a); renderAttachments(); }));
     }
+  }
+
+  // --- sketch page (§9): the warm-paper drawing canvas, only for sketches ---
+  // Lazily created so non-sketch items pay nothing for it. Strokes autosave to
+  // a PNG attachment (role:"sketch"); each save replaces the previous drawing
+  // with a new content-addressed file (§2.1 immutability).
+  let sketchPad = null;
+  let sketchSaveTimer = null;
+  let sketchBgUrl = null; // object URL for the loaded existing drawing (revoke on close)
+  const sketchHolder = el("div", {});
+  const sketchField = field("Sketch", sketchHolder,
+    "Draw with your finger or Apple Pencil. It saves itself as you go.");
+
+  function currentSketchAtt() {
+    return (store.get(id)?.attachments || []).find(a => a.role === "sketch") || null;
+  }
+
+  async function ensureSketchPad() {
+    if (sketchPad) return sketchPad;
+    sketchPad = createSketchPad({ onDirty: scheduleSketchSave });
+    sketchHolder.appendChild(sketchPad.root);
+    sketchPad.mount();
+    // continue an existing drawing, if there is one
+    const att = currentSketchAtt();
+    if (att) {
+      sketchBgUrl = await blobObjectURL(att.hash);
+      await sketchPad.loadBackground(sketchBgUrl);
+    }
+    return sketchPad;
+  }
+
+  function scheduleSketchSave() {
+    clearTimeout(sketchSaveTimer);
+    sketchSaveTimer = setTimeout(saveSketch, 900);
+  }
+
+  async function saveSketch() {
+    if (!sketchPad || !sketchPad.hasChanges()) return;
+    try {
+      const blob = await sketchPad.toBlob();
+      if (!blob) return;
+      const buf = await blob.arrayBuffer();
+      const rec = await ingestSketchPNG(buf);
+      const prev = currentSketchAtt();
+      // Add the new drawing, then drop the old one (order matters so an item
+      // is never momentarily without its sketch).
+      store.addToSet(id, "attachments", rec);
+      if (prev && prev.hash !== rec.hash) store.removeFromSet(id, "attachments", prev);
+      opts.sync?.queueBlob(rec.hash, rec.ext);
+    } catch (err) {
+      toast("Couldn't save the sketch just now — it's still on the page.", "error", 6000, err.message);
+    }
+  }
+
+  function updateSketchVisibility(type) {
+    const show = type === "sketch";
+    sketchField.style.display = show ? "" : "none";
+    if (show) ensureSketchPad();
   }
 
   // --- read aloud (voice out §10) ---
@@ -184,6 +250,7 @@ export function openEditor(store, itemId, opts = {}) {
     ]),
     field("Title", title),
     el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
+    sketchField,
     field("Notes", body),
     field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
       "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
@@ -197,13 +264,20 @@ export function openEditor(store, itemId, opts = {}) {
   renderLinks();
   renderAttachments();
   if (!isProjectItem) renderProjects();
+  updateSketchVisibility(store.get(id)?.type);
 
   scrim.appendChild(modal);
   document.body.appendChild(scrim);
-  title.focus();
+  // For a fresh sketch, don't steal focus into the title (which pops the
+  // keyboard on iPad) — leave the pen ready. Otherwise focus the title.
+  if (store.get(id)?.type === "sketch" && isNew) { /* leave canvas ready */ }
+  else title.focus();
 
-  function close() {
+  async function close() {
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter
+    clearTimeout(sketchSaveTimer);
+    if (sketchPad) { await saveSketch(); sketchPad.destroy(); }
+    if (sketchBgUrl) URL.revokeObjectURL(sketchBgUrl);
     document.body.removeChild(scrim);
     opts.onClose && opts.onClose();
   }

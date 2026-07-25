@@ -395,6 +395,7 @@ function defaultRegistry() {
       { key: "project",     label: "Project",         icon: "◆",  color: "green" },
       { key: "strategy",    label: "Long-term goal",  icon: "◎",  color: "blue" },
       { key: "note",        label: "Note",            icon: "•",  color: "slate" },
+      { key: "sketch",      label: "Sketch",          icon: "✎",  color: "plum" },
     ],
     statuses: [
       { key: "active",  label: "Active",  color: "green" },
