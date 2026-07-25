@@ -21,27 +21,53 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+// ---- the mono metadata voice (§ specimen-archive design) ----
+// Type and status are tiny letterspaced "marks": a colored dot + a label,
+// not filled pills. Color stays data-driven (registry colors are arbitrary),
+// so a re-theme restyles them for free. The dot is drawn in CSS from
+// currentColor, so we only set the text color here.
 export function typeChip(store, item) {
   const t = store.typeDef(item.type);
-  return el("span", { class: "chip", style: `color:${colorToken(t?.color)}` },
-    [`${t?.icon || "•"} ${t?.label || item.type}`]);
+  return el("span", { class: "mk", style: `color:${colorToken(t?.color)}` },
+    [t?.label || item.type]);
 }
 
 export function statusChip(store, item) {
   const s = store.statusDef(item.status);
-  return el("span", {
-    class: "chip",
-    style: `background:${tintToken(s?.color)}; color:${colorToken(s?.color)}`,
-  }, [s?.label || item.status]);
+  return el("span", { class: "mk", style: `color:${colorToken(s?.color)}` },
+    [s?.label || item.status]);
 }
 
 export function tagChips(item) {
-  return item.tags.map(t => el("span", { class: "chip tag", text: t }));
+  return item.tags.map(t => el("span", { class: "tag", text: t }));
 }
 
 export function swatch(store, item) {
   const t = store.typeDef(item.type);
   return el("div", { class: "item-swatch", style: `background:${colorToken(t?.color)}` });
+}
+
+// A stable, deterministic 4-digit accession number for an item, derived from
+// its immutable id. Same id → same number on every device, forever, with no
+// data migration (the number is display-only, never stored). Not guaranteed
+// unique across thousands of items — it's a catalog affordance, like a
+// specimen tag, not an identifier (the ULID remains the real id).
+export function catalogNo(item) {
+  const id = item.id || "";
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return String(h % 10000).padStart(4, "0");
+}
+
+// Short uppercase date for the mono meta line, e.g. "16 JUL". Falls back to
+// created if modified is missing.
+export function shortDate(item) {
+  const iso = item?.dates?.modified || item?.dates?.created;
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const mon = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][d.getMonth()];
+  return `${d.getDate()} ${mon}`;
 }
 
 // The drawing attached to a sketch item, if any.
@@ -62,30 +88,48 @@ function sketchThumb(item, cls) {
   return box;
 }
 
-// A full item row for the list view.
+// A full specimen entry for the list view: a catalog number in the left
+// column, a mono meta line, the title in serif, a short preview, then tags.
+// Hairline-separated rather than boxed (§ specimen-archive design).
 export function itemRow(store, item, onOpen) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
+  const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(item)}` });
+
+  const meta = el("div", { class: "item-meta" }, [
+    typeChip(store, item),
+    statusChip(store, item),
+    el("span", { class: "num", text: shortDate(item) }),
+  ]);
   const main = el("div", { class: "item-main" }, [
+    meta,
     el("h3", { class: "item-title", text: item.title || (thumb ? "Sketch" : "Untitled") }),
     item.body ? el("p", { class: "item-body-preview", text: item.body }) : null,
-    el("div", { class: "item-meta" }, [
-      typeChip(store, item),
-      statusChip(store, item),
-      ...tagChips(item),
-    ]),
+    item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
   ]);
+
   return el("div", {
     class: "item-row",
     role: "button",
     tabindex: "0",
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
-  }, [thumb || swatch(store, item), main]);
+  }, [left, main]);
 }
 
-// A compact card for board / kanban.
+// A compact specimen card for board / kanban. Same voice as the row: a mono
+// header line (catalog no. + marks), serif title, preview, tags.
 export function itemCard(store, item, onOpen, opts = {}) {
-  const card = el("div", {
+  const thumb = sketchThumb(item, "card-sketch-thumb");
+  const header = el("div", { class: "card-head" }, [
+    el("span", { class: "item-no", text: `№ ${catalogNo(item)}` }),
+    el("span", { class: "num", text: shortDate(item) }),
+  ]);
+  const marks = el("div", { class: "item-meta" }, [
+    opts.hideType ? null : typeChip(store, item),
+    opts.hideStatus ? null : statusChip(store, item),
+  ]);
+
+  return el("div", {
     class: "card",
     role: "button",
     tabindex: "0",
@@ -93,16 +137,13 @@ export function itemCard(store, item, onOpen, opts = {}) {
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
   }, [
-    sketchThumb(item, "card-sketch-thumb"),
+    header,
+    thumb,
     el("h3", { class: "item-title", text: item.title || (sketchAtt(item) ? "Sketch" : "Untitled") }),
     item.body ? el("p", { class: "item-body-preview", text: item.body }) : null,
-    el("div", { class: "item-meta" }, [
-      opts.hideType ? null : typeChip(store, item),
-      opts.hideStatus ? null : statusChip(store, item),
-      ...tagChips(item),
-    ]),
+    marks,
+    item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
   ]);
-  return card;
 }
 
 export function emptyState(title, body, actionLabel, onAction) {
