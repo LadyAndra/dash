@@ -12,17 +12,20 @@ import { el } from "./views/shared.js";
 import { openEditor } from "./editor.js";
 import { openSettings } from "./settings.js";
 
+import { homeView } from "./views/home.js";
 import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { kanbanView } from "./views/kanban.js";
 import { finderView } from "./views/finder.js";
 import { projectView } from "./views/project.js";
 
-const VIEWS = [listView, boardView, kanbanView, finderView, projectView];
+const VIEWS = [homeView, listView, boardView, kanbanView, finderView, projectView];
 
 // ---------------- app state ----------------
 const state = {
-  viewName: localStorage.getItem("dash.view") || "list",
+  // Dash always opens on the Home sheet (Update 2). Switching to a catalog
+  // view during a session is one tap; the landing is intentionally fixed.
+  viewName: "home",
   groupBy: localStorage.getItem("dash.groupBy") || "type",
   sortBy: "modified-desc",
   filter: {},          // { text, type, status, tag }
@@ -183,6 +186,14 @@ function render() {
   view.render(result, ctx, viewport);
 }
 
+// Applying a sidebar filter always lands you in the catalog: filtering makes
+// no sense on the Home sheet, so a filter click there switches to the list.
+function applyFilter(next) {
+  state.filter = next;
+  if (state.viewName === "home") { state.viewName = "list"; localStorage.setItem("dash.view", "list"); }
+  render();
+}
+
 function renderSidebarFilters() {
   const nav = document.getElementById("nav-filters");
   if (!nav) return;
@@ -194,7 +205,7 @@ function renderSidebarFilters() {
 
   nav.appendChild(el("h2", { text: "All" }));
   nav.appendChild(mk("Everything", !state.filter.type && !state.filter.status && !state.filter.tag,
-    () => { state.filter = { text: state.filter.text }; render(); }, store.all().length));
+    () => applyFilter({ text: state.filter.text }), store.all().length));
 
   // types
   nav.appendChild(el("h2", { text: "Types" }));
@@ -202,7 +213,7 @@ function renderSidebarFilters() {
     const count = store.all().filter(i => i.type === t.key).length;
     if (count === 0) continue;
     nav.appendChild(mk(`${t.icon || "•"} ${t.label}`, state.filter.type === t.key,
-      () => { state.filter = { text: state.filter.text, type: t.key }; render(); }, count));
+      () => applyFilter({ text: state.filter.text, type: t.key }), count));
   }
 
   // statuses
@@ -211,7 +222,7 @@ function renderSidebarFilters() {
     const count = store.all().filter(i => i.status === s.key).length;
     if (count === 0) continue;
     nav.appendChild(mk(s.label, state.filter.status === s.key,
-      () => { state.filter = { text: state.filter.text, status: s.key }; render(); }, count));
+      () => applyFilter({ text: state.filter.text, status: s.key }), count));
   }
 
   // top tags (cap to keep sidebar calm)
@@ -221,7 +232,7 @@ function renderSidebarFilters() {
     for (const tag of tags.slice(0, 20)) {
       const count = store.all().filter(i => i.tags.includes(tag)).length;
       nav.appendChild(mk(`#${tag}`, state.filter.tag === tag,
-        () => { state.filter = { text: state.filter.text, tag }; render(); }, count));
+        () => applyFilter({ text: state.filter.text, tag }), count));
     }
   }
 }

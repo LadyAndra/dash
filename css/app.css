@@ -692,6 +692,110 @@ button, input, textarea, select {
 .sync-pill.ok .dot { background: var(--color-green); }
 .sync-pill.dirty .dot { background: var(--ember); }
 
+/* ---------- Home: the daily specimen sheet (Update 2) ---------- */
+.sheet-page { max-width: 900px; }
+
+.sheet-masthead {
+  border-bottom: 2px solid var(--mount);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.sheet-masthead-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: var(--space-4); flex-wrap: wrap;
+}
+.sheet-h1 {
+  font-family: var(--font-body);
+  font-size: var(--text-2xl);
+  font-weight: 400; letter-spacing: -0.01em; line-height: 1.05;
+  margin: 0;
+}
+.sheet-masthead-sub { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-2); }
+
+/* numbered plate section head */
+.plate {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin: var(--space-6) 0 var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-strong);
+}
+.plate-no {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.1em; color: var(--ember); font-weight: 600;
+}
+.plate-title {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--text-primary); font-weight: 600;
+}
+.plate-right { margin-left: auto; }
+
+/* capture well */
+.capture {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  padding: var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.capture textarea {
+  width: 100%; min-height: 82px; resize: vertical;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-family: var(--font-body); font-size: var(--text-base);
+  line-height: var(--leading);
+}
+.capture textarea::placeholder { color: var(--text-faint); }
+.capture-row { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+.capture-note { margin-left: auto; }
+
+.sheet-empty {
+  padding: var(--space-5);
+  color: var(--text-muted);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 15px 15px;
+}
+.sheet-empty p { margin: 0 0 var(--space-1); }
+.sheet-empty .hint { color: var(--text-faint); font-size: var(--text-sm); }
+
+/* the black mount panel — neglect register */
+.mount {
+  background: var(--mount);
+  color: var(--ink-on-mount);
+  padding: var(--space-5) var(--space-5) var(--space-5);
+  background-image: radial-gradient(circle at 30% 35%, rgba(240,232,215,0.05) 0 1px, transparent 1px);
+  background-size: 19px 19px;
+}
+.mount-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--rule-mount);
+  padding-bottom: var(--space-2); margin-bottom: var(--space-3);
+}
+.mount-head .lbl { color: var(--ink-on-mount-muted); }
+.mount-row {
+  display: grid; grid-template-columns: 64px 1fr auto; gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule-mount);
+  cursor: pointer;
+}
+.mount-row:hover { background: var(--mount-soft); }
+.mount-no { font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.06em; color: var(--ink-on-mount-muted); }
+.mount-title { font-family: var(--font-body); font-size: var(--text-base); color: var(--ink-on-mount); min-width: 0; }
+.mount-age {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.1em;
+  color: var(--ink-on-mount-muted);
+}
+.mount-age.aging { color: var(--warn-on-mount); }
+.mount-age.stale { color: var(--ember-on-mount); font-weight: 600; }
+.mount-empty { color: var(--ink-on-mount-muted); font-size: var(--text-sm); }
+
+/* the dot-cluster motif under the register */
+.heat-strip { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-4); }
+.heat-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rule-mount); }
+.heat-dot.warm { background: var(--warn-on-mount); }
+.heat-dot.cold { background: var(--ember-on-mount); }
+
 /* ---------- Responsive: phone / tablet ---------- */
 @media (max-width: 820px) {
   #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
@@ -715,4 +819,8 @@ button, input, textarea, select {
   .kanban-col { flex-basis: 78vw; }
   .finder-col { flex-basis: 70vw; }
   .item-row { grid-template-columns: auto 1fr; gap: var(--space-3); padding: var(--space-4) 0; }
+  .sheet-h1 { font-size: var(--text-xl); }
+  .capture-note { margin-left: 0; flex-basis: 100%; }
+  .mount { padding: var(--space-4); }
+  .mount-row { grid-template-columns: 44px 1fr auto; gap: var(--space-3); }
 }
