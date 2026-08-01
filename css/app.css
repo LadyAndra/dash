@@ -802,6 +802,100 @@ button, input, textarea, select {
 .heat-dot.warm { background: var(--warn-on-mount); }
 .heat-dot.cold { background: var(--ember-on-mount); }
 
+/* ============================================================
+   Home: the dashboard grid and its panels  (August 2026)
+   ------------------------------------------------------------
+   "Concept B" from mockups/home-hierarchy-explorations.html.
+   Home stopped being one vertical scroll and became a board: a
+   fixed left rail (capture + stat readouts) beside a flexible
+   column of bordered panels.
+
+   The bit worth understanding is .panel-col. It is its OWN grid,
+   not a stack of hand-placed divs, and its track list is
+   auto-fit — so it lays out however many panels the registry in
+   home.js hands it. Two panels on a 900px sheet resolve to one
+   column (2 × 320px doesn't fit), which is exactly right today.
+   Give Home more width, or a third panel, and the same rule
+   flows them side by side with no JS change and no new CSS.
+
+   Every value below is a token. If you find a literal here,
+   it's a bug (§10).
+   ============================================================ */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+/* min-width:0 on both children: grid items default to min-content
+   width, which lets a long unbroken title shove the whole layout
+   sideways. This is the fix, and it's why it appears on the rail,
+   the panel column and each panel. */
+.dash-rail { min-width: 0; }
+/* the rail's plate is the first thing on the sheet under the
+   masthead, so it doesn't want .plate's usual big top margin */
+.dash-rail .plate { margin-top: 0; }
+/* at 280px the capture note wants its own line rather than being
+   pushed to the right of four buttons */
+.dash-rail .capture-note { margin-left: 0; flex-basis: 100%; }
+
+.panel-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+  min-width: 0;
+}
+/* span > 1. Said as 1 / -1 ("first line to last line") rather than
+   `span 2`, because a literal span of 2 in a one-track grid makes
+   the browser invent a phantom second column. */
+.panel-wide { grid-column: 1 / -1; }
+
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  min-width: 0;
+}
+.panel-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border-strong);
+}
+.panel-right { margin-left: auto; }
+.panel-body { padding: var(--space-2) var(--space-4) var(--space-4); }
+/* for panels whose content brings its own edge-to-edge surface —
+   the neglect register's black mount */
+.panel-body-flush { padding: 0; }
+/* the body is the last thing in the box; its child shouldn't stack
+   its own bottom margin on top of the box's padding */
+.panel-body > .today,
+.panel-body > .mount { margin-bottom: 0; }
+/* a row's hover was --surface-raised, which is now the panel's own
+   ground — so inside a panel the hover goes the other way */
+.panel-body .item-row:hover { background: var(--surface-sunken); }
+
+/* stat readouts — the counts that used to run under the masthead
+   as a text line, now blocked instruments in the rail */
+.stat-strip {
+  display: grid; grid-template-columns: 1fr; gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.stat {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  padding: var(--space-2) var(--space-3);
+}
+.stat-num {
+  display: block;
+  font-family: var(--font-body); font-size: var(--text-xl); line-height: 1;
+}
+.stat .lbl { display: block; margin-top: var(--space-1); }
+/* the sanctioned ember: an overdue count that isn't zero */
+.stat.is-alert { border-color: var(--ember); }
+.stat.is-alert .stat-num { color: var(--ember); }
+
 /* ---------- Responsive: phone / tablet ---------- */
 @media (max-width: 820px) {
   #app, #app.with-sidebar { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
@@ -829,6 +923,13 @@ button, input, textarea, select {
   .capture-note { margin-left: 0; flex-basis: 100%; }
   .mount { padding: var(--space-4); }
   .mount-row { grid-template-columns: 44px 1fr auto; gap: var(--space-3); }
+  /* Home collapses to one column at the same breakpoint the sidebar
+     uses. Order follows the DOM: capture, stats, then the panels in
+     registry order. */
+  .dash-grid { grid-template-columns: 1fr; }
+  /* four stacked readouts is a lot of scrolling before you reach
+     Today, so on a phone they pair up */
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ============================================================

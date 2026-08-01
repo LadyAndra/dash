@@ -1,26 +1,46 @@
 // home.js — the daily sheet, and as of August 2026 the TODAY PANEL as well.
 // ===================================================================
-// This is where Dash opens, and it now answers the question you open Dash to
-// ask: what's late, what's today, what's coming. Four plates:
-//   I   Accession   — quick capture, still first, still the fastest thing to
-//                     reach when a thought arrives
-//   II  Due & coming up — overdue, today, then the next fourteen days, drawn
-//                     from project milestones AND ordinary item dates
-//   III From the archive — the neglect register on the black "mount" panel,
-//                     your longest-untouched items (the `touched` date)
+// This is where Dash opens, and it answers the question you open Dash to ask:
+// what's late, what's today, what's coming.
 //
-// Deviation from the addendum, decided August 1 2026: §5.1 put the Today
-// panel in its OWN view, reasoning that Home had three more corner widgets
-// coming. Andra then walked the corner widgets back — the pet is shelved and
-// weather/tide/train are unscoped — so the crowding that argument rested on
-// no longer exists, and "what's due" is the thing she actually opens Dash for.
-// Home IS the Today panel. If ambient widgets ever return, this is the section
-// that would move out.
+// LAYOUT (August 2026 — "Concept B", mockups/home-hierarchy-explorations.html)
+// ---------------------------------------------------------------------------
+// Home used to be one vertical scroll of numbered plates, and everything in it
+// read as one continuous list. It's now a two-column dashboard grid:
 //
-// Home is a registered view like any other (§4.1). It ignores the query
-// result and reads the store directly, since it's a dashboard, not a grouped
-// list. viewLocal preserves the capture box across re-renders so a background
-// sync never eats what you're typing.
+//   left rail (fixed 280px)     right column (flexible)
+//   ├─ Plate I — Accession      ├─ PANEL: Due & coming up
+//   │   the capture well        └─ PANEL: From the archive (neglect register)
+//   └─ stat readouts
+//
+// Nothing about what those pieces DO changed in this pass. todayPanel() and
+// neglectRegister() have the same internals they had before; they're just
+// wrapped in panel chrome instead of being appended to a single column.
+//
+// THE PANEL CONTRACT
+// ------------------
+// The right column is driven by the PANELS array below, the same way the app's
+// views are driven by the view registry (proposal §4.1). A panel is a plain
+// object:
+//
+//   { id, title, span, render(container, ctx) }        // + optional right/flush
+//
+// So adding a widget to Home later is "write one panel object and put it in
+// the array" — not "go edit render()". The three shelved corner widgets (pet,
+// weather, tide, train) would each be one of these if they ever come back.
+//
+// There is deliberately NO js/panels.js. Exactly one view uses panels, so a
+// standalone registry module would be a layer with nothing to abstract. Pull
+// it out the day a second view needs panels, not before.
+//
+// Capture is NOT in the array. It's structurally pinned to the rail, the same
+// way Settings and Read-aloud are pinned in the topbar rather than being
+// registry entries — it must always be first and always be reachable.
+//
+// Home is a registered view like any other. It ignores the query result and
+// reads the store directly, since it's a dashboard, not a grouped list.
+// viewLocal preserves the capture box across re-renders so a background sync
+// never eats what you're typing.
 
 import { el, catalogNo, typeChip, statusChip } from "./shared.js";
 import { toast } from "../ui/toast.js";
@@ -46,6 +66,47 @@ function daysSince(iso) {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
+// ===================================================================
+//  THE PANEL REGISTRY
+// ===================================================================
+// Fields:
+//   id      stable string. Not used for anything yet; it's the handle a future
+//           per-device "reorder / hide panels" setting would store, the same
+//           way `dash.sidebar` and `dash.collapsed` already store layout state.
+//   title   shown in the panel's header bar, in the mono label voice.
+//   span    how many grid columns wide. 1 = a normal panel. 2 (or more) = full
+//           width, whatever the current column count happens to be.
+//   right   optional. String, or a function of ctx, for the right-hand readout
+//           in the header bar.
+//   flush   optional. True when the panel's content brings its own edge-to-edge
+//           surface (the neglect register's black mount) and shouldn't be
+//           inset by the body's padding.
+//   render(container, ctx)
+//           same shape views already use. ctx is the view ctx plus `groups`,
+//           the one archive scan this render already did — so a panel never
+//           re-scans the store for something that's already been computed.
+const PANELS = [
+  {
+    id: "today",
+    title: "Due & coming up",
+    span: 1,
+    right: (ctx) => String(ctx.groups.total).padStart(2, "0"),
+    render(container, ctx) {
+      container.appendChild(todayPanel(ctx.store, ctx, ctx.groups));
+    },
+  },
+  {
+    id: "neglect",
+    title: "From the archive",
+    span: 1,
+    flush: true,
+    right: "Untouched longest",
+    render(container, ctx) {
+      container.appendChild(neglectRegister(ctx.store, ctx.onOpen));
+    },
+  },
+];
+
 export const homeView = {
   name: "home",
   label: "Home",
@@ -61,41 +122,44 @@ export const homeView = {
     const now = new Date();
     const dateLine = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
     const sheetNo = `SHEET ${now.getFullYear()}·${String(dayOfYear(now)).padStart(3,"0")}`;
-    const all = store.all();
 
     // The whole dated picture, in ONE archive scan (js/entries.js does the
     // scanning; this asks for it once per render and everything below reads
-    // the result). Never once per row, never once per section.
+    // the result). Never once per row, never once per section, never once
+    // per panel.
     const groups = todayGroups(store);
 
+    // The counts that used to run along under the masthead as a plain text
+    // line now live in the rail as blocked readouts — same numbers, read as
+    // instruments instead of as a sentence.
     sheet.appendChild(el("div", { class: "sheet-masthead" }, [
       el("div", { class: "sheet-masthead-top" }, [
         el("h1", { class: "sheet-h1", text: dateLine }),
         el("span", { class: "num", text: sheetNo }),
       ]),
-      el("div", { class: "sheet-masthead-sub" }, [
-        el("span", { class: "lbl", text: `${all.length} in collection` }),
-        el("span", { class: "lbl", text: `${groups.now.length} due today` }),
-        groups.overdueCount
-          ? el("span", { class: "lbl lbl-ember", text: `${groups.overdueCount} overdue` })
-          : null,
-      ]),
     ]));
 
-    // ---------------- Plate I — Accession (capture) ----------------
-    // Deliberately still first: a thought you don't write down is gone, and
-    // the dated list isn't going anywhere while you scroll an inch.
-    sheet.appendChild(plate("I", "Accession", "New entry"));
-    sheet.appendChild(captureWell(ctx));
+    const grid = el("div", { class: "dash-grid" });
 
-    // ---------------- Plate II — Due & coming up ----------------
-    sheet.appendChild(plate("II", "Due & coming up", String(groups.total).padStart(2, "0")));
-    sheet.appendChild(todayPanel(store, ctx, groups));
+    // ---------------- left rail: capture + stats (pinned) ----------------
+    // Capture is deliberately first and deliberately not a panel: a thought
+    // you don't write down is gone.
+    const rail = el("div", { class: "dash-rail" });
+    rail.appendChild(plate("I", "Accession", "New entry"));
+    rail.appendChild(captureWell(ctx));
+    rail.appendChild(statStrip(store, groups));
+    grid.appendChild(rail);
 
-    // ---------------- Plate III — From the archive (neglect) ----------------
-    sheet.appendChild(plate("III", "From the archive", "Untouched longest"));
-    sheet.appendChild(neglectRegister(store, ctx.onOpen));
+    // ---------------- right column: the panel array ----------------
+    // The column lays the panels out itself (CSS `auto-fit`), so when a third
+    // panel arrives it flows into a second column of panels on a wide screen
+    // without this function changing at all.
+    const panelCtx = Object.assign({}, ctx, { groups });
+    const col = el("div", { class: "panel-col" });
+    for (const p of PANELS) col.appendChild(renderPanel(p, panelCtx));
+    grid.appendChild(col);
 
+    sheet.appendChild(grid);
     container.appendChild(sheet);
 
     // restore capture text + focus if the user was typing before a re-render
@@ -112,12 +176,59 @@ export const homeView = {
   },
 };
 
+// Wrap one panel object in its chrome. This is the ONLY place panel markup is
+// written, which is the point: a panel author writes content, not a box.
+function renderPanel(panel, ctx) {
+  const right = typeof panel.right === "function" ? panel.right(ctx) : panel.right;
+
+  const body = el("div", {
+    class: "panel-body" + (panel.flush ? " panel-body-flush" : ""),
+  });
+  panel.render(body, ctx);
+
+  const box = el("div", { class: "panel", "data-panel": panel.id }, [
+    el("div", { class: "panel-head" }, [
+      el("span", { class: "plate-title", text: panel.title }),
+      right ? el("span", { class: "panel-right num", text: right }) : null,
+    ]),
+    body,
+  ]);
+
+  // span > 1 means "full width, however many columns there are". Said as
+  // `grid-column: 1 / -1` in CSS rather than `span 2`, because a literal span
+  // of 2 would invent a phantom second column on a narrow screen.
+  if ((panel.span || 1) > 1) box.classList.add("panel-wide");
+
+  return box;
+}
+
 function plate(no, title, right) {
   return el("div", { class: "plate" }, [
     el("span", { class: "plate-no", text: no }),
     el("span", { class: "plate-title", text: title }),
     right ? el("span", { class: "plate-right num", text: right }) : null,
   ]);
+}
+
+// The four readouts in the rail. Every number here is derived at render time
+// from the scan that already happened — nothing is stored, nothing is cached,
+// nothing is written back.
+function statStrip(store, groups) {
+  const upcoming = groups.upcoming.reduce((n, g) => n + g.items.length, 0);
+
+  const rows = [
+    { n: store.all().length,   label: "In collection" },
+    { n: groups.now.length,    label: "Due today" },
+    { n: groups.overdueCount,  label: "Overdue", alert: groups.overdueCount > 0 },
+    { n: upcoming,             label: "Next 14 days" },
+  ];
+
+  return el("div", { class: "stat-strip" }, rows.map(r =>
+    el("div", { class: "stat" + (r.alert ? " is-alert" : "") }, [
+      el("span", { class: "stat-num", text: String(r.n) }),
+      el("span", { class: "lbl", text: r.label }),
+    ])
+  ));
 }
 
 function captureWell(ctx) {
@@ -382,6 +493,10 @@ export function speakToday(store) {
 // the neglect register — the black mount panel. Longest-untouched items,
 // read-only (tap opens). Age color is a display hint here; the configurable
 // per-type Heat view arrives in Update 3.
+//
+// It no longer draws its own "Neglect register / Days since touched" header
+// bar: the panel it now sits in carries the title and the right-hand readout,
+// and two stacked headers on top of each other was just noise.
 function neglectRegister(store, onOpen) {
   const items = store.all()
     .map(it => ({ it, age: daysSince(it.dates?.touched) }))
@@ -390,10 +505,6 @@ function neglectRegister(store, onOpen) {
     .slice(0, 6);
 
   const mount = el("div", { class: "mount" });
-  mount.appendChild(el("div", { class: "mount-head" }, [
-    el("span", { class: "lbl", text: "Neglect register" }),
-    el("span", { class: "lbl", text: "Days since touched" }),
-  ]));
 
   if (items.length === 0) {
     mount.appendChild(el("p", { class: "mount-empty", text: "Nothing filed yet." }));
