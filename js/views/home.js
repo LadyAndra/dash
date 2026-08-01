@@ -99,7 +99,7 @@ export const homeView = {
     if (box) {
       box.value = ctx.viewLocal.captureText || "";
       if (ctx.viewLocal.captureFocused) {
-        box.focus();
+        try { box.focus({ preventScroll: true }); } catch { box.focus(); }
         const end = box.value.length;
         const [s, e] = ctx.viewLocal.captureSel || [end, end];
         try { box.setSelectionRange(Math.min(s, end), Math.min(e, end)); } catch {}
@@ -123,6 +123,49 @@ function captureWell(ctx) {
     ctx.viewLocal.captureSel = [e.target.selectionStart, e.target.selectionEnd];
   };
 
+  // ---- sticky focus -------------------------------------------------------
+  // The rule, stated plainly: the capture box keeps the cursor until you click
+  // somewhere else or on a button. Nothing else gets to take it.
+  //
+  // Why this is needed rather than just fixing one culprit: a lot of things can
+  // blow focus off a field in a live app — a re-render tearing the node out, an
+  // ambient widget grabbing it, focus falling to <body> for no reason a user
+  // could ever predict. Chasing them one at a time is whack-a-mole, and every
+  // miss looks to you like "it went dead again". So instead of asking "who took
+  // it", the box asks "did SHE hand it over?" — and if not, takes it straight
+  // back on the next frame.
+  //
+  // A real hand-over is a blur whose relatedTarget is something you can
+  // actually interact with. Focus landing on nothing is never something a
+  // person did on purpose.
+  const HANDOVER = 'button, a[href], input, textarea, select, [contenteditable], [tabindex], [role="button"]';
+
+  function releaseOrKeep(e) {
+    const box = e.target;
+    const next = e.relatedTarget;
+
+    if (next && next.closest && next.closest(HANDOVER)) {
+      ctx.viewLocal.captureFocused = false;   // you clicked a control. It's yours.
+      return;
+    }
+    // Switching windows or tabs isn't a hand-over either, but grabbing focus
+    // back from a page that isn't frontmost is rude and can fight the browser.
+    // Stay armed so the box is still live when you come back.
+    ctx.viewLocal.captureFocused = true;
+    if (!document.hasFocus()) return;
+    // If the node is gone, the re-render's own restore pass handles it.
+    if (!document.contains(box)) return;
+    // preventScroll: taking focus back must never yank the page around.
+    requestAnimationFrame(() => {
+      if (ctx.viewLocal.captureFocused && document.contains(box) && document.activeElement !== box) {
+        try { box.focus({ preventScroll: true }); } catch { box.focus(); }
+        const end = box.value.length;
+        const [s, en] = ctx.viewLocal.captureSel || [end, end];
+        try { box.setSelectionRange(Math.min(s, end), Math.min(en, end)); } catch {}
+      }
+    });
+  }
+
   const textarea = el("textarea", {
     placeholder: "Say or type anything…",
     "aria-label": "Quick capture",
@@ -132,13 +175,7 @@ function captureWell(ctx) {
     onclick: noteSel,
     onselect: noteSel,
     onfocus: () => { ctx.viewLocal.captureFocused = true; },
-    // A re-render wipes the sheet with container.innerHTML = "", which rips
-    // this textarea out of the DOM — and Chrome fires blur on the way out.
-    // That is NOT the user leaving the field. Clearing the flag there is what
-    // made the box go dead mid-sentence: the restore pass below would read
-    // captureFocused === false and decline to put the cursor back. A blur that
-    // matters comes from a node that is still on the page.
-    onblur: (e) => { if (document.contains(e.target)) ctx.viewLocal.captureFocused = false; },
+    onblur: (e) => releaseOrKeep(e),
     onkeydown: (e) => {
       // ⌘/Ctrl + Enter files it, so capture never needs the mouse
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); fileIt(); }

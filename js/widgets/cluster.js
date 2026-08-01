@@ -122,7 +122,13 @@ function makeDraggable(stage, frame, key, positions) {
     // also suppresses the default focus, so focus is moved by hand. The ring
     // only paints for keyboard users (:focus-visible), so this stays quiet.
     e.preventDefault();
-    frame.focus();
+    // ...but do NOT take focus off someone mid-sentence. The widget is
+    // decorative and sits 150px from the capture box; nudging it while typing
+    // should move the pet, not stop the typing. Keyboard users are unaffected —
+    // they arrive by Tab, which isn't a pointerdown.
+    const ae = document.activeElement;
+    const isTyping = ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT" || ae.isContentEditable);
+    if (!isTyping) frame.focus();
   });
 
   frame.addEventListener("pointermove", (e) => {
