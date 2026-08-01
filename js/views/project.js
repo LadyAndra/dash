@@ -14,6 +14,7 @@ export const projectView = {
   name: "project",
   label: "Project",
   ownFilter: true,
+  supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -155,7 +156,7 @@ function renderDetail(store, state, ctx) {
       el("span", { class: "group-count", text: `${items.length}` }),
     ]));
     const groupWrap = el("div", { class: "group" });
-    for (const it of items) groupWrap.appendChild(itemRow(store, it, ctx.onOpen));
+    for (const it of items) groupWrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection }));
     wrap.appendChild(groupWrap);
   }
   return wrap;

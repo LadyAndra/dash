@@ -23,8 +23,33 @@
 //
 // The canvas keeps a crisp line on Retina by backing the display size with
 // devicePixelRatio and drawing in CSS-pixel coordinates.
+//
+// VIEW vs DRAW mode (added July 2026)
+// -----------------------------------
+// WHY: the canvas is always visible inside every item, which means a finger
+// dragged across it while trying to SCROLL THE PAGE used to be read as a
+// stroke — you'd scroll and accidentally draw a line. The canvas can't tell a
+// scroll from a doodle, because both are "finger moves across the glass".
+//
+// So the pad now has two explicit states, and you choose which one you're in:
+//   "view" (the default) — the canvas ignores touches entirely. The browser
+//       handles them normally, so the page scrolls. You can still SEE the
+//       drawing; you just can't add to it.
+//   "draw" — the canvas captures touches and lays down ink.
+//
+// The switch is the pencil button in the toolbar. It's deliberately a state
+// you opt into rather than something clever and automatic: guessing wrong
+// either loses a stroke or leaves a stray mark, and both are worse than one
+// visible tap.
+//
+// HOW it's enforced, in two independent layers, so a bug in one can't cause a
+// stray mark on its own:
+//   1. CSS — in view mode the canvas gets `pointer-events: none`, so touches
+//      never reach it at all and `touch-action` returns to normal scrolling.
+//   2. JS  — onDown() refuses to start a stroke unless mode === "draw".
 
 import { el } from "./views/shared.js";
+import { toast } from "./ui/toast.js";
 
 // Ink options. Colors are read from the live theme tokens (§10) so a re-theme
 // restyles the pens too — we resolve them at mount time from CSS variables.
@@ -47,6 +72,17 @@ export function createSketchPad({ onDirty } = {}) {
 
   const ctx = canvas.getContext("2d");
 
+  // Fail loudly (§13.1): if this browser can't give us a 2D canvas there is no
+  // drawing surface at all. Say so in plain English rather than letting every
+  // later call throw somewhere invisible. `canDraw` gates the paint paths.
+  const canDraw = !!ctx;
+  if (!canDraw) {
+    toast(
+      "This browser couldn't open a drawing canvas, so sketching is unavailable on this device. Everything else still works.",
+      "error", 9000
+    );
+  }
+
   // Resolved ink colors (filled at mount, refreshed if theme changes).
   const inkColor = {};
   function resolveInks() {
@@ -55,6 +91,10 @@ export function createSketchPad({ onDirty } = {}) {
   }
 
   // --- drawing state ---
+  // mode: "view" = touches pass through and the page scrolls (the default,
+  // so a sketch pad sitting in an open item can never grab a scroll);
+  // "draw" = the canvas captures touches and makes ink.
+  let mode = "view";
   let tool = "pen";          // "pen" | "eraser"
   let inkKey = "ink";
   let strokes = [];          // committed strokes THIS session (for undo)
@@ -70,6 +110,7 @@ export function createSketchPad({ onDirty } = {}) {
 
   // --- sizing: back the display size with devicePixelRatio for crisp ink ---
   function fit() {
+    if (!canDraw) return;
     const rect = paper.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return; // not visible yet
     dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -83,6 +124,7 @@ export function createSketchPad({ onDirty } = {}) {
 
   // Repaint the whole scene: background drawing (if any) then session strokes.
   function redraw() {
+    if (!canDraw) return;
     const w = canvas.width / dpr, h = canvas.height / dpr;
     ctx.clearRect(0, 0, w, h);
     if (bgImage) {
@@ -187,6 +229,11 @@ export function createSketchPad({ onDirty } = {}) {
   }
 
   function onDown(e) {
+    // Layer 2 of the scroll guard (see the header note). CSS already stops
+    // touches reaching the canvas in view mode; this makes sure that even if a
+    // pointer event somehow arrives, it can never become a stroke. A missed
+    // scroll is annoying; a mystery line on your drawing is worse.
+    if (mode !== "draw" || !canDraw) return;
     if (e.button != null && e.button !== 0 && e.pointerType === "mouse") return;
     canvas.setPointerCapture?.(e.pointerId);
     const pt = localPoint(e);
@@ -272,6 +319,23 @@ export function createSketchPad({ onDirty } = {}) {
   function setInk(k) { inkKey = k; tool = "pen"; }
   function isBlank() { return strokes.length === 0 && !bgImage; }
 
+  // Switch between scrolling and drawing. The root element carries the mode as
+  // a data attribute, which is what the CSS keys off — one source of truth, so
+  // the visual state and the behaviour can never disagree.
+  function setMode(next) {
+    if (next === "draw" && !canDraw) {
+      toast("Drawing isn't available in this browser, so the canvas stays in view mode.", "error", 7000);
+      return;
+    }
+    // If a stroke is somehow still open when we leave draw mode, close it
+    // properly so it's committed to the undo stack rather than left dangling.
+    if (mode === "draw" && next !== "draw" && current) onUp();
+    mode = next;
+    root.dataset.mode = mode;
+    refreshToolbar();
+  }
+  function toggleMode() { setMode(mode === "draw" ? "view" : "draw"); }
+
   // Load a previously-saved drawing to continue on top of.
   function loadBackground(url) {
     return new Promise((resolve) => {
@@ -306,6 +370,18 @@ export function createSketchPad({ onDirty } = {}) {
   // --- toolbar UI ---
   const toolbar = el("div", { class: "sketch-toolbar", role: "toolbar", "aria-label": "Drawing tools" });
 
+  // The mode switch. aria-pressed tells a screen reader whether drawing is on;
+  // the text label next to it tells everyone else, because "is this canvas
+  // live right now?" should never be something you have to test by touching it.
+  const modeBtn = el("button", {
+    type: "button", class: "sketch-tool sketch-mode-btn",
+    "aria-label": "Turn drawing on or off",
+    title: "Turn drawing on or off",
+    text: "✎ Draw",
+    onclick: toggleMode,
+  });
+  const modeLabel = el("span", { class: "sketch-mode-label" });
+
   const inkBtns = INKS.map(ink =>
     el("button", {
       type: "button", class: "sketch-color", "data-ink": ink.key,
@@ -328,26 +404,51 @@ export function createSketchPad({ onDirty } = {}) {
   });
 
   function refreshToolbar() {
+    const drawing = mode === "draw";
+
     for (const b of inkBtns) {
-      const on = tool === "pen" && b.dataset.ink === inkKey;
+      const on = drawing && tool === "pen" && b.dataset.ink === inkKey;
       b.setAttribute("aria-pressed", String(on));
       // paint the swatch its ink color
       b.style.setProperty("--swatch", inkColor[b.dataset.ink] || "#26241f");
+      // Pens and the eraser only mean anything while drawing, so grey them out
+      // in view mode. Undo and Clear stay live — they're about the drawing
+      // that's already there, and you shouldn't have to turn drawing ON just
+      // to take something back.
+      b.disabled = !drawing;
     }
-    eraserBtn.setAttribute("aria-pressed", String(tool === "eraser"));
+    eraserBtn.setAttribute("aria-pressed", String(drawing && tool === "eraser"));
+    eraserBtn.disabled = !drawing;
+
+    modeBtn.setAttribute("aria-pressed", String(drawing));
+    modeBtn.textContent = drawing ? "✎ Drawing on" : "✎ Draw";
+    modeLabel.textContent = drawing
+      ? "Drawing — the page won't scroll over the paper."
+      : "Viewing — scroll normally; tap Draw to sketch.";
   }
 
-  toolbar.append(...inkBtns, el("span", { class: "sketch-sep" }), eraserBtn, undoBtn, clearBtn);
+  toolbar.append(
+    modeBtn, modeLabel,
+    el("span", { class: "sketch-sep" }),
+    ...inkBtns,
+    el("span", { class: "sketch-sep" }),
+    eraserBtn, undoBtn, clearBtn
+  );
   resolveInks();
-  refreshToolbar();
 
-  const root = el("div", { class: "sketch-wrap" }, [toolbar, paper]);
+  // `data-mode` is what the CSS reads to decide whether the canvas swallows
+  // touches. It starts in "view" so an item can be opened and scrolled through
+  // without any risk of marking the paper.
+  const root = el("div", { class: "sketch-wrap", "data-mode": mode }, [toolbar, paper]);
+  refreshToolbar();
 
   return {
     root,
     mount, destroy,
     loadBackground, toBlob,
     undo, clear, isBlank,
+    setMode, toggleMode,
+    isDrawing: () => mode === "draw",
     hasChanges: () => dirty,
   };
 }

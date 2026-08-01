@@ -8,6 +8,7 @@ export const boardView = {
   name: "board",
   label: "Board",
   defaultGroupBy: "none",
+  supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -21,7 +22,7 @@ export const boardView = {
     const board = el("div", { class: "board" });
     for (const group of result.groups) {
       for (const item of group.items) {
-        board.appendChild(itemCard(ctx.store, item, ctx.onOpen));
+        board.appendChild(itemCard(ctx.store, item, ctx.onOpen, { selection: ctx.selection }));
       }
     }
     container.appendChild(board);

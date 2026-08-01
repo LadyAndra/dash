@@ -9,6 +9,7 @@ export const kanbanView = {
   name: "kanban",
   label: "Kanban",
   forceGroupBy: "status", // this view always groups by status
+  supportsSelect: true,   // shows the Select button in the topbar (§ multi-select)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -24,8 +25,12 @@ export const kanbanView = {
     for (const group of result.groups) {
       const list = el("div", { class: "kanban-list" });
       for (const item of group.items) {
-        const card = itemCard(ctx.store, item, ctx.onOpen, { hideStatus: true });
-        card.draggable = true;
+        const card = itemCard(ctx.store, item, ctx.onOpen, { hideStatus: true, selection: ctx.selection });
+        // While you're picking cards, dragging is switched off: a drag and a
+        // tap-to-select are the same gesture on a touchscreen, and a card that
+        // silently changed status while you were selecting would be a nasty
+        // surprise. Drag comes back the moment you leave select mode.
+        card.draggable = !(ctx.selection && ctx.selection.active);
         card.addEventListener("dragstart", (e) => {
           card.classList.add("dragging");
           e.dataTransfer.setData("text/plain", item.id);

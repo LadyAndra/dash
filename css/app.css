@@ -824,3 +824,152 @@ button, input, textarea, select {
   .mount { padding: var(--space-4); }
   .mount-row { grid-template-columns: 44px 1fr auto; gap: var(--space-3); }
 }
+
+/* ============================================================
+   Sketch: view mode vs draw mode (§9, July 2026)
+   ------------------------------------------------------------
+   WHY: the drawing paper sits inside every open item, so a finger
+   dragged across it to SCROLL used to be read as a pen stroke.
+   The pad now starts in "view" mode, where the canvas is invisible
+   to touch (pointer-events:none) and normal scrolling resumes.
+   Tapping the pencil switches to "draw", which re-arms the canvas
+   and turns scrolling back off over the paper only.
+   ============================================================ */
+
+/* --- VIEW mode: the page owns the gesture --- */
+.sketch-wrap[data-mode="view"] .sketch-canvas {
+  pointer-events: none;   /* touches never reach the canvas at all */
+  touch-action: auto;     /* ...so the browser scrolls as usual */
+  cursor: default;
+}
+.sketch-wrap[data-mode="view"] .sketch-paper {
+  touch-action: auto;
+}
+
+/* --- DRAW mode: the canvas owns the gesture --- */
+.sketch-wrap[data-mode="draw"] .sketch-canvas {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+.sketch-wrap[data-mode="draw"] .sketch-paper {
+  touch-action: none;
+  /* A clear "this paper is live" edge, so the state is visible at a glance.
+     Done with outline rather than box-shadow on purpose: the paper's own
+     box-shadow carries its inset paper texture, and re-declaring it here would
+     mean copying literal colour values into a component (§10 forbids that). */
+  border-color: var(--mount);
+  outline: 2px solid var(--mount);
+  outline-offset: 0;
+}
+
+/* the pencil toggle + its plain-English state label */
+.sketch-mode-btn { font-weight: 600; }
+.sketch-mode-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  text-transform: none;
+}
+/* pens/eraser are meaningless while viewing — grey, but still readable */
+.sketch-tool:disabled,
+.sketch-color:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   Select mode: pick several entries, act on them at once
+   ------------------------------------------------------------
+   The "organise" pattern. A row or card in select mode grows a
+   checkbox and a picked state; the bar at the bottom carries the
+   count and the actions. Colours are the mount (near-black), never
+   ember — ember is reserved as an indicator, and choosing things
+   isn't an alert (§10).
+   ============================================================ */
+
+.select-box {
+  width: 26px; height: 26px;
+  flex: none;
+  align-self: start;
+  margin-top: 0.15em;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--ink-on-mount);
+}
+.select-box.on {
+  background: var(--mount);
+  border-color: var(--mount);
+}
+
+/* Rows are a 2-column grid; in select mode the checkbox adds a third.
+   This is more specific than the base .item-row rule AND than the
+   phone override, so it wins in both without duplicating anything. */
+.item-row.selecting {
+  grid-template-columns: auto auto 1fr;
+}
+.item-row.is-selected,
+.card.is-selected {
+  background: var(--surface-sunken);
+  outline: 2px solid var(--mount);
+  outline-offset: -2px;
+}
+
+/* Cards place the box in the corner rather than in flow, so the card's
+   own layout (header, thumbnail, title) is untouched. */
+.card { position: relative; }
+.card.selecting .select-box {
+  position: absolute;
+  top: var(--space-3); right: var(--space-3);
+  z-index: 1;
+}
+.card.selecting .card-head { padding-right: calc(26px + var(--space-3)); }
+
+/* --- the bottom action bar --- */
+.select-bar {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  /* clear the iPhone home indicator */
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  border-top: 2px solid var(--mount);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-2);
+  /* The bar is a normal in-flow sibling of .viewport inside .main, NOT a
+     floating overlay. That means the scroll area simply gets shorter while
+     select mode is on, so the bar can never cover the last entry in the list
+     the way a fixed bar would. */
+}
+.select-bar .spacer { flex: 1; }
+.select-bar .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.select-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 9ch;
+}
+
+/* --- pick lists inside the action sheets --- */
+.pick-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.pick-row {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.tag-pick {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  max-height: 40vh; overflow-y: auto;
+}

@@ -11,6 +11,7 @@ import { readAloud } from "./ui/readaloud.js";
 import { el } from "./views/shared.js";
 import { openEditor } from "./editor.js";
 import { openSettings } from "./settings.js";
+import { createSelection } from "./selection.js";
 
 import { homeView } from "./views/home.js";
 import { listView } from "./views/list.js";
@@ -36,13 +37,31 @@ const state = {
 const store = new Store();
 const sync = new Sync(store);
 
+// Select mode (§ multi-select). One controller for the whole session; every
+// change re-renders, so the checkboxes, the count and the action bar can never
+// drift out of step with each other.
+const selection = createSelection(store, () => render());
+
 installGlobalErrorBanner();
 loadSavedTheme();
 
 // re-render whenever the store changes, and flush to disk (debounced)
+//
+// The render is COALESCED to one per animation frame. Why: every store edit
+// emits a change, and a bulk action (tag 30 entries at once) emits dozens in a
+// tight loop. Redrawing the whole screen dozens of times in a row would lock
+// the app up for a second or two and feel broken. Waiting for the next frame
+// collapses that burst into a single redraw, and for a single edit it's
+// imperceptible. Views that need an immediate redraw still call ctx.rerender().
 let flushTimer = null;
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
 store.subscribe(() => {
-  render();
+  scheduleRender();
   clearTimeout(flushTimer);
   flushTimer = setTimeout(() => sync.flush(), 600);
 });
@@ -117,18 +136,28 @@ function buildChrome() {
 
   const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
 
+  // The Select/Organise toggle. A plain visible button on purpose — not a
+  // long-press — so the mode is discoverable and can't be entered by accident.
+  // render() shows or hides it depending on whether the current view supports
+  // selecting, and keeps its label in sync with the count.
+  const selectBtn = el("button", { class: "btn", id: "select-btn", onclick: () => selection.toggleMode() });
+
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
   const topbar = el("div", { class: "topbar" }, [
     viewTabs, groupSel,
     el("div", { class: "search-wrap" }, [search]),
-    newBtn, syncBtn, syncPill,
+    selectBtn, newBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
 
-  main.append(topbar, viewport);
+  // Where the bulk-action bar lives when select mode is on. Kept outside the
+  // scrolling viewport so it stays put under your thumb while you scroll.
+  const selectBarHost = el("div", { id: "select-bar-host" });
+
+  main.append(topbar, viewport, selectBarHost);
   app.append(sidebar, main);
 
   sync.onStatus(updateSyncUI);
@@ -143,12 +172,22 @@ function activeView() { return VIEWS.find(v => v.name === state.viewName) || lis
 function setView(name) {
   state.viewName = name;
   state.viewLocal = {};
+  // Changing view drops any selection: the entries you'd picked probably
+  // aren't even on screen any more, and acting on invisible items is exactly
+  // the kind of surprise bulk editing must never cause.
+  if (selection.active) selection.exit();
   localStorage.setItem("dash.view", name);
   render();
 }
 
 function render() {
   const view = activeView();
+
+  // Select mode only exists on views that list items. If we've landed on one
+  // that doesn't (Home), leave the mode rather than stranding the user in an
+  // invisible state. exit() re-renders, so bail out and let that pass finish.
+  if (selection.active && !view.supportsSelect) { selection.exit(); return; }
+  updateSelectUI(view);
 
   // view tabs current state
   document.querySelectorAll(".view-tab").forEach(t =>
@@ -171,8 +210,16 @@ function render() {
   const viewport = document.getElementById("viewport");
   const ctx = {
     store,
-    onOpen: (id) => openEditor(store, id, { onClose: render, sync }),
+    // ONE click path per item: while select mode is on, tapping an entry picks
+    // it instead of opening it. Deciding that here — rather than in each view —
+    // means every view behaves identically and none of them need to know the
+    // rule. Views only use `selection` to draw the checkbox.
+    onOpen: (id) => {
+      if (selection.active) { selection.toggle(id); return; }
+      openEditor(store, id, { onClose: render, sync });
+    },
     onNew: () => openEditor(store, null, { onClose: render, sync }),
+    selection,
     isCollapsed: (k) => state.collapsed.has(k),
     toggleCollapse: (k) => {
       state.collapsed.has(k) ? state.collapsed.delete(k) : state.collapsed.add(k);
@@ -184,6 +231,24 @@ function render() {
     sync,
   };
   view.render(result, ctx, viewport);
+}
+
+// Keep the Select button and the bulk-action bar in step with the current view
+// and the current count. Called at the top of every render().
+function updateSelectUI(view) {
+  const btn = document.getElementById("select-btn");
+  const host = document.getElementById("select-bar-host");
+  if (!btn || !host) return;
+
+  // Home has no item list to select from, so the button simply isn't there.
+  btn.style.display = view.supportsSelect ? "" : "none";
+  btn.textContent = selection.active
+    ? (selection.count ? `Done (${selection.count})` : "Done")
+    : "☑ Select";
+  btn.setAttribute("aria-pressed", String(selection.active));
+  btn.className = selection.active ? "btn btn-primary" : "btn";
+
+  selection.renderBar(host);
 }
 
 // Applying a sidebar filter always lands you in the catalog: filtering makes

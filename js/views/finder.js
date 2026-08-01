@@ -9,7 +9,8 @@ import { el, itemRow, emptyState } from "./shared.js";
 export const finderView = {
   name: "finder",
   label: "Columns",
-  ownFilter: true, // this view manages its own selection, not the toolbar groupBy
+  ownFilter: true,      // this view manages its own column picking, not the toolbar groupBy
+  supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -69,7 +70,7 @@ export const finderView = {
         matches = all.filter(i => i.type === state.pick);
       }
       matches.sort((a, b) => (b.dates.modified || "").localeCompare(a.dates.modified || ""));
-      for (const item of matches) itemCol.appendChild(itemRow(store, item, ctx.onOpen));
+      for (const item of matches) itemCol.appendChild(itemRow(store, item, ctx.onOpen, { selection: ctx.selection }));
     } else {
       itemCol.appendChild(el("p", { class: "item-body-preview", text: "Pick a tag or type to see what's inside." }));
     }

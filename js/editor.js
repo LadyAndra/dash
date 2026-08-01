@@ -175,7 +175,7 @@ export function openEditor(store, itemId, opts = {}) {
   let sketchBgUrl = null; // object URL for the loaded existing drawing (revoke on close)
   const sketchHolder = el("div", {});
   const sketchField = field("Sketch", sketchHolder,
-    "Draw with your finger or Apple Pencil — on any note. It saves itself as you go.");
+    "The paper starts in view mode, so you can scroll straight past it. Tap Draw to sketch with your finger or Apple Pencil — it saves itself as you go.");
 
   function currentSketchAtt() {
     return (store.get(id)?.attachments || []).find(a => a.role === "sketch") || null;

@@ -7,6 +7,7 @@ export const listView = {
   name: "list",
   label: "List",
   defaultGroupBy: "type",
+  supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -35,7 +36,7 @@ export const listView = {
         wrap.appendChild(head);
         if (collapsed) { container.appendChild(wrap); continue; }
       }
-      for (const item of group.items) wrap.appendChild(itemRow(ctx.store, item, ctx.onOpen));
+      for (const item of group.items) wrap.appendChild(itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection }));
       container.appendChild(wrap);
     }
   },

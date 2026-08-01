@@ -88,7 +88,10 @@ function sketchThumb(item, cls) {
 // A full specimen entry for the list view: a catalog number in the left
 // column, a mono meta line, the title in serif, a short preview, then tags.
 // Hairline-separated rather than boxed (§ specimen-archive design).
-export function itemRow(store, item, onOpen) {
+// opts.selection — the selection controller (see js/selection.js). When select
+// mode is on the row grows a checkbox and a picked state; the click handler is
+// unchanged, because onOpen is what app.js re-points at "toggle selection".
+export function itemRow(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
   const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
 
@@ -104,13 +107,16 @@ export function itemRow(store, item, onOpen) {
     item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
   ]);
 
-  return el("div", {
+  const row = el("div", {
     class: "item-row",
     role: "button",
     tabindex: "0",
+    "data-id": item.id,
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
   }, [left, main]);
+
+  return applySelectable(row, item, opts.selection);
 }
 
 // A compact specimen card for board / kanban. Same voice as the row: a mono
@@ -126,7 +132,7 @@ export function itemCard(store, item, onOpen, opts = {}) {
     opts.hideStatus ? null : statusChip(store, item),
   ]);
 
-  return el("div", {
+  const card = el("div", {
     class: "card",
     role: "button",
     tabindex: "0",
@@ -141,6 +147,35 @@ export function itemCard(store, item, onOpen, opts = {}) {
     marks,
     item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
   ]);
+
+  return applySelectable(card, item, opts.selection);
+}
+
+// ---- select mode (the Pinterest-style "organise" toggle) ----
+// A small square that shows whether an entry is picked. It's decoration only:
+// the tap is handled by the row/card itself (app.js decides whether a tap
+// means "open" or "select"), so there is exactly ONE click path per item and
+// no chance of the box and the row disagreeing.
+function selectBox(selected) {
+  return el("span", {
+    class: "select-box" + (selected ? " on" : ""),
+    "aria-hidden": "true",       // the row already carries aria-pressed
+    text: selected ? "✓" : "",
+  });
+}
+
+// Apply the shared select-mode treatment to a row or card: the checkbox, the
+// pressed state for screen readers, and the classes the CSS uses to highlight.
+// `sel` is the selection controller from app.js, or null/undefined when the
+// view isn't in select mode — in which case this does nothing at all.
+function applySelectable(node, item, sel) {
+  if (!sel || !sel.active) return node;
+  const on = sel.has(item.id);
+  node.classList.add("selecting");
+  if (on) node.classList.add("is-selected");
+  node.setAttribute("aria-pressed", String(on));
+  node.insertBefore(selectBox(on), node.firstChild);
+  return node;
 }
 
 export function emptyState(title, body, actionLabel, onAction) {
