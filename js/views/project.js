@@ -154,27 +154,30 @@ function renderDetail(store, state, ctx) {
   const prog = milestoneProgress(project);
 
   // ---------------- the colour block ----------------
-  wrap.appendChild(projectBanner(store, project, stage, prog));
+  // Everything you can DO to a project now lives in this one bar: where it
+  // stands, what's next, and all four controls. The left rail is gone from
+  // this page — it was holding two readouts (one of which repeated the
+  // banner) and two buttons, and charging 340px for it, while the add
+  // buttons sat at the bottom of a scroll.
+  //
+  // Home KEEPS its rail, and that isn't an inconsistency: capture lives
+  // there, and capture has to be reachable without hunting. This rail wasn't
+  // carrying anything comparable.
+  wrap.appendChild(projectBanner(store, project, stage, prog, linked, {
+    onBack:   () => { state.projectId = null; ctx.rerender(); },
+    onEdit:   () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }),
+    onNew:    () => {
+      const newId = store.createItem({ title: "" });
+      store.assignToProject(newId, project.id);
+      openEditor(store, newId, { onClose: reload, sync: ctx.sync });
+    },
+    onAdd:    () => openAssignPicker(store, project.id, reload),
+  }));
 
-  const grid = el("div", { class: "dash-grid" });
-
-  // ---------------- rail: readouts, colour, actions ----------------
-  const rail = el("div", { class: "dash-rail" });
-  rail.appendChild(el("div", { class: "stat-strip" }, [
-    stat(prog.total ? `${prog.done}/${prog.total}` : "—", "Milestones"),
-    stat(String(linked.length), "Entries"),
-  ]));
-  // The colour lives in the Edit popup, next to the name — it's a property of
-  // the project, not a control you need on the page every time you open it.
-  rail.appendChild(el("div", { class: "rail-actions" }, [
-    el("button", { class: "btn", text: "← All projects",
-      onclick: () => { state.projectId = null; ctx.rerender(); } }),
-    el("button", { class: "btn", text: "Edit project",
-      onclick: () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }) }),
-  ]));
-  grid.appendChild(rail);
-
-  // ---------------- main column: milestones, then entries ----------------
+  // ---------------- the panels, at full width ----------------
+  // With the rail gone these get the whole page, which is the actual win:
+  // milestones and the entry groups sit SIDE BY SIDE instead of stacking,
+  // so there's far less to scroll past.
   const col = el("div", { class: "panel-col" });
 
   // The milestone editor (addendum §10, Phase M1) still lives on the project's
@@ -227,18 +230,7 @@ function renderDetail(store, state, ctx) {
     }
   }
 
-  col.appendChild(el("div", { class: "rail-actions" }, [
-    el("button", { class: "btn btn-primary", text: "＋ New entry in this project", onclick: () => {
-      const newId = store.createItem({ title: "" });
-      store.assignToProject(newId, project.id);
-      openEditor(store, newId, { onClose: reload, sync: ctx.sync });
-    } }),
-    el("button", { class: "btn", text: "＋ Add existing entry",
-      onclick: () => openAssignPicker(store, project.id, reload) }),
-  ]));
-
-  grid.appendChild(col);
-  wrap.appendChild(grid);
+  wrap.appendChild(col);
   return wrap;
 }
 
@@ -248,17 +240,26 @@ function renderDetail(store, state, ctx) {
 // The one place ember is allowed through the colour block: if the current
 // stage's date has passed, the stage line gets the overdue mark. A project
 // running late has to be able to say so even while wearing its own colour.
-function projectBanner(store, project, stage, prog) {
+function projectBanner(store, project, stage, prog, linked, actions) {
+  // The state line. The two stat tiles that used to sit in the rail are folded
+  // in here — and one of them turned out to be redundant the moment they were
+  // next to each other: "0 of 1" WAS the milestone count.
   const line = [];
   if (stage) line.push(stage.complete ? "Complete" : stage.label);
   if (prog.total) line.push(`${prog.done} of ${prog.total}`);
+  line.push(`${linked.length} ${linked.length === 1 ? "entry" : "entries"}`);
 
   const next = stage && !stage.complete ? stage : null;
 
   return el("div", { class: "project-banner", style: groundStyle(store, project) }, [
     el("div", { class: "project-banner-top" }, [
-      line.length ? el("span", { class: "lbl", text: line.join(" · ") }) : null,
+      el("span", { class: "lbl", text: line.join(" · ") }),
       stage && stage.overdue ? el("span", { class: "lbl banner-late", text: "Overdue" }) : null,
+      // navigation sits top-right, out of the way of the name
+      el("div", { class: "banner-nav" }, [
+        el("button", { class: "btn", text: "← All projects", onclick: actions.onBack }),
+        el("button", { class: "btn", text: "Edit project", onclick: actions.onEdit }),
+      ]),
     ]),
     el("h2", { class: "project-banner-title", text: project.title || "Untitled" }),
     next
@@ -269,13 +270,10 @@ function projectBanner(store, project, stage, prog) {
         ])
       : null,
     project.body ? el("p", { class: "project-banner-body", text: project.body }) : null,
-  ]);
-}
-
-function stat(value, label) {
-  return el("div", { class: "stat" }, [
-    el("span", { class: "stat-num", text: value }),
-    el("span", { class: "lbl", text: label }),
+    el("div", { class: "banner-actions" }, [
+      el("button", { class: "btn btn-primary", text: "＋ New entry", onclick: actions.onNew }),
+      el("button", { class: "btn", text: "＋ Add existing entry", onclick: actions.onAdd }),
+    ]),
   ]);
 }
 

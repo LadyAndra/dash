@@ -153,12 +153,14 @@
                    FEWER, WIDER columns rather than as many as possible.
      --panel-max   …and never wider than this, so a single panel on a
                    big screen doesn't turn into metre-long rows.
-     --rail-w      the fixed left rail on Home and a project page.
+     --rail-w      the fixed left rail. HOME ONLY — capture lives
+                   there and has to stay reachable. A project page has
+                   no rail; its controls moved into the colour banner.
 
      Adding a widget later needs none of these touched: the panel grid
      fits what it's given and reflows. */
   --page-max:   1500px;
-  --panel-min:  420px;
+  --panel-min:  480px;
   --panel-max:  660px;
   --rail-w:     340px;
 

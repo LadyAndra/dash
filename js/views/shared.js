@@ -114,8 +114,12 @@ export function itemColor(store, item) {
 // custom hex that nothing in the stylesheet could have anticipated.
 export function groundStyle(store, item) {
   const value = itemColor(store, item);
-  const ink = inkFor(resolveHex(value)).hex;
-  return `background:${colorToken(value)};--ground-ink:${ink}`;
+  const hex = resolveHex(value);
+  const ink = inkFor(hex).hex;
+  // --ground-bg as well as --ground-ink, so a control ON the block can invert
+  // itself — a filled button whose text is the block's own colour. Without it
+  // there'd be no way for CSS to name a colour it never knew about.
+  return `background:${colorToken(value)};--ground-ink:${ink};--ground-bg:${hex}`;
 }
 
 // ===================================================================

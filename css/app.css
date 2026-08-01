@@ -1006,6 +1006,53 @@ button, input, textarea, select {
   color: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 82%, transparent);
 }
 
+/* ---------- controls ON the colour block ----------
+   Everything you can do to a project lives in the banner now, so the
+   buttons have to survive landing on any colour — including a hex
+   this stylesheet has never seen.
+
+   They do it by being drawn entirely from --ground-ink and --ground-bg,
+   the two values the block sets on itself. An outline button is ink on
+   the block; the primary inverts to the block's colour on ink. Both are
+   therefore exactly as readable as the block's own text, which was
+   measured. Nothing here names a colour.
+   ------------------------------------------------------------ */
+.banner-nav {
+  display: flex; gap: var(--space-2); flex-wrap: wrap;
+  margin-left: auto;   /* pushed to the right of the state line */
+}
+.banner-actions {
+  display: flex; gap: var(--space-3); flex-wrap: wrap;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 45%, transparent);
+}
+
+.project-banner .btn {
+  background: transparent;
+  color: var(--ground-ink, var(--text-on-accent));
+  border-color: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 55%, transparent);
+}
+.project-banner .btn:hover {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 14%, transparent);
+  border-color: var(--ground-ink, var(--text-on-accent));
+}
+/* the primary flips: the block's ink becomes the fill, and the block's
+   own colour becomes the lettering */
+.project-banner .btn-primary {
+  background: var(--ground-ink, var(--text-on-accent));
+  border-color: var(--ground-ink, var(--text-on-accent));
+  color: var(--ground-bg, var(--ember));
+}
+.project-banner .btn-primary:hover {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 88%, transparent);
+}
+.project-banner .btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ground-bg, var(--surface)),
+              0 0 0 4px var(--ground-ink, var(--text-on-accent));
+}
+
 /* ---------- the colour picker (js/ui/colorfield.js) ----------
    The picker itself is the SYSTEM one — <input type="color"> opens
    macOS/iOS's own spectrum, sliders and eyedropper. What's styled
