@@ -7,6 +7,20 @@
    sync trouble — never decoration. Serif carries content; a mono voice
    carries every label, number, and date.
 
+   AMENDED August 2026 — colour as ground. The seven PALETTE colours
+   (--color-green … --color-gray) may now be used as filled grounds
+   with --text-on-accent as the ink, not only as thin marks. That is
+   what lets a project be identifiable at a glance. Ember is NOT in
+   the palette and is NOT part of this: it stays an indicator, and it
+   still means "past its date" and nothing else. The two can appear on
+   the same page and still say different things.
+
+   Every palette colour was measured as a background against
+   --text-on-accent in both themes before this was allowed through:
+   worst pair 5.32:1, best 7.62:1 — all past AA. Because
+   --text-on-accent flips per theme, a ground stays legible through a
+   re-theme with no second set of tokens to keep in sync.
+
    Components may ONLY reference these semantic tokens, never raw
    colors / sizes / fonts. A theme JSON file in Dash/themes/ can
    override any of these at runtime (see js/theme.js).
@@ -49,6 +63,13 @@
   /* ---- THE accent: ember. Indicator only. AA on paper. ---- */
   --accent-2:      #b23a14;   /* ember — legacy name kept; = indicator red */
   --ember:         #b23a14;
+  /* The ink that goes ON an ember ground (the overdue block, the tab
+     badge, the late flag). A separate token because Settings can now
+     replace the accent with any colour, and the ink on top has to be
+     able to flip to near-black without the accent itself moving.
+     Left pointing at --text-on-accent so it follows the theme until
+     someone actually picks a custom accent. */
+  --ember-ink:     var(--text-on-accent);
   --ember-soft:    #e8d2c4;
   --ember-on-mount:#ef7a4e;   /* same lamp, legible on the mount */
   --warn-on-mount: #c9a24f;   /* mid-band "aging", mount ground only */
@@ -90,6 +111,11 @@
   --text-lg:   calc(1.375rem * var(--text-scale)); /* 22px */
   --text-xl:   calc(1.875rem * var(--text-scale)); /* 30px */
   --text-2xl:  calc(2.5rem   * var(--text-scale)); /* 40px */
+  /* the display size — added August 2026. Hierarchy in this system comes
+     from a big SIZE jump rather than from more colours or heavier rules,
+     so there has to be a step that's unmistakably the top of a page.
+     Used for a project's name on its own page, and nothing smaller. */
+  --text-3xl:  calc(3.5rem   * var(--text-scale)); /* 56px */
   /* the mono label voice — tiny letterspaced caps for ALL metadata */
   --text-label:calc(0.6875rem * var(--text-scale));/* 11px */
   --leading:   1.5;

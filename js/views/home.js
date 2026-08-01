@@ -8,10 +8,12 @@
 // Home used to be one vertical scroll of numbered plates, and everything in it
 // read as one continuous list. It's now a two-column dashboard grid:
 //
-//   left rail (fixed 280px)     right column (flexible)
-//   ├─ Plate I — Accession      ├─ PANEL: Due & coming up
-//   │   the capture well        └─ PANEL: From the archive (neglect register)
-//   └─ stat readouts
+//   left rail (fixed 340px)        right column (flexible)
+//   ├─ Plate I — Accession         └─ PANEL: Due & coming up
+//   │   the capture well
+//   ├─ stat readouts (2 × 2)
+//   └─ PANEL: From the archive
+//       (the neglect register)
 //
 // Nothing about what those pieces DO changed in this pass. todayPanel() and
 // neglectRegister() have the same internals they had before; they're just
@@ -19,19 +21,21 @@
 //
 // THE PANEL CONTRACT
 // ------------------
-// The right column is driven by the PANELS array below, the same way the app's
+// Both columns are driven by the PANELS array below, the same way the app's
 // views are driven by the view registry (proposal §4.1). A panel is a plain
 // object:
 //
-//   { id, title, span, render(container, ctx) }        // + optional right/flush
+//   { id, title, span, render(container, ctx) }   // + optional column/right/flush
 //
 // So adding a widget to Home later is "write one panel object and put it in
 // the array" — not "go edit render()". The three shelved corner widgets (pet,
 // weather, tide, train) would each be one of these if they ever come back.
 //
-// There is deliberately NO js/panels.js. Exactly one view uses panels, so a
-// standalone registry module would be a layer with nothing to abstract. Pull
-// it out the day a second view needs panels, not before.
+// The box-drawing (renderPanel) moved to views/shared.js in August 2026, when
+// Projects became the second view to want panels — which was the stated
+// trigger. There is still deliberately NO js/panels.js registry module: the
+// PANELS array stays local to each view, because what belongs on Home and
+// what belongs on a project page have nothing to say to each other.
 //
 // Capture is NOT in the array. It's structurally pinned to the rail, the same
 // way Settings and Read-aloud are pinned in the topbar rather than being
@@ -42,7 +46,7 @@
 // viewLocal preserves the capture box across re-renders so a background sync
 // never eats what you're typing.
 
-import { el, catalogNo, typeChip, statusChip } from "./shared.js";
+import { el, catalogNo, typeChip, statusChip, renderPanel } from "./shared.js";
 import { toast } from "../ui/toast.js";
 import { todayGroups } from "../entries.js";
 import { formatDay, daysUntil } from "../milestones.js";
@@ -74,8 +78,13 @@ function daysSince(iso) {
 //           per-device "reorder / hide panels" setting would store, the same
 //           way `dash.sidebar` and `dash.collapsed` already store layout state.
 //   title   shown in the panel's header bar, in the mono label voice.
+//   column  optional. "rail" puts the panel in the narrow left column under
+//           capture and the stats; anything else (the default) puts it in the
+//           wide right column. This is the only thing that decides which side
+//           a panel lands on — moving one across is a one-word edit.
 //   span    how many grid columns wide. 1 = a normal panel. 2 (or more) = full
-//           width, whatever the current column count happens to be.
+//           width, whatever the current column count happens to be. Only
+//           meaningful in the right column; the rail is always one panel wide.
 //   right   optional. String, or a function of ctx, for the right-hand readout
 //           in the header bar.
 //   flush   optional. True when the panel's content brings its own edge-to-edge
@@ -98,6 +107,7 @@ const PANELS = [
   {
     id: "neglect",
     title: "From the archive",
+    column: "rail",
     span: 1,
     flush: true,
     right: "Untouched longest",
@@ -140,23 +150,29 @@ export const homeView = {
     ]));
 
     const grid = el("div", { class: "dash-grid" });
+    const panelCtx = Object.assign({}, ctx, { groups });
 
-    // ---------------- left rail: capture + stats (pinned) ----------------
-    // Capture is deliberately first and deliberately not a panel: a thought
-    // you don't write down is gone.
+    // ---------------- left rail ----------------
+    // Capture is deliberately first and deliberately NOT a panel: a thought you
+    // don't write down is gone, so it can never be something you're allowed to
+    // reorder away or hide. The stats sit under it. Rail panels come after.
     const rail = el("div", { class: "dash-rail" });
     rail.appendChild(plate("I", "Accession", "New entry"));
     rail.appendChild(captureWell(ctx));
     rail.appendChild(statStrip(store, groups));
+    for (const p of PANELS) {
+      if (p.column === "rail") rail.appendChild(renderPanel(p, panelCtx));
+    }
     grid.appendChild(rail);
 
-    // ---------------- right column: the panel array ----------------
-    // The column lays the panels out itself (CSS `auto-fit`), so when a third
+    // ---------------- right column ----------------
+    // The column lays its panels out itself (CSS `auto-fit`), so when a third
     // panel arrives it flows into a second column of panels on a wide screen
     // without this function changing at all.
-    const panelCtx = Object.assign({}, ctx, { groups });
     const col = el("div", { class: "panel-col" });
-    for (const p of PANELS) col.appendChild(renderPanel(p, panelCtx));
+    for (const p of PANELS) {
+      if (p.column !== "rail") col.appendChild(renderPanel(p, panelCtx));
+    }
     grid.appendChild(col);
 
     sheet.appendChild(grid);
@@ -175,32 +191,6 @@ export const homeView = {
     }
   },
 };
-
-// Wrap one panel object in its chrome. This is the ONLY place panel markup is
-// written, which is the point: a panel author writes content, not a box.
-function renderPanel(panel, ctx) {
-  const right = typeof panel.right === "function" ? panel.right(ctx) : panel.right;
-
-  const body = el("div", {
-    class: "panel-body" + (panel.flush ? " panel-body-flush" : ""),
-  });
-  panel.render(body, ctx);
-
-  const box = el("div", { class: "panel", "data-panel": panel.id }, [
-    el("div", { class: "panel-head" }, [
-      el("span", { class: "plate-title", text: panel.title }),
-      right ? el("span", { class: "panel-right num", text: right }) : null,
-    ]),
-    body,
-  ]);
-
-  // span > 1 means "full width, however many columns there are". Said as
-  // `grid-column: 1 / -1` in CSS rather than `span 2`, because a literal span
-  // of 2 would invent a phantom second column on a narrow screen.
-  if ((panel.span || 1) > 1) box.classList.add("panel-wide");
-
-  return box;
-}
 
 function plate(no, title, right) {
   return el("div", { class: "plate" }, [
@@ -335,6 +325,21 @@ function captureWell(ctx) {
 // grouped by day. Milestones and ordinary entries interleave — sorted by
 // date, then by name — because on the day itself you don't care which kind
 // of thing it is, only that it's due.
+//
+// URGENCY TEMPERATURE (August 2026)
+// ---------------------------------
+// The three sections are three visual registers, loud to quiet, so the panel
+// reads as bands rather than one list:
+//
+//   Overdue   solid ember block, bled to the panel's edges, cream ink.
+//   Today     a bordered well, one step darker than the panel ground.
+//   Upcoming  plain. No box, no fill.
+//
+// Coding by urgency rather than by type is a deliberate choice: ember already
+// MEANS "past its date" everywhere else in Dash (§10 — the accent is an
+// indicator, never decoration), so this is turning up the volume on a signal
+// that already exists, not inventing a second colour language. It also means
+// a day with nothing overdue has no ember on it at all, which is the point.
 function todayPanel(store, ctx, groups) {
   const wrap = el("div", { class: "today" });
 
@@ -349,15 +354,20 @@ function todayPanel(store, ctx, groups) {
   }
 
   if (groups.overdue.length) {
-    wrap.appendChild(sectionHead("Overdue", groups.overdue.length, true));
-    for (const e of groups.overdue) wrap.appendChild(entryRow(store, ctx, e, groups.today));
+    const band = el("div", { class: "today-band today-band-overdue" });
+    band.appendChild(sectionHead("Overdue", groups.overdue.length, true));
+    for (const e of groups.overdue) band.appendChild(entryRow(store, ctx, e, groups.today));
+    wrap.appendChild(band);
   }
 
   if (groups.now.length) {
-    wrap.appendChild(sectionHead("Today", groups.now.length, false));
-    for (const e of groups.now) wrap.appendChild(entryRow(store, ctx, e, groups.today));
+    const band = el("div", { class: "today-band today-band-today" });
+    band.appendChild(sectionHead("Today", groups.now.length, false));
+    for (const e of groups.now) band.appendChild(entryRow(store, ctx, e, groups.today));
+    wrap.appendChild(band);
   }
 
+  // Upcoming is deliberately unbanded — it's the quiet register.
   if (groups.upcoming.length) {
     wrap.appendChild(sectionHead("Next 14 days", groups.upcoming.reduce((n, g) => n + g.items.length, 0), false));
     for (const { day, items } of groups.upcoming) {

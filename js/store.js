@@ -72,7 +72,14 @@ export const OP = {
   MS:     "ms",       // milestone sub-record: action add | set | remove
 };
 
-const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind"]);
+// `color` (August 2026) is a per-item override of the colour an item is drawn
+// in. Null means "use my type's colour", which is what every item did before
+// this field existed and what every item still does until you pick something —
+// so there is no migration, and an older device that receives a `set color`
+// op applies it harmlessly and simply doesn't draw it. The value is a NAME
+// from the palette ("clay", "plum"…), never a hex code, so it re-themes with
+// everything else (see colorToken in js/theme.js).
+const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
 
 // `due` and `remind` live INSIDE item.dates, not at the top level.
@@ -105,6 +112,7 @@ function emptyItem(id) {
     status: "active",
     title: "",
     body: "",
+    color: null,        // null = inherit the type's colour (see SCALAR_FIELDS)
     tags: [],
     links: [],
     attachments: [],

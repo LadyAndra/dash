@@ -7,10 +7,11 @@
 // all surface together without needing folders (§0's core requirement).
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
-import { el, itemRow, emptyState, typeChip, stageChip } from "./shared.js";
+import { el, itemRow, emptyState, typeChip, stageChip,
+         renderPanel, groundStyle } from "./shared.js";
 import { openEditor } from "../editor.js";
 import { renderMilestoneEditor } from "./milestone-editor.js";
-import { visibleMilestones } from "../milestones.js";
+import { visibleMilestones, stageOf, milestoneProgress, formatDay } from "../milestones.js";
 
 export const projectView = {
   name: "project",
@@ -111,70 +112,164 @@ function renderPicker(store, state, ctx) {
   return wrap;
 }
 
+// ===================================================================
+//  ONE PROJECT  (rebuilt August 2026)
+// ===================================================================
+// The old detail page opened with a small title, a stage chip and then three
+// lists, and you had to READ it to find out where the project stood. It now
+// opens with the answer:
+//
+//   ┌──────────────────────────────────────┐
+//   │ IN PROGRESS · 3 OF 5   ← mono caps   │  the project's own colour,
+//   │ Dash                   ← display     │  filled. Cream ink on it.
+//   │ NEXT  Duedate Test   4 AUG           │
+//   └──────────────────────────────────────┘
+//   [ rail: readouts + colour ]  [ MILESTONES panel ]
+//                                [ ENTRIES panels   ]
+//
+// Two ideas are doing the work, and both are meant to spread to the rest of
+// Dash rather than stop here:
+//
+//   SCALE. The title is display-sized. Hierarchy comes from a 3× size jump
+//   rather than from more colours or heavier rules — which is what lets a
+//   dense page still have an obvious top.
+//
+//   COLOUR AS GROUND. A project picks its own colour and wears it as a filled
+//   block (see itemColor / groundStyle in views/shared.js). Ember is untouched
+//   by this and still means "overdue" and nothing else.
 function renderDetail(store, state, ctx) {
   const project = store.get(state.projectId);
   const wrap = el("div", {});
-
-  const header = el("div", { style: "display:flex; align-items:flex-start; gap:var(--space-3); margin-bottom:var(--space-4)" }, [
-    el("button", { class: "btn", text: "← All projects", onclick: () => { state.projectId = null; ctx.rerender(); } }),
-    el("div", { style: "flex:1" }, [
-      el("h2", { text: project.title || "Untitled", style: "font-family:var(--font-body); font-size:var(--text-xl); margin:0 0 var(--space-1)" }),
-      // The stage chip sits with the title, where "what phase is this in?"
-      // gets asked. Derived at render time from the item in memory, so it
-      // updates the instant a milestone is ticked off or dated (§3.3).
-      el("div", { class: "item-meta" }, [stageChip(project)]),
-      project.body ? el("p", { class: "item-body-preview", text: project.body, style: "-webkit-line-clamp:3" }) : null,
-    ]),
-    el("button", { class: "btn", text: "Edit", onclick: () => openEditor(store, project.id, { onClose: ctx.rerender, sync: ctx.sync }) }),
-  ]);
-  wrap.appendChild(header);
-
-  // The milestone editor (addendum §10, Phase M1). It lives here — on the
-  // project's own page — rather than in the Edit modal, because this is the
-  // page you're on when you're thinking about the project as a whole, and
-  // because drag-reordering inside a scrolling modal on a phone is miserable.
-  wrap.appendChild(renderMilestoneEditor(store, project, ctx));
+  const reload = () => ctx.rerender();
 
   const linked = membersOf(store, project.id);
+  const stage = stageOf(project);
+  const prog = milestoneProgress(project);
 
-  const addBar = el("div", { style: "display:flex; gap:var(--space-2); margin-bottom:var(--space-4); flex-wrap:wrap" }, [
+  // ---------------- the colour block ----------------
+  wrap.appendChild(projectBanner(store, project, stage, prog));
+
+  const grid = el("div", { class: "dash-grid" });
+
+  // ---------------- rail: readouts, colour, actions ----------------
+  const rail = el("div", { class: "dash-rail" });
+  rail.appendChild(el("div", { class: "stat-strip" }, [
+    stat(prog.total ? `${prog.done}/${prog.total}` : "—", "Milestones"),
+    stat(String(linked.length), "Entries"),
+  ]));
+  // The colour lives in the Edit popup, next to the name — it's a property of
+  // the project, not a control you need on the page every time you open it.
+  rail.appendChild(el("div", { class: "rail-actions" }, [
+    el("button", { class: "btn", text: "← All projects",
+      onclick: () => { state.projectId = null; ctx.rerender(); } }),
+    el("button", { class: "btn", text: "Edit project",
+      onclick: () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }) }),
+  ]));
+  grid.appendChild(rail);
+
+  // ---------------- main column: milestones, then entries ----------------
+  const col = el("div", { class: "panel-col" });
+
+  // The milestone editor (addendum §10, Phase M1) still lives on the project's
+  // own page rather than in the Edit modal — this is the page you're on when
+  // you're thinking about the project as a whole, and drag-reordering inside a
+  // scrolling modal on a phone is miserable. It's only in a panel now.
+  col.appendChild(renderPanel({
+    id: "milestones",
+    title: "Milestones",
+    right: prog.total ? `${String(prog.done).padStart(2, "0")} / ${String(prog.total).padStart(2, "0")}` : null,
+    render(container) {
+      container.appendChild(renderMilestoneEditor(store, project, ctx));
+    },
+  }, ctx));
+
+  // Entries, grouped by type — each type its own panel, so tasks/notes/files
+  // read as separate instruments instead of one run of headed lists
+  // (§0: "one system, many views over it").
+  const byType = new Map();
+  for (const it of linked) {
+    if (!byType.has(it.type)) byType.set(it.type, []);
+    byType.get(it.type).push(it);
+  }
+
+  if (linked.length === 0) {
+    col.appendChild(renderPanel({
+      id: "entries-empty",
+      title: "Entries",
+      render(container) {
+        container.appendChild(emptyState(
+          "Nothing in this project yet",
+          "Add a task, note, or file — this page gathers everything assigned to this project automatically.",
+          null, null));
+      },
+    }, ctx));
+  } else {
+    for (const t of store.types()) {
+      const items = byType.get(t.key);
+      if (!items || items.length === 0) continue;
+      col.appendChild(renderPanel({
+        id: `entries-${t.key}`,
+        title: `${t.icon || "•"} ${t.label}`,
+        right: String(items.length).padStart(2, "0"),
+        render(container) {
+          for (const it of items) {
+            container.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection }));
+          }
+        },
+      }, ctx));
+    }
+  }
+
+  col.appendChild(el("div", { class: "rail-actions" }, [
     el("button", { class: "btn btn-primary", text: "＋ New entry in this project", onclick: () => {
       const newId = store.createItem({ title: "" });
       store.assignToProject(newId, project.id);
-      openEditor(store, newId, { onClose: ctx.rerender, sync: ctx.sync });
+      openEditor(store, newId, { onClose: reload, sync: ctx.sync });
     } }),
-    el("button", { class: "btn", text: "＋ Add existing entry", onclick: () => openAssignPicker(store, project.id, ctx.rerender) }),
-  ]);
-  wrap.appendChild(addBar);
+    el("button", { class: "btn", text: "＋ Add existing entry",
+      onclick: () => openAssignPicker(store, project.id, reload) }),
+  ]));
 
-  if (linked.length === 0) {
-    wrap.appendChild(emptyState(
-      "Nothing in this project yet",
-      "Add a task, note, or file — this page gathers everything assigned to this project automatically.",
-      null, null));
-    return wrap;
-  }
-
-  // group the linked items by type, so tasks/notes/files each get their own
-  // section on this one page (§0: "one system, many views over it")
-  const byType = new Map();
-  for (const it of linked) {
-    const key = it.type;
-    if (!byType.has(key)) byType.set(key, []);
-    byType.get(key).push(it);
-  }
-  for (const t of store.types()) {
-    const items = byType.get(t.key);
-    if (!items || items.length === 0) continue;
-    wrap.appendChild(el("div", { class: "group-head", style: "cursor:default" }, [
-      el("span", { text: `${t.icon || "•"} ${t.label}` }),
-      el("span", { class: "group-count", text: `${items.length}` }),
-    ]));
-    const groupWrap = el("div", { class: "group" });
-    for (const it of items) groupWrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection }));
-    wrap.appendChild(groupWrap);
-  }
+  grid.appendChild(col);
+  wrap.appendChild(grid);
   return wrap;
+}
+
+// The block at the top. Everything on it is derived at render time, so it
+// updates the instant a milestone is ticked (§3.3) — nothing is stored.
+//
+// The one place ember is allowed through the colour block: if the current
+// stage's date has passed, the stage line gets the overdue mark. A project
+// running late has to be able to say so even while wearing its own colour.
+function projectBanner(store, project, stage, prog) {
+  const line = [];
+  if (stage) line.push(stage.complete ? "Complete" : stage.label);
+  if (prog.total) line.push(`${prog.done} of ${prog.total}`);
+
+  const next = stage && !stage.complete ? stage : null;
+
+  return el("div", { class: "project-banner", style: groundStyle(store, project) }, [
+    el("div", { class: "project-banner-top" }, [
+      line.length ? el("span", { class: "lbl", text: line.join(" · ") }) : null,
+      stage && stage.overdue ? el("span", { class: "lbl banner-late", text: "Overdue" }) : null,
+    ]),
+    el("h2", { class: "project-banner-title", text: project.title || "Untitled" }),
+    next
+      ? el("div", { class: "project-banner-next" }, [
+          el("span", { class: "lbl", text: "Next" }),
+          el("span", { class: "project-banner-next-label", text: next.label }),
+          next.date ? el("span", { class: "num", text: formatDay(next.date) }) : null,
+        ])
+      : null,
+    project.body ? el("p", { class: "project-banner-body", text: project.body }) : null,
+  ]);
+}
+
+function stat(value, label) {
+  return el("div", { class: "stat" }, [
+    el("span", { class: "stat-num", text: value }),
+    el("span", { class: "lbl", text: label }),
+  ]);
 }
 
 // Entries that are members of this project — i.e. they link to it with the

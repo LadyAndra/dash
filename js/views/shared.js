@@ -2,7 +2,7 @@
 // means every view renders items consistently (§4.1 "views own layout").
 // Views MUST NOT read raw colors; they call colorToken()/tintToken() (§10).
 
-import { colorToken, tintToken } from "../theme.js";
+import { colorToken, tintToken, inkFor, resolveHex } from "../theme.js";
 import { blobObjectURL } from "../blobs.js";
 import { stageOf } from "../milestones.js";
 
@@ -68,8 +68,89 @@ export function stageChip(item) {
 }
 
 export function swatch(store, item) {
-  const t = store.typeDef(item.type);
-  return el("div", { class: "item-swatch", style: `background:${colorToken(t?.color)}` });
+  return el("div", { class: "item-swatch", style: `background:${colorToken(itemColor(store, item))}` });
+}
+
+// ===================================================================
+//  COLOUR: what colour is this thing, and how does it become a GROUND
+// ===================================================================
+// The rule as of August 2026 (an amendment to §10, made deliberately):
+//
+//   Ember is still an indicator and only an indicator. It means "past its
+//   date" and nothing else, anywhere in Dash.
+//
+//   The seven PALETTE colours are now allowed to be grounds — a filled block
+//   behind cream ink — and not only thin marks. That's what makes a project
+//   identifiable at a glance instead of being one more line of text.
+//
+// The two never collide, because ember isn't in the palette. A page can have
+// a plum project block and an ember overdue block on it and they still say
+// two different things.
+//
+// Every palette colour was checked as a background against --text-on-accent
+// in both themes before this shipped: the worst pair is 5.32:1, the best
+// 7.62:1, all past AA. And because --text-on-accent flips per theme (cream on
+// the paper theme, near-black on the mount theme), a ground stays legible
+// through a re-theme without a second set of tokens to maintain.
+
+// The colour an item is drawn in: its own override if it has one, otherwise
+// the colour its TYPE carries in the registry. Everything that draws a colour
+// for an item should go through here, so "let me pick a colour for this"
+// works the same way everywhere rather than only on projects.
+export function itemColor(store, item) {
+  if (!item) return null;
+  if (item.color) return item.color;
+  return store.typeDef(item.type)?.color || null;
+}
+
+// Inline style for a filled colour block. Returned as a style string rather
+// than a class because the colour is DATA — it comes from the registry, or
+// from a colour someone picked — and CSS can't know the values in advance.
+//
+// It sets TWO things: the ground, and --ground-ink, which is the more
+// readable of Dash's two inks written over that ground. Every rule that puts
+// text on a colour block reads var(--ground-ink), so one inline property
+// makes a whole block legible no matter what colour lands in it — including a
+// custom hex that nothing in the stylesheet could have anticipated.
+export function groundStyle(store, item) {
+  const value = itemColor(store, item);
+  const ink = inkFor(resolveHex(value)).hex;
+  return `background:${colorToken(value)};--ground-ink:${ink}`;
+}
+
+// ===================================================================
+//  PANELS — the bordered box with a header bar
+// ===================================================================
+// Lifted out of views/home.js in August 2026, on the rule stated there: the
+// registry stays local to one view until a SECOND view needs it. Projects is
+// that second view, so the box-drawing moved here and the PANELS arrays stay
+// where they're used.
+//
+// A panel is a plain object:
+//   { id, title, span, render(container, ctx) }   // + optional column/right/flush
+// See views/home.js for what each field means.
+export function renderPanel(panel, ctx) {
+  const right = typeof panel.right === "function" ? panel.right(ctx) : panel.right;
+
+  const body = el("div", {
+    class: "panel-body" + (panel.flush ? " panel-body-flush" : ""),
+  });
+  panel.render(body, ctx);
+
+  const box = el("div", { class: "panel", "data-panel": panel.id }, [
+    el("div", { class: "panel-head" }, [
+      el("span", { class: "plate-title", text: panel.title }),
+      right ? el("span", { class: "panel-right num", text: right }) : null,
+    ]),
+    body,
+  ]);
+
+  // span > 1 means "full width, however many columns there are". Said as
+  // `grid-column: 1 / -1` in CSS rather than `span 2`, because a literal span
+  // of 2 would invent a phantom second column on a narrow screen.
+  if ((panel.span || 1) > 1) box.classList.add("panel-wide");
+
+  return box;
 }
 
 // The catalog accession number: the item's position in creation order,

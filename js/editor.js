@@ -7,7 +7,8 @@
 // so each keystroke-save is one operation and sync/merge just works (§6).
 
 import { el } from "./views/shared.js";
-import { colorToken } from "./theme.js";
+import { colorToken, resolveHex } from "./theme.js";
+import { colorField } from "./ui/colorfield.js";
 import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
@@ -287,12 +288,30 @@ export function openEditor(store, itemId, opts = {}) {
     } });
   const done = el("button", { class: "btn btn-primary", text: "Done", onclick: close });
 
+  // --- colour (projects only) ---
+  // A project wears its colour as a filled block on its own page, so this is
+  // where the colour gets chosen — next to the name, in the same place you
+  // came to change the name. Ordinary entries don't get this: they take their
+  // colour from their type, which is what keeps a list of thirty notes from
+  // turning into confetti. The `color` field exists on every item though, so
+  // opening it up later is one condition, not a data change.
+  const colourField = !isProjectItem ? null : field("Colour",
+    colorField({
+      value: item.color,
+      fallback: resolveHex(item.color || store.typeDef(item.type)?.color || "green"),
+      onChange: (hexValue) => store.setField(id, "color", hexValue),
+      onReset: () => { store.setField(id, "color", null); toast("Back to the type's colour.", "success"); },
+      resetLabel: "Use type colour",
+      note: "Shown wherever this project appears. Pick anything — the readings below tell you how it will hold up.",
+    }));
+
   modal.append(
     el("div", { style: "display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-3)" }, [
       el("h2", { text: isNew ? "New item" : "Edit item", style: "margin:0; flex:1" }),
       readBtn,
     ]),
     field("Title", title),
+    colourField,
     el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
     datesRow,
     field("Notes", body),

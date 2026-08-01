@@ -5,7 +5,9 @@
 
 import { el } from "./views/shared.js";
 import { colorToken } from "./theme.js";
-import { setTextScale, getTextScale, toggleDark } from "./theme.js";
+import { setTextScale, getTextScale, toggleDark,
+         getAccent, setAccent, resetAccent, defaultAccentHex } from "./theme.js";
+import { colorField } from "./ui/colorfield.js";
 import { getDeviceLabel, setDeviceLabel } from "./device.js";
 import { toast } from "./ui/toast.js";
 
@@ -25,6 +27,31 @@ export function openSettings(store, sync) {
   });
 
   const darkBtn = el("button", { class: "btn", text: "Toggle light / dark", onclick: () => toggleDark() });
+
+  // ---- accent colour ----
+  // Ember is the DEFAULT accent, not the only one. Whatever gets picked here
+  // writes --ember / --accent-2 / --ember-ink, which is what every one of the
+  // ~20 places the accent appears already reads — so nothing downstream has
+  // to know this feature exists.
+  //
+  // What it means stays fixed even when the colour doesn't: the accent is an
+  // indicator. Overdue, stale, sync trouble. Changing its colour doesn't turn
+  // it into decoration.
+  const accentWrap = el("div", {});
+  function drawAccent() {
+    accentWrap.innerHTML = "";
+    const custom = getAccent();
+    accentWrap.appendChild(colorField({
+      value: custom || defaultAccentHex(),
+      fallback: defaultAccentHex(),
+      onChange: (hexValue) => { setAccent(hexValue); drawAccent(); },
+      onReset: custom ? () => { resetAccent(); drawAccent(); toast("Back to ember.", "success"); } : null,
+      resetLabel: "Reset to ember",
+      note: "Used for overdue, stale, and sync warnings — the things Dash needs you to notice. "
+          + "It's an indicator wherever it appears, so it's worth keeping loud.",
+    }));
+  }
+  drawAccent();
 
   // ---- device label ----
   const deviceInput = el("input", { type: "text", value: getDeviceLabel(), "aria-label": "Device name",
@@ -94,6 +121,7 @@ export function openSettings(store, sync) {
     el("h2", { text: "Settings" }),
     field("Text size", scale, "Bigger text, less eye strain. Applies everywhere instantly."),
     field("Appearance", darkBtn),
+    field("Accent colour", accentWrap),
     field("This device's name", deviceInput, "Shown in sync and merge notes so you can tell devices apart."),
     el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
     field("Automatic sync (Dropbox)", dbxWrap, "Connect once on each device. After that, Dash syncs across all your devices automatically — and stays connected."),
