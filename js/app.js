@@ -12,6 +12,8 @@ import { el } from "./views/shared.js";
 import { openEditor } from "./editor.js";
 import { openSettings } from "./settings.js";
 import { createSelection } from "./selection.js";
+import { createCluster } from "./widgets/cluster.js";
+import { createPetWidget } from "./widgets/pet.js";
 
 import { homeView } from "./views/home.js";
 import { listView } from "./views/list.js";
@@ -41,6 +43,16 @@ const sync = new Sync(store);
 // change re-renders, so the checkboxes, the count and the action bar can never
 // drift out of step with each other.
 const selection = createSelection(store, () => render());
+
+// The Home corner cluster: the ambient widgets. Built once, shown only while
+// the Home sheet is on screen. Widgets 2–4 (weather, tide, train) join this
+// array as they're built; nothing else here has to change for them.
+const cluster = createCluster({ widgets: [createPetWidget({ store })] });
+
+// The pet reacts to what you actually DO, so it listens on the store's ambient
+// action channel rather than to plain "something changed". Nothing is logged
+// or synced by this — see Store.onAction.
+store.onAction((kind, detail) => cluster.action(kind, detail));
 
 installGlobalErrorBanner();
 loadSavedTheme();
@@ -188,6 +200,12 @@ function render() {
   // invisible state. exit() re-renders, so bail out and let that pass finish.
   if (selection.active && !view.supportsSelect) { selection.exit(); return; }
   updateSelectUI(view);
+
+  // The corner cluster belongs to the Home sheet. Hiding it elsewhere keeps it
+  // off the catalog views' bottom-right corner, where the bulk-action bar and
+  // the kanban columns already live — and pauses its animation, so nothing is
+  // burning a frame budget behind a screen that can't see it.
+  cluster.setVisible(view.name === "home");
 
   // view tabs current state
   document.querySelectorAll(".view-tab").forEach(t =>

@@ -66,12 +66,37 @@ export class Store {
     this.registry = defaultRegistry();
     this.pendingOps = [];         // ops made on THIS device, not yet flushed
     this._listeners = new Set();
+    this._actionListeners = new Set();
     this._registryTs = {};        // LWW bookkeeping for registry edits
   }
 
   // ---- subscription: views re-render on change ----
   subscribe(fn) { this._listeners.add(fn); return () => this._listeners.delete(fn); }
   _emit() { for (const fn of this._listeners) fn(); }
+
+  // ---- ambient action channel (the Home cluster's pet listens here) ----
+  // Deliberately separate from subscribe(). subscribe() answers "something
+  // changed, redraw"; this answers "*this specific thing* just happened", which
+  // is what a reaction needs — a new entry should feel different from a tag.
+  //
+  // It writes NOTHING. No op, no log line, no field, no sync. It fires only on
+  // local edits made on this device (replaying another device's log doesn't
+  // trigger it), so the pet reacts to what YOU just did, not to a background
+  // sync landing. A listener that throws is swallowed: a decorative widget
+  // must never be able to break an edit.
+  onAction(fn) { this._actionListeners.add(fn); return () => this._actionListeners.delete(fn); }
+  _action(kind, detail) {
+    for (const fn of this._actionListeners) { try { fn(kind, detail); } catch {} }
+  }
+
+  // Does this status mean "finished"? Statuses are user-editable data (§2.2),
+  // so there's no fixed key to match — we look at the key and label instead.
+  // Getting it wrong is harmless: the pet plays a smaller animation.
+  isDoneStatus(key) {
+    const def = this.statusDef(key);
+    const text = `${key || ""} ${def?.label || ""}`.toLowerCase();
+    return /\b(done|complete|completed|finished|resolved|shipped|closed|archived)\b/.test(text);
+  }
 
   // =====================================================
   //  READING
@@ -177,27 +202,33 @@ export class Store {
 
     // optional initial sets
     for (const tag of partial.tags || []) this.addToSet(id, "tags", tag);
+    this._action("create", { id });
     return id;
   }
 
   setField(id, field, value) {
     if (!SCALAR_FIELDS.has(field)) throw new Error(`setField: '${field}' is not a scalar field`);
     this._applyOp({ op: OP.SET, itemId: id, field, value, ts: clockNow() }, true);
+    if (field === "status") this._action(this.isDoneStatus(value) ? "done" : "status", { id, value });
+    else this._action("edit", { id, field });
   }
 
   addToSet(id, field, value) {
     if (!SET_FIELDS.has(field)) throw new Error(`addToSet: '${field}' is not a set field`);
     this._applyOp({ op: OP.ADD, itemId: id, field, value, ts: clockNow() }, true);
+    this._action({ tags: "tag", links: "link", attachments: "attach" }[field] || "edit", { id, field, value });
   }
 
   removeFromSet(id, field, value) {
     if (!SET_FIELDS.has(field)) throw new Error(`removeFromSet: '${field}' is not a set field`);
     this._applyOp({ op: OP.REMOVE, itemId: id, field, value, ts: clockNow() }, true);
+    this._action("edit", { id, field });
   }
 
   deleteItem(id) {
     // tombstone only — never erase (§13.2 #8)
     this._applyOp({ op: OP.DELETE, itemId: id, ts: clockNow() }, true);
+    this._action("delete", { id });
   }
 
   // "touched" feeds the future Heat view (§2.1). Cheap, silent, not synced

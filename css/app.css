@@ -973,3 +973,62 @@ button, input, textarea, select {
   display: flex; flex-wrap: wrap; gap: var(--space-2);
   max-height: 40vh; overflow-y: auto;
 }
+
+/* ============================================================
+   Home corner cluster — the ambient widgets (July 2026)
+   ------------------------------------------------------------
+   A bounded stage pinned to the bottom-right of the window, holding
+   the widgets that make Dash pleasant to glance at. The stage itself
+   is invisible and does not take pointer events; only the widgets
+   inside it do, so it never blocks a tap on the sheet underneath.
+
+   Sizes come from one base unit (--cw-unit) multiplied by each
+   widget's own --cw-scale, so the whole cluster keeps its size
+   hierarchy (weather largest, then pet, then tide, then train) and
+   shrinks together on a phone. No literal colors here — the widgets
+   draw themselves from theme tokens on canvas.
+   ============================================================ */
+.cluster {
+  --cw-unit: 150px;
+  position: fixed;
+  right: calc(var(--space-4) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  width: min(340px, 46vw);
+  height: min(300px, 34vh);
+  z-index: 20;               /* above the sheet, below the modal scrim (50) */
+  pointer-events: none;      /* the empty stage is not a click target */
+}
+.cluster[hidden] { display: none; }
+
+.cluster-widget {
+  --cw-scale: 1;
+  position: absolute;
+  top: 0; left: 0;
+  width: calc(var(--cw-unit) * var(--cw-scale));
+  height: calc(var(--cw-unit) * var(--cw-scale));
+  pointer-events: auto;
+  touch-action: none;        /* so a drag doesn't scroll the sheet on iOS */
+  cursor: grab;
+  border-radius: var(--radius);
+  transition: filter var(--transition);
+}
+.cluster-widget:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.cluster-widget.dragging {
+  cursor: grabbing;
+  filter: brightness(1.04);
+}
+
+.pet-canvas { display: block; width: 100%; height: 100%; }
+
+@media (max-width: 820px) {
+  .cluster {
+    --cw-unit: 104px;
+    width: min(220px, 52vw);
+    height: min(190px, 26vh);
+    right: calc(var(--space-3) + env(safe-area-inset-right, 0px));
+    bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  }
+}
