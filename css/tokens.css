@@ -141,8 +141,39 @@
   --sketch-ink:        #2b2822;
   --sketch-ink-accent: #4a6b8a;
 
+  /* ---- layout: how wide things are allowed to get (August 2026) ----
+     These are the "spatial parameters". They live here, as tokens, so
+     the whole app's density is four numbers rather than a hunt through
+     the stylesheet.
+
+     --page-max    the widest the content ever gets. Above this it just
+                   stops growing; nothing stretches into unreadability.
+     --panel-min   a panel is never NARROWER than this. This is the
+                   number that stops text being clipped: the grid fits
+                   FEWER, WIDER columns rather than as many as possible.
+     --panel-max   …and never wider than this, so a single panel on a
+                   big screen doesn't turn into metre-long rows.
+     --rail-w      the fixed left rail on Home and a project page.
+
+     Adding a widget later needs none of these touched: the panel grid
+     fits what it's given and reflows. */
+  --page-max:   1500px;
+  --panel-min:  420px;
+  --panel-max:  660px;
+  --rail-w:     340px;
+
   /* ---- interaction ---- */
+  /* --tap-min is the TOUCH floor and does not move. 44px, always, on
+     anything a finger has to hit.
+
+     --control-min is what controls actually size themselves to. It
+     equals --tap-min by default, and drops on a device driven by a
+     MOUSE (see the pointer query below) — where 44px isn't an
+     accessibility requirement, it's just three chunky buttons eating
+     the row before any text gets drawn. That reclaimed width is what
+     stops labels being clipped on the desktop. */
   --tap-min: 44px;
+  --control-min: var(--tap-min);
   --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--ember);
   --transition: 140ms ease;
 }
@@ -193,6 +224,19 @@
 
   --shadow-1: none;
   --shadow-2: 0 6px 24px rgba(0,0,0,0.5);
+}
+
+/* A device whose PRIMARY pointer is precise — a trackpad or mouse. Phones
+   and tablets report "coarse" and never match this, so every touch target
+   in Dash stays at the full 44px where it matters. Only the pointer that
+   doesn't need the padding loses it.
+
+   The known edge: a touchscreen laptop reports its trackpad as primary and
+   would get the smaller controls even though you could also poke the screen.
+   Everything stays above the 24px desktop floor, so it's a comfort question
+   rather than a reachability one. */
+@media (pointer: fine) {
+  :root { --control-min: 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

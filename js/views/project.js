@@ -8,7 +8,8 @@
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
 import { el, itemRow, emptyState, typeChip, stageChip,
-         renderPanel, groundStyle } from "./shared.js";
+         renderPanel, groundStyle, itemColor } from "./shared.js";
+import { colorToken } from "../theme.js";
 import { openEditor } from "../editor.js";
 import { renderMilestoneEditor } from "./milestone-editor.js";
 import { visibleMilestones, stageOf, milestoneProgress, formatDay } from "../milestones.js";
@@ -91,7 +92,11 @@ function renderPicker(store, state, ctx) {
         class: "item-row", role: "button", tabindex: "0",
         onclick: () => { state.projectId = it.id; ctx.rerender(); },
       }, [
-        el("div", { class: "item-swatch", style: "background:var(--color-green)" }),
+        // The project's OWN colour, not a hardcoded green — so the colour you
+        // picked identifies it here too, not only on its own page. The full
+        // list rebuild (progress, next date) is still to come; this is just
+        // the colour carrying through.
+        el("div", { class: "item-swatch is-project", style: `background:${colorToken(itemColor(store, it))}` }),
         el("div", { class: "item-main" }, [
           el("h3", { class: "item-title", text: it.title || "Untitled project" }),
           el("div", { class: "item-meta" }, [
@@ -139,7 +144,9 @@ function renderPicker(store, state, ctx) {
 //   by this and still means "overdue" and nothing else.
 function renderDetail(store, state, ctx) {
   const project = store.get(state.projectId);
-  const wrap = el("div", {});
+  // .sheet-page, same as Home — so a project page obeys the same width rule
+  // as every other page instead of running the full width of the window.
+  const wrap = el("div", { class: "sheet-page" });
   const reload = () => ctx.rerender();
 
   const linked = membersOf(store, project.id);

@@ -157,7 +157,7 @@ button, input, textarea, select {
 
 .view-tabs { display: flex; gap: var(--space-4); flex-wrap: wrap; }
 .view-tab {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) 0;
   border: none;
   background: transparent;
@@ -175,7 +175,7 @@ button, input, textarea, select {
 }
 
 #group-sel {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
   border: 1px solid var(--border);
@@ -189,7 +189,7 @@ button, input, textarea, select {
 
 .search-wrap { margin-left: auto; position: relative; }
 .search-wrap input {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   width: 260px; max-width: 40vw;
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
@@ -200,7 +200,7 @@ button, input, textarea, select {
 .search-wrap input::placeholder { color: var(--text-faint); }
 
 .btn {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius);
   border: 1px solid var(--border-strong);
@@ -285,7 +285,7 @@ button, input, textarea, select {
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border-strong);
   cursor: pointer;
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
 }
 .group-head .caret { transition: transform var(--transition); color: var(--ember); }
 .group-head.collapsed .caret { transform: rotate(-90deg); }
@@ -410,7 +410,7 @@ button, input, textarea, select {
 .finder-col:last-child { flex: 1; }
 .finder-entry {
   display: flex; align-items: center; gap: var(--space-2);
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) 0;
   border-bottom: 1px solid transparent;
   cursor: pointer;
@@ -484,7 +484,7 @@ button, input, textarea, select {
 .field textarea,
 .field select {
   width: 100%;
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -565,7 +565,7 @@ button, input, textarea, select {
   background: var(--border); margin: 0 var(--space-1);
 }
 .sketch-tool {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius);
   border: 1px solid var(--border-strong);
@@ -587,8 +587,8 @@ button, input, textarea, select {
 /* Pen swatches: a filled ink dot; the selected one gets a ring. */
 .sketch-color {
   --swatch: var(--sketch-ink);
-  min-height: var(--tap-min); min-width: var(--tap-min);
-  width: var(--tap-min); height: var(--tap-min);
+  min-height: var(--control-min); min-width: var(--control-min);
+  width: var(--control-min); height: var(--control-min);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: var(--surface-raised);
@@ -678,7 +678,7 @@ button, input, textarea, select {
 
 /* ---------- Read-aloud / icon button ---------- */
 .icon-btn {
-  min-height: var(--tap-min); min-width: var(--tap-min);
+  min-height: var(--control-min); min-width: var(--control-min);
   border: 1px solid var(--border);
   background: var(--surface-raised);
   border-radius: var(--radius);
@@ -699,7 +699,11 @@ button, input, textarea, select {
 .sync-pill.dirty .dot { background: var(--ember); }
 
 /* ---------- Home: the daily specimen sheet (Update 2) ---------- */
-.sheet-page { max-width: 900px; }
+/* Was a flat 900px, which meant a big screen was mostly margin. Now it
+   grows to --page-max and then stops. Nothing inside stretches without
+   limit — the rail is fixed and each panel caps at --panel-max — so the
+   extra room becomes MORE COLUMNS rather than longer lines. */
+.sheet-page { max-width: var(--page-max); }
 
 .sheet-masthead {
   border-bottom: 2px solid var(--mount);
@@ -824,7 +828,7 @@ button, input, textarea, select {
 
 .dash-grid {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: var(--rail-w) 1fr;
   gap: var(--space-5);
   align-items: start;
 }
@@ -847,9 +851,28 @@ button, input, textarea, select {
 .dash-rail .mount { padding: var(--space-4); }
 .dash-rail .mount-row { grid-template-columns: 44px 1fr auto; gap: var(--space-3); }
 
+/* The panel columns. The important word is COMFORT, not density.
+   ------------------------------------------------------------
+   This used to be minmax(320px, 1fr), which means "fit as many 320px
+   columns as will go". On a wide screen that produced three cramped
+   columns and clipped every label in them — the opposite of what a
+   big screen is for.
+
+   minmax(--panel-min, --panel-max) instead means "a column is never
+   narrower than comfortable, and never wider than readable". Fewer,
+   wider columns. Same rule fits one panel on a laptop, two on a
+   desktop, and stacks on a phone with nothing device-specific
+   written down.
+
+   And it's the growth path: a new widget is one more panel object,
+   and the grid finds room for it without this rule changing. A panel
+   that wants the full width says span: 2 in its own module — the
+   width decision lives with the widget, not in a saved layout that
+   goes stale the moment the set of panels changes. */
 .panel-col {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--panel-min)), var(--panel-max)));
+  justify-content: start;
   gap: var(--space-5);
   align-items: start;
   min-width: 0;
@@ -995,7 +1018,7 @@ button, input, textarea, select {
 
 .cf-swatch {
   /* a real tap target, and the native control stretched to fill it */
-  width: calc(var(--tap-min) * 1.5); height: var(--tap-min);
+  width: calc(var(--control-min) * 1.5); height: var(--control-min);
   padding: 0; cursor: pointer;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -1010,7 +1033,7 @@ button, input, textarea, select {
   font-family: var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  width: 9em; min-height: var(--tap-min);
+  width: 9em; min-height: var(--control-min);
 }
 
 .cf-readout {
@@ -1051,6 +1074,47 @@ button, input, textarea, select {
    file are more specific and still win where they apply. */
 .hint { color: var(--text-faint); font-size: var(--text-sm); }
 
+/* ============================================================
+   Text that must not be clipped  (August 2026)
+   ------------------------------------------------------------
+   The audit behind this: things were being cut off in three
+   different ways, and only one of them was on purpose.
+
+     1. A long unbroken word (a URL, "Bowerhaus/Substack") pushing
+        past its box. Fixed with overflow-wrap on the places that
+        carry real titles.
+     2. A control squeezing a text field to nothing, because a
+        flex item's default minimum size is its CONTENT, not zero.
+        Fixed with min-width:0 on the fields.
+     3. A deliberate two-line preview clamp on body text. That one
+        stays — it's a preview and it's meant to end.
+   ============================================================ */
+
+/* titles wrap rather than overflow, wherever they carry a real name */
+.item-title,
+.mount-title,
+.project-banner-title,
+.project-banner-next-label,
+.ms-label { overflow-wrap: anywhere; }
+
+/* a text input beside a control has to be allowed to shrink, or the
+   control wins the argument and the field gets clipped */
+.ms-label,
+.ms-main,
+.cf-hex { min-width: 0; }
+
+/* search: was a flat 260px / 40vw, which on a phone left room for
+   about four characters. Now it takes what's going. */
+.search-wrap input { width: 100%; max-width: 320px; min-width: 0; }
+.search-wrap { flex: 1 1 12rem; min-width: 0; }
+
+/* an attached file's name had an 80px ceiling — barely a word */
+.attach-name { max-width: 16ch; }
+
+/* a project in the projects list wears its own colour as a proper edge
+   rather than the 3px hairline an ordinary entry gets */
+.item-swatch.is-project { width: 6px; }
+
 /* The milestone editor draws its own "Milestones · 3 of 5 done" bar. In a
    panel the panel head already says that, so the editor's own head steps
    aside — done here rather than in milestone-editor.js, which has focus
@@ -1071,13 +1135,16 @@ button, input, textarea, select {
   .sidebar-section { padding: var(--space-1) var(--space-2); }
   .sidebar-section h2 { display: none; }
   .sidebar-section { display: flex; align-items: center; gap: var(--space-1); }
-  .nav-btn { width: auto; white-space: nowrap; min-height: var(--tap-min); padding: var(--space-1) var(--space-2); }
+  .nav-btn { width: auto; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) var(--space-2); }
   .nav-btn[aria-current="true"] { box-shadow: inset 0 -2px 0 var(--ember); padding-left: var(--space-2); }
   .sidebar-footer { margin: 0; border: none; flex-direction: row; padding: var(--space-1) var(--space-2); }
   .brand { padding: var(--space-2) var(--space-3); }
   .viewport { padding: var(--space-4); }
   .topbar { padding: var(--space-3) var(--space-4); }
-  .search-wrap input { width: 160px; }
+  /* search used to be pinned to 160px here, which on a phone is about
+     four characters of your own query. It now takes the row it's in. */
+  .search-wrap { flex: 1 1 100%; margin-left: 0; }
+  .search-wrap input { width: 100%; max-width: none; }
   .kanban-col { flex-basis: 78vw; }
   .finder-col { flex-basis: 70vw; }
   .item-row { grid-template-columns: auto 1fr; gap: var(--space-3); padding: var(--space-4) 0; }
@@ -1387,7 +1454,7 @@ button, input, textarea, select {
 /* the done toggle — a real 44px button, not a decorative box */
 .ms-tick {
   flex: none;
-  width: var(--tap-min); height: var(--tap-min);
+  width: var(--control-min); height: var(--control-min);
   display: inline-flex; align-items: center; justify-content: center;
   border: 2px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -1405,7 +1472,7 @@ button, input, textarea, select {
 
 .ms-label {
   width: 100%;
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-2) var(--space-3);
   font-family: var(--font-body);
   font-size: var(--text-base);
@@ -1419,7 +1486,7 @@ button, input, textarea, select {
 .ms-dates { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .ms-date-field { display: inline-flex; align-items: center; gap: var(--space-2); }
 .ms-date {
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   padding: var(--space-1) var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -1434,7 +1501,7 @@ button, input, textarea, select {
 
 .ms-controls { display: flex; gap: var(--space-1); flex: none; }
 .ms-move {
-  width: var(--tap-min); height: var(--tap-min);
+  width: var(--control-min); height: var(--control-min);
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1496,7 +1563,7 @@ button, input, textarea, select {
 @media (max-width: 820px) {
   .ms-row { flex-wrap: wrap; }
   .ms-grip { display: none; }        /* drag doesn't work on touch anyway */
-  .ms-main { flex-basis: calc(100% - var(--tap-min) - var(--space-3)); }
+  .ms-main { flex-basis: calc(100% - var(--control-min) - var(--space-3)); }
   .ms-controls { width: 100%; justify-content: flex-end; }
   .ms-dates { gap: var(--space-2); }
   .ms-date-field { flex: 1; min-width: 9rem; }
@@ -1509,7 +1576,7 @@ button, input, textarea, select {
    a list of buttons inside a draggable thing makes both worse. */
 .ms-entries-toggle {
   align-self: flex-start;
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   display: inline-flex; align-items: center; gap: var(--space-2);
   padding: 0 var(--space-2) 0 0;
   background: none;
@@ -1528,7 +1595,7 @@ button, input, textarea, select {
 .ms-entries {
   /* indented under its milestone, and marked with a rule down the left so it
      reads as belonging to the row above rather than as a new section */
-  margin: 0 0 var(--space-3) calc(var(--tap-min) + var(--space-4));
+  margin: 0 0 var(--space-3) calc(var(--control-min) + var(--space-4));
   padding: var(--space-2) 0 var(--space-2) var(--space-3);
   border-left: 2px solid var(--border);
 }
@@ -1546,7 +1613,7 @@ button, input, textarea, select {
 .ms-entry:last-of-type { border-bottom: none; }
 .ms-entry-open {
   flex: 1; min-width: 0;
-  min-height: var(--tap-min);
+  min-height: var(--control-min);
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2);
   background: none; border: none;
