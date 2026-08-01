@@ -69,6 +69,7 @@ export class Sync {
     this.dirHandle = null;
     this.logSlug = getDeviceSlug();
     this.readOffsets = {};   // logFileName -> bytes already applied
+    this._lastSnapText = null; // last snapshot actually applied, to skip no-op reloads
     this.status = "idle";
     this._statusListeners = new Set();
 
@@ -165,7 +166,13 @@ export class Sync {
     if (this.mode !== "dropbox" || !this.dbx) return;
     // snapshot first (fast base state)
     const snapText = await this.dbx.downloadText("/data/snapshot.json");
-    if (snapText) {
+    // Only load it if it actually changed. loadSnapshot() ends in _emit(),
+    // and _emit() redraws the whole screen — so re-applying an identical
+    // snapshot on every 10-second poll was rebuilding the UI forever, for no
+    // reason. Skipping it is also safer for data: re-applying an older remote
+    // snapshot over items edited locally since the last push can undo them.
+    if (snapText && snapText !== this._lastSnapText) {
+      this._lastSnapText = snapText;
       try { this.store.loadSnapshot(JSON.parse(snapText)); } catch { /* torn snapshot; logs will rebuild */ }
     }
     // every device log — replay only the unseen tail, tracked by byte length
@@ -223,9 +230,15 @@ export class Sync {
     try {
       const dataDir = await this.dirHandle.getDirectoryHandle("data", { create: true });
 
-      // snapshot (fast base state)
+      // snapshot (fast base state) — same no-op guard as the Dropbox path
       const snap = await readJSONFile(dataDir, SNAPSHOT_NAME);
-      if (snap) this.store.loadSnapshot(snap);
+      if (snap) {
+        const snapText = JSON.stringify(snap);
+        if (snapText !== this._lastSnapText) {
+          this._lastSnapText = snapText;
+          this.store.loadSnapshot(snap);
+        }
+      }
 
       // every device log — replay only the unseen tail (by byte offset)
       for await (const [name, entry] of dataDir.entries()) {

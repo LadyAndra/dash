@@ -101,7 +101,8 @@ export const homeView = {
       if (ctx.viewLocal.captureFocused) {
         box.focus();
         const end = box.value.length;
-        try { box.setSelectionRange(end, end); } catch {}
+        const [s, e] = ctx.viewLocal.captureSel || [end, end];
+        try { box.setSelectionRange(Math.min(s, end), Math.min(e, end)); } catch {}
       }
     }
   },
@@ -118,12 +119,26 @@ function plate(no, title, right) {
 function captureWell(ctx) {
   const store = ctx.store;
 
+  const noteSel = (e) => {
+    ctx.viewLocal.captureSel = [e.target.selectionStart, e.target.selectionEnd];
+  };
+
   const textarea = el("textarea", {
     placeholder: "Say or type anything…",
     "aria-label": "Quick capture",
-    oninput: (e) => { ctx.viewLocal.captureText = e.target.value; },
+    oninput: (e) => { ctx.viewLocal.captureText = e.target.value; noteSel(e); },
+    // remember where the cursor is, so a re-render doesn't fling it to the end
+    onkeyup: noteSel,
+    onclick: noteSel,
+    onselect: noteSel,
     onfocus: () => { ctx.viewLocal.captureFocused = true; },
-    onblur: () => { ctx.viewLocal.captureFocused = false; },
+    // A re-render wipes the sheet with container.innerHTML = "", which rips
+    // this textarea out of the DOM — and Chrome fires blur on the way out.
+    // That is NOT the user leaving the field. Clearing the flag there is what
+    // made the box go dead mid-sentence: the restore pass below would read
+    // captureFocused === false and decline to put the cursor back. A blur that
+    // matters comes from a node that is still on the page.
+    onblur: (e) => { if (document.contains(e.target)) ctx.viewLocal.captureFocused = false; },
     onkeydown: (e) => {
       // ⌘/Ctrl + Enter files it, so capture never needs the mouse
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); fileIt(); }
