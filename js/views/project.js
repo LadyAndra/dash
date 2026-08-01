@@ -7,8 +7,10 @@
 // all surface together without needing folders (§0's core requirement).
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
-import { el, itemRow, emptyState, typeChip } from "./shared.js";
+import { el, itemRow, emptyState, typeChip, stageChip } from "./shared.js";
 import { openEditor } from "../editor.js";
+import { renderMilestoneEditor } from "./milestone-editor.js";
+import { visibleMilestones } from "../milestones.js";
 
 export const projectView = {
   name: "project",
@@ -83,6 +85,7 @@ function renderPicker(store, state, ctx) {
       .filter(i => (i.title || "").toLowerCase().includes(q));
     for (const it of items) {
       const count = membersOf(store, it.id).length;
+      const msCount = visibleMilestones(it).length;
       list.appendChild(el("div", {
         class: "item-row", role: "button", tabindex: "0",
         onclick: () => { state.projectId = it.id; ctx.rerender(); },
@@ -91,8 +94,10 @@ function renderPicker(store, state, ctx) {
         el("div", { class: "item-main" }, [
           el("h3", { class: "item-title", text: it.title || "Untitled project" }),
           el("div", { class: "item-meta" }, [
+            // Where the project is right now — derived, never stored (§3.3).
+            stageChip(it),
             el("span", { class: "chip", text: `${count} ${count === 1 ? "entry" : "entries"}` }),
-            store.statusChip ? null : null,
+            msCount ? el("span", { class: "chip", text: `${msCount} ${msCount === 1 ? "milestone" : "milestones"}` }) : null,
           ]),
         ]),
       ]));
@@ -114,11 +119,21 @@ function renderDetail(store, state, ctx) {
     el("button", { class: "btn", text: "← All projects", onclick: () => { state.projectId = null; ctx.rerender(); } }),
     el("div", { style: "flex:1" }, [
       el("h2", { text: project.title || "Untitled", style: "font-family:var(--font-body); font-size:var(--text-xl); margin:0 0 var(--space-1)" }),
+      // The stage chip sits with the title, where "what phase is this in?"
+      // gets asked. Derived at render time from the item in memory, so it
+      // updates the instant a milestone is ticked off or dated (§3.3).
+      el("div", { class: "item-meta" }, [stageChip(project)]),
       project.body ? el("p", { class: "item-body-preview", text: project.body, style: "-webkit-line-clamp:3" }) : null,
     ]),
     el("button", { class: "btn", text: "Edit", onclick: () => openEditor(store, project.id, { onClose: ctx.rerender, sync: ctx.sync }) }),
   ]);
   wrap.appendChild(header);
+
+  // The milestone editor (addendum §10, Phase M1). It lives here — on the
+  // project's own page — rather than in the Edit modal, because this is the
+  // page you're on when you're thinking about the project as a whole, and
+  // because drag-reordering inside a scrolling modal on a phone is miserable.
+  wrap.appendChild(renderMilestoneEditor(store, project, ctx));
 
   const linked = membersOf(store, project.id);
 

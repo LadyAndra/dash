@@ -12,6 +12,7 @@ import { el } from "./views/shared.js";
 import { openEditor } from "./editor.js";
 import { openSettings } from "./settings.js";
 import { createSelection } from "./selection.js";
+import { openMergeNotes, mergeNoteCount } from "./merge-notes.js";
 import { createCluster } from "./widgets/cluster.js";
 import { createPetWidget } from "./widgets/pet.js";
 
@@ -101,6 +102,12 @@ store.subscribe(() => {
     store.addType({ key: "sketch", label: "Sketch", icon: "✎", color: "plum" });
   }
 
+  // If another device is already running a newer format than this one, say so
+  // once, in plain English. Nothing is lost either way (logs are append-only
+  // and unknown ops are ignored-and-preserved) — but it explains why a new
+  // kind of information might not be showing up here yet.
+  if (store.formatNotice) toast(store.formatNotice, "info", 12000);
+
   if (sync.dirHandle) loadThemeFromFolder(sync.dirHandle);
   // gentle first-run guidance
   if (store.all().length === 0 && sync.mode === "folder" && !sync.dirHandle) {
@@ -164,13 +171,21 @@ function buildChrome() {
   // selecting, and keeps its label in sync with the count.
   const selectBtn = el("button", { class: "btn", id: "select-btn", onclick: () => selection.toggleMode() });
 
+  // Merge notes: only ever visible when there's actually something to say.
+  // A collision means an edit you made on one device was replaced by a later
+  // edit from another; the losing value is kept and can be put back (§6.1).
+  const mergeBtn = el("button", {
+    class: "btn", id: "merge-btn", style: "display:none",
+    onclick: () => openMergeNotes(store, render),
+  });
+
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
   const topbar = el("div", { class: "topbar" }, [
     viewTabs, groupSel,
     el("div", { class: "search-wrap" }, [search]),
-    selectBtn, newBtn, syncBtn, syncPill,
+    selectBtn, newBtn, mergeBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
@@ -210,6 +225,7 @@ function render() {
   // invisible state. exit() re-renders, so bail out and let that pass finish.
   if (selection.active && !view.supportsSelect) { selection.exit(); return; }
   updateSelectUI(view);
+  updateMergeUI();
 
   // The corner cluster belongs to the Home sheet. Hiding it elsewhere keeps it
   // off the catalog views' bottom-right corner, where the bulk-action bar and
@@ -277,6 +293,17 @@ function updateSelectUI(view) {
   btn.className = selection.active ? "btn btn-primary" : "btn";
 
   selection.renderBar(host);
+}
+
+// The merge-notes button is hidden unless there is genuinely something that
+// got overwritten. One number, no layout pressure when there's nothing to say.
+function updateMergeUI() {
+  const btn = document.getElementById("merge-btn");
+  if (!btn) return;
+  const n = mergeNoteCount(store);
+  btn.style.display = n ? "" : "none";
+  btn.textContent = `⚠ Merge notes (${n})`;
+  btn.title = "An edit made on one device was replaced by a later edit from another. Nothing was lost.";
 }
 
 // Applying a sidebar filter always lands you in the catalog: filtering makes

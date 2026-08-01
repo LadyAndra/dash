@@ -20,6 +20,7 @@
 // Everything is plain text/JSON so the data outlives the app (§3).
 
 import { getDeviceSlug } from "./device.js";
+import { FORMAT_VERSION } from "./store.js";
 import { toast } from "./ui/toast.js";
 import { allHashes, getBlob, putBlob } from "./blobs.js";
 import { Dropbox, DropboxAuthError } from "./dropbox.js";
@@ -70,6 +71,7 @@ export class Sync {
     this.logSlug = getDeviceSlug();
     this.readOffsets = {};   // logFileName -> bytes already applied
     this._lastSnapText = null; // last snapshot actually applied, to skip no-op reloads
+    this._wroteHeader = false; // one format header per run — see headerLine()
     this.status = "idle";
     this._statusListeners = new Set();
 
@@ -268,9 +270,34 @@ export class Sync {
     }
   }
 
+  // A one-line stamp written at the top of this run's batch of log lines,
+  // saying which format wrote the ops that follow (addendum §4.3: the version
+  // is bumped in the snapshot header AND the log header). A log is append-only
+  // so it can't be re-headed retrospectively — instead each run stamps its own
+  // segment, which is more useful anyway: it says exactly which build produced
+  // which ops. Readers that don't know the "header" kind ignore it, which is
+  // the same ignore-and-preserve rule every unknown op kind gets.
+  headerLine() {
+    return JSON.stringify({
+      op: "header",
+      formatVersion: FORMAT_VERSION,
+      device: this.logSlug,
+      at: new Date().toISOString(),
+    });
+  }
+
+  // Put the header in front of the first batch this run writes, and only that
+  // batch — one line per session, not one per save.
+  _withHeader(lines) {
+    if (!lines.length) return lines;
+    if (this._wroteHeader) return lines;
+    this._wroteHeader = true;
+    return [this.headerLine(), ...lines];
+  }
+
   // ---------- flush this device's pending ops ----------
   async flush() {
-    const lines = this.store.drainPendingAsLines();
+    const lines = this._withHeader(this.store.drainPendingAsLines());
     // always keep a local snapshot cache regardless of backend
     await idbSet("snapshot", this.store.toSnapshot());
 
@@ -409,7 +436,7 @@ export class Sync {
       if (rec) blobs.push({ hash, ext, mime: rec.mime, dataBase64: bufToBase64(rec.bytes) });
     }
     const payload = {
-      formatVersion: 1,
+      formatVersion: FORMAT_VERSION,
       device: this.logSlug,
       exportedAt: new Date().toISOString(),
       ops: outbox.map(l => JSON.parse(l)),

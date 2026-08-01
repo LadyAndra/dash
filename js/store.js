@@ -17,11 +17,20 @@
 //
 // The store is intentionally boring and explicit (§13.1). Comments say
 // WHY and cite the proposal so a future AI session can follow along.
+//
+// AUGUST 2026 — Phase M1 of the milestones addendum added the "ms" op kind
+// (project milestones) and the merge-notes record. Both are pure extensions:
+// nothing existing is reinterpreted, so old logs and old snapshots stay valid
+// byte for byte (addendum §4.3, §9).
 
 import { ulid } from "./ulid.js";
 import { now as clockNow, compare as clockCompare } from "./clock.js";
+import { nextOrder } from "./milestones.js";
 
-export const FORMAT_VERSION = 1;
+// 1 -> 2 in August 2026: adds the "ms" op kind and the optional milestones
+// array on project items (addendum §4.3). This marks CAPABILITY, not
+// incompatibility — see loadSnapshot() for how a version mismatch is handled.
+export const FORMAT_VERSION = 2;
 
 // The dedicated "Project" type. An entry assigned to a project links to it
 // with the PROJECT_LINK relationship label, which lets us tell project
@@ -36,10 +45,21 @@ export const OP = {
   ADD:    "add",      // field (a set) + value (element)
   REMOVE: "remove",   // field (a set) + value (element)
   DELETE: "delete",   // tombstone the item
+  MS:     "ms",       // milestone sub-record: action add | set | remove
 };
 
 const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
+
+// The only fields a milestone `set` op may touch (addendum §2.1). `mid` and
+// `created` are write-once at add time and deliberately not settable.
+const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"]);
+
+// Where this device's merge notes are kept between reloads. Per-device on
+// purpose, like every other localStorage key in Dash: a merge note is an
+// inbox for the person sitting at THIS device, not content to be synced.
+const MERGE_NOTES_KEY = "dash.mergeNotes";
+const MERGE_NOTES_MAX = 60;
 
 function emptyItem(id) {
   return {
@@ -57,6 +77,10 @@ function emptyItem(id) {
     _deleted: false,
     // per-field winning timestamps, so LWW is decided without re-reading logs
     _fieldTs: {},
+    // NOTE: there is deliberately NO `milestones: []` here. Missing means
+    // empty (addendum §9), so the field only ever appears on an item once a
+    // real `ms add` op materialises it. That is what makes "no migration"
+    // true rather than aspirational.
   };
 }
 
@@ -68,6 +92,9 @@ export class Store {
     this._listeners = new Set();
     this._actionListeners = new Set();
     this._registryTs = {};        // LWW bookkeeping for registry edits
+    this._collisions = loadMergeNotes();
+    this._collisionKeys = new Set(this._collisions.map(c => c.key));
+    this.formatNotice = null;     // set if a newer snapshot turns up (see loadSnapshot)
   }
 
   // ---- subscription: views re-render on change ----
@@ -243,18 +270,98 @@ export class Store {
   }
 
   // =====================================================
+  //  MILESTONES (addendum §2, §3, §4)
+  // =====================================================
+  // Three actions cover everything, on purpose (addendum §4.1): there is no
+  // separate "mark done" op (done is a `set` on the done field), and no
+  // "reorder" op (a reorder is a `set` on ONE milestone's order field). Every
+  // new op kind is future merge-code surface, so the set is kept minimal.
+
+  // Missing array means empty array, everywhere, always (§9). Callers get a
+  // real array back so nothing downstream has to null-check.
+  milestonesOf(id) {
+    const it = this.get(id);
+    return it && it.milestones ? it.milestones : [];
+  }
+
+  milestone(id, mid) {
+    return this.milestonesOf(id).find(m => m.mid === mid) || null;
+  }
+
+  // Append a milestone. Returns its mid so the caller can focus the new row.
+  addMilestone(id, partial = {}) {
+    const mid = ulid();
+    const ts = clockNow();
+    const value = {
+      label:   partial.label || "",
+      date:    partial.date || null,
+      remind:  partial.remind || null,
+      order:   typeof partial.order === "number" ? partial.order : nextOrder(this.milestonesOf(id)),
+      created: new Date(ts.wall).toISOString(),
+    };
+    this._applyOp({ op: OP.MS, action: "add", itemId: id, mid, value, ts }, true);
+    this._action("edit", { id, field: "milestones" });
+    return mid;
+  }
+
+  setMilestoneField(id, mid, field, value) {
+    if (!MS_FIELDS.has(field)) throw new Error(`setMilestoneField: '${field}' is not a milestone field`);
+    this._applyOp({ op: OP.MS, action: "set", itemId: id, mid, field, value, ts: clockNow() }, true);
+    // Ticking a milestone off IS a specific thing you just did, so the pet
+    // gets the same signal as finishing an item. Every other milestone edit is
+    // an ordinary edit. Overdue-ness deliberately never reaches the pet
+    // (addendum §8) — that is the indicator channel's job, not the pet's.
+    if (field === "done" && value) this._action("done", { id, mid });
+    else this._action("edit", { id, field: "milestones", mid });
+  }
+
+  // Tombstone, never erase (§13.2 #8 / addendum §2.1). The editor's "removed
+  // milestones" drawer restores one by clearing the field again.
+  removeMilestone(id, mid) {
+    this._applyOp({ op: OP.MS, action: "remove", itemId: id, mid, ts: clockNow() }, true);
+    this._action("edit", { id, field: "milestones", mid });
+  }
+
+  restoreMilestone(id, mid) {
+    this.setMilestoneField(id, mid, "removed", null);
+  }
+
+  // The rare precision-exhaustion repair (addendum §3.2): one `set` per
+  // milestone, re-spacing the whole list to fresh 1000s. Legal, rare,
+  // self-healing — and NOT what an ordinary reorder does.
+  renumberMilestones(id, pairs) {
+    for (const { mid, order } of pairs) this.setMilestoneField(id, mid, "order", order);
+  }
+
+  // =====================================================
   //  OP APPLICATION  (used by both local edits and log replay)
   //  local=true  -> also queue to pendingOps for flushing
   // =====================================================
   _applyOp(op, local = false) {
     switch (op.op) {
       case OP.CREATE: {
-        if (!this.items.has(op.itemId)) {
+        const existing = this.items.get(op.itemId);
+        if (!existing) {
           const it = emptyItem(op.itemId);
           Object.assign(it, structuredCloneSafe(op.value));
           it._fieldTs = {};
+          it._fieldTs.__create = op.ts;
           this.items.set(op.itemId, it);
+          break;
         }
+        // The item is already here. Two ways that happens:
+        //   - This exact create is being replayed again. Nothing to do.
+        //   - An EDIT for this item arrived before its create did, and
+        //     _ensure() conjured a blank to hold it. Log files are read
+        //     independently and can arrive in any sequence, so this is normal,
+        //     not corruption — but the old code skipped the create outright
+        //     and the item silently kept the blank's title and type forever.
+        //     (Found August 2026 by the Phase M1 out-of-order replay tests.)
+        // Same blank-filling rule as a milestone `add` (addendum §4.2): the
+        // skeleton only supplies fields nothing later has already claimed.
+        if (existing._fieldTs.__create) break;
+        existing._fieldTs.__create = op.ts;
+        fillCreateBlanks(existing, structuredCloneSafe(op.value || {}));
         break;
       }
       case OP.SET: {
@@ -263,6 +370,8 @@ export class Store {
           it[op.field] = op.value;
           it._fieldTs[op.field] = op.ts;
           this._bumpModified(it, op.ts);
+        } else {
+          this._noteCollision(it, op.field, op, { label: op.field });
         }
         break;
       }
@@ -283,11 +392,104 @@ export class Store {
         it._deleted = true;
         break;
       }
+      case OP.MS: {
+        const it = this._ensure(op.itemId);
+        this._applyMilestoneOp(it, op);
+        this._bumpModified(it, op.ts);
+        break;
+      }
       default:
+        // Forward compatibility (§13.2 #1, addendum §4.3): an op kind this
+        // build doesn't know is IGNORED AND PRESERVED, never an error. The op
+        // stays in the append-only log, so it materialises the moment this
+        // device updates. Nothing is lost by being behind.
         console.warn("unknown op kind (ignored, forward-compat):", op.op);
     }
     if (local) { this.pendingOps.push(op); this._emit(); }
     return op;
+  }
+
+  // ---- the milestone merge rules (addendum §4.2) ----
+  // The milestones COLLECTION merges like a set; each milestone's FIELDS merge
+  // like an item's scalar fields. Every op addresses a milestone by mid, so
+  // two devices editing different milestones of the same project can't collide
+  // at all — their ops touch different keys.
+  //
+  // LWW bookkeeping reuses the item's own _fieldTs map under namespaced keys
+  // ("ms:<mid>:date"), which means milestone merge needs no new machinery and
+  // survives a reload for free, because _fieldTs is already in the snapshot.
+  _applyMilestoneOp(it, op) {
+    if (!op.mid) return;                         // malformed; ignore rather than crash
+    if (!Array.isArray(it.milestones)) it.milestones = [];
+    const ms = this._ensureMilestone(it, op.mid);
+
+    if (op.action === "add") {
+      // Idempotent by mid. The value snapshot applies ON FIRST SIGHT ONLY;
+      // later state comes from `set` ops. If a `set` got here first (log tails
+      // can arrive in any order, §4.2), that field already has a winning
+      // timestamp and the add just fills the remaining blanks.
+      const addKey = `ms:${op.mid}:__add`;
+      if (it._fieldTs[addKey]) return;           // already added — no-op
+      it._fieldTs[addKey] = op.ts;
+      const v = op.value || {};
+      for (const f of ["label", "date", "remind", "order"]) {
+        if (v[f] === undefined) continue;
+        if (it._fieldTs[`ms:${op.mid}:${f}`]) continue;  // a set already won this field
+        ms[f] = v[f];
+      }
+      if (!ms.created) ms.created = v.created || new Date(op.ts.wall).toISOString();
+      return;
+    }
+
+    if (op.action === "set") {
+      if (!MS_FIELDS.has(op.field)) return;      // unknown milestone field: ignore + preserve
+      const key = `ms:${op.mid}:${op.field}`;
+      if (this._winsLWW(it, key, op.ts)) {
+        ms[op.field] = op.value;
+        it._fieldTs[key] = op.ts;
+      } else {
+        this._noteCollision(it, key, op, { mid: op.mid, label: `${ms.label || "milestone"} · ${op.field}` });
+      }
+      return;
+    }
+
+    if (op.action === "remove") {
+      // A remove is just an LWW set of the tombstone, which is why
+      // remove-vs-edit needs no special case: the edit still applies to the
+      // tombstoned record underneath, and restoring is a later set to null.
+      const key = `ms:${op.mid}:removed`;
+      const stamp = new Date(op.ts.wall).toISOString();
+      if (this._winsLWW(it, key, op.ts)) {
+        ms.removed = stamp;
+        it._fieldTs[key] = op.ts;
+      }
+      return;
+    }
+
+    console.warn("unknown milestone action (ignored, forward-compat):", op.action);
+  }
+
+  // A milestone we haven't seen yet gets a skeleton, so a `set` arriving
+  // before its `add` has somewhere to land (§4.2). The `add` fills the blanks
+  // when it turns up.
+  //
+  // The stored array is kept sorted BY MID, not by order. Two reasons, and
+  // neither is about display (display sorting is milestones.js's job, by the
+  // `order` field):
+  //   - mid never changes, so the array has one canonical arrangement. Two
+  //     devices that received the same ops in different sequences end up with
+  //     byte-identical snapshots, which is what makes the convergence test a
+  //     real test rather than a normalisation exercise.
+  //   - It also means the snapshot file stops churning in Dropbox just
+  //     because ops arrived in a different order.
+  _ensureMilestone(it, mid) {
+    let ms = it.milestones.find(m => m.mid === mid);
+    if (!ms) {
+      ms = { mid, label: "", date: null, remind: null, done: null, order: null, removed: null, created: null };
+      it.milestones.push(ms);
+      it.milestones.sort((a, b) => (a.mid < b.mid ? -1 : a.mid > b.mid ? 1 : 0));
+    }
+    return ms;
   }
 
   _ensure(id) {
@@ -307,6 +509,90 @@ export class Store {
       it.dates.modified = iso;
       it.dates.touched = iso;
     }
+  }
+
+  // =====================================================
+  //  MERGE NOTES (§6.1 "nothing is ever silently unrecoverable")
+  // =====================================================
+  // Recorded when — and ONLY when — an incoming op LOSES a last-writer-wins
+  // race against a value written by a different device. That rule is exact
+  // and has no false positives: an ordinary sequential edit (change it on the
+  // Mac, sync, change it again on the phone) always carries the later stamp,
+  // so it always wins and is never recorded.
+  //
+  // The honest limitation, worth knowing before reading the panel: with a
+  // scalar clock you cannot tell "concurrent" from "sequential" for the op
+  // that WINS, so the note lands on whichever device receives the older op.
+  // In a two-device offline collision that is one device, not both. The value
+  // that lost is preserved in full either way, and the logs hold both forever.
+  _noteCollision(it, key, op, meta = {}) {
+    const prevTs = it._fieldTs[key];
+    if (!prevTs) return;
+    if (prevTs.device === op.ts.device) return;         // same device correcting itself
+    const current = key.startsWith("ms:")
+      ? (this._msFieldValue(it, meta.mid, op.field))
+      : it[op.field];
+    if (sameValue(current, op.value)) return;           // both wrote the same thing
+
+    const noteKey = `${it.id}|${key}|${op.ts.wall}.${op.ts.count}.${op.ts.device}`;
+    if (this._collisionKeys.has(noteKey)) return;       // already recorded
+    this._collisionKeys.add(noteKey);
+
+    this._collisions.unshift({
+      key: noteKey,
+      itemId: it.id,
+      itemTitle: it.title || "Untitled",
+      mid: meta.mid || null,
+      field: op.field,
+      what: meta.label || op.field,
+      lostValue: op.value === undefined ? null : op.value,
+      lostDevice: op.ts.device,
+      lostAt: new Date(op.ts.wall).toISOString(),
+      keptValue: current === undefined ? null : current,
+      keptDevice: prevTs.device,
+      keptAt: new Date(prevTs.wall).toISOString(),
+      seenAt: new Date().toISOString(),
+    });
+    if (this._collisions.length > MERGE_NOTES_MAX) this._collisions.length = MERGE_NOTES_MAX;
+    saveMergeNotes(this._collisions);
+  }
+
+  _msFieldValue(it, mid, field) {
+    const ms = (it.milestones || []).find(m => m.mid === mid);
+    return ms ? ms[field] : undefined;
+  }
+
+  // The merge-notes surface reads these (see js/merge-notes.js).
+  collisions() { return this._collisions; }
+
+  dismissCollision(key) {
+    this._collisions = this._collisions.filter(c => c.key !== key);
+    saveMergeNotes(this._collisions);
+    this._emit();
+  }
+
+  clearCollisions() {
+    this._collisions = [];
+    this._collisionKeys.clear();
+    saveMergeNotes(this._collisions);
+    this._emit();
+  }
+
+  // Put the value that lost back, as a fresh normal edit with a new timestamp
+  // (so it wins cleanly everywhere). Works for both plain fields and
+  // milestone fields — restoring is never a special merge path.
+  restoreCollision(key) {
+    const c = this._collisions.find(x => x.key === key);
+    if (!c) return false;
+    try {
+      if (c.mid) this.setMilestoneField(c.itemId, c.mid, c.field, c.lostValue);
+      else this.setField(c.itemId, c.field, c.lostValue);
+    } catch (err) {
+      console.warn("couldn't restore that merge note:", err);
+      return false;
+    }
+    this.dismissCollision(key);
+    return true;
   }
 
   // =====================================================
@@ -351,11 +637,21 @@ export class Store {
 
   loadSnapshot(snap) {
     if (!snap) return;
+    // A snapshot written by a NEWER build used to throw here. It no longer
+    // does, because the addendum (§4.3) requires that brief version skew
+    // between devices must not corrupt or crash: format bumps in Dash are
+    // additive, unknown item fields ride along untouched through the
+    // Object.assign below, and unknown op kinds are ignored-and-preserved in
+    // _applyOp. The logs are the source of truth and are append-only, so the
+    // worst case of loading a newer snapshot is that this device doesn't yet
+    // display something — not that anything is lost. We say so out loud
+    // rather than silently, per §13.1 "loud, legible".
     if (snap.formatVersion && snap.formatVersion > FORMAT_VERSION) {
-      throw new Error(
-        `This data was written by a newer version of Dash (format ${snap.formatVersion}). ` +
-        `Please update the app before opening it, so nothing gets damaged.`
-      );
+      this.formatNotice =
+        `Some of your data was written by a newer version of Dash (format ${snap.formatVersion}). ` +
+        `Everything is safe and nothing was changed, but this device may not show the newest kinds of ` +
+        `information until you refresh the app here.`;
+      console.warn(this.formatNotice);
     }
     if (snap.registry) this.registry = snap.registry;
     for (const raw of snap.items || []) {
@@ -377,6 +673,10 @@ export class Store {
   // replay a device's whole log (array of parsed op objects)
   replayLog(ops) {
     for (const op of ops) {
+      // A log segment's format stamp, written once per run by sync.js. It
+      // isn't an edit — it's provenance — so it's skipped here rather than
+      // falling through to the unknown-op warning.
+      if (op.op === "header") continue;
       if (op.op === "registry") { this._replayRegistry(op); continue; }
       if (op.op === "registry-remove") {
         const list = this.registry[op.kind];
@@ -398,10 +698,6 @@ export class Store {
     if (i >= 0) list[i] = { ...list[i], ...op.value };
     else list.push(op.value);
   }
-
-  // Detect recent same-field collisions for the merge-notes UI (§6.1).
-  // (Full UI is Phase 4; the data hook exists now so nothing is lost.)
-  collisions() { return this._collisions || []; }
 }
 
 // ---------- helpers ----------
@@ -427,6 +723,40 @@ function applySetRemove(it, field, value) {
   }
 }
 
+// Merge a create-op's skeleton into an item that already exists because one of
+// its edits got here first. Every branch below answers the same question: is
+// there already better information than the skeleton's?
+function fillCreateBlanks(it, skel) {
+  for (const [k, v] of Object.entries(skel)) {
+    if (k === "id" || k === "_fieldTs" || k === "milestones") continue;  // never skeleton-supplied
+    if (k === "_deleted") { if (!it._deleted && v) it._deleted = true; continue; }
+    if (k === "tags" || k === "links" || k === "attachments") {
+      // Set fields: add-ops may already have landed, so merge, never replace.
+      for (const one of v || []) applySetAdd(it, k, one);
+      continue;
+    }
+    if (k === "dates") {
+      const d = v || {};
+      if (!it.dates.created) it.dates.created = d.created || null;
+      if (d.modified && (!it.dates.modified || d.modified > it.dates.modified)) it.dates.modified = d.modified;
+      if (d.touched && (!it.dates.touched || d.touched > it.dates.touched)) it.dates.touched = d.touched;
+      for (const f of ["due", "remind"]) {
+        if (it._fieldTs[f]) continue;                 // a set op already won it
+        if (it.dates[f] == null && d[f] != null) it.dates[f] = d[f];
+      }
+      continue;
+    }
+    if (it._fieldTs[k]) continue;                     // a set op already won this field
+    it[k] = v;
+  }
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
 function stripInternal(it) {
   // keep _deleted + _fieldTs (needed for correct merge across reloads),
   // but present a clean object; everything here is JSON-safe.
@@ -439,12 +769,26 @@ function structuredCloneSafe(obj) {
   catch { return JSON.parse(JSON.stringify(obj)); }
 }
 
+// Merge notes are per-device UI state (like dash.view or dash.collapsed), so
+// they live in localStorage and are never synced. A device that isn't there
+// when a collision resolves has nothing to be told about.
+function loadMergeNotes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MERGE_NOTES_KEY) || "[]");
+    return Array.isArray(raw) ? raw : [];
+  } catch { return []; }
+}
+function saveMergeNotes(list) {
+  try { localStorage.setItem(MERGE_NOTES_KEY, JSON.stringify(list)); }
+  catch { /* storage full or blocked; the notes just don't survive a reload */ }
+}
+
 function defaultRegistry() {
   return {
     types: [
       { key: "quick-idea",  label: "Quick idea",      icon: "⚡", color: "ochre" },
       { key: "project",     label: "Project",         icon: "◆",  color: "green" },
-      { key: "strategy",    label: "Long-term goal",  icon: "◎",  color: "blue" },
+      { key: "strategy",    label: "Long-term goal",  icon: "◎", color: "blue" },
       { key: "note",        label: "Note",            icon: "•",  color: "slate" },
       { key: "sketch",      label: "Sketch",          icon: "✎",  color: "plum" },
     ],

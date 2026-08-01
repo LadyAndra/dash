@@ -4,6 +4,7 @@
 
 import { colorToken, tintToken } from "../theme.js";
 import { blobObjectURL } from "../blobs.js";
+import { stageOf } from "../milestones.js";
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -40,6 +41,30 @@ export function statusChip(store, item) {
 
 export function tagChips(item) {
   return item.tags.map(t => el("span", { class: "tag", text: t }));
+}
+
+// ---- the stage chip (milestones addendum §3.3) ----
+// Where a project is right now: its earliest unfinished milestone, or
+// "Complete" when they're all ticked off, or nothing at all when the project
+// has no milestones. COMPUTED HERE, AT RENDER TIME, FROM THE IN-MEMORY ITEM —
+// there is no stage field, no stage registry, and nothing is ever written back
+// to the store. That's the whole point: it can't go stale and can't conflict.
+//
+// Colour: --text-muted on --surface-raised normally, --ember when the current
+// stage's date has passed. Overdue is an indicator, which is the one thing
+// tokens.css reserves ember for — so this is its sanctioned use, and there is
+// no ember anywhere else in this feature.
+//
+// Returns null for anything that isn't a project with milestones, so callers
+// can drop it straight into a children array.
+export function stageChip(item) {
+  if (!item || item.type !== "project") return null;
+  const stage = stageOf(item);
+  if (!stage) return null;
+  return el("span", {
+    class: "stage-chip" + (stage.overdue ? " overdue" : "") + (stage.complete ? " complete" : ""),
+    title: stage.overdue ? "This stage's date has passed" : "Current stage",
+  }, [stage.label]);
 }
 
 export function swatch(store, item) {
@@ -98,6 +123,7 @@ export function itemRow(store, item, onOpen, opts = {}) {
   const meta = el("div", { class: "item-meta" }, [
     typeChip(store, item),
     statusChip(store, item),
+    stageChip(item),                 // projects only; null for everything else
     el("span", { class: "num", text: shortDate(item) }),
   ]);
   const main = el("div", { class: "item-main" }, [
@@ -130,6 +156,7 @@ export function itemCard(store, item, onOpen, opts = {}) {
   const marks = el("div", { class: "item-meta" }, [
     opts.hideType ? null : typeChip(store, item),
     opts.hideStatus ? null : statusChip(store, item),
+    stageChip(item),                 // projects only; null for everything else
   ]);
 
   const card = el("div", {
