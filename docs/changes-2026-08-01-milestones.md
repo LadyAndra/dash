@@ -14,7 +14,7 @@ Drag these to GitHub, as **folders** (not loose files), the way you always do:
 - `docs` — this note plus the updated current-state doc
 - `sw.js` — **upload this one separately, on its own.** It's a loose file at the repo root.
 
-`sw.js` is bumped to `dash-v17`. If you forget it, your devices keep serving the old code and none of this appears.
+`sw.js` is bumped to `dash-v18`. If you forget it, your devices keep serving the old code and none of this appears.
 
 **New files:**
 
@@ -55,6 +55,23 @@ The ✕ removes a milestone from the list, but the record stays. A **"Removed mi
 The order you drag things into is **the sequence the project moves through**. The dates are **when things are due**. They're allowed to disagree — you might date "Final" first and fill in the earlier phases later, or push one phase's date past a later one's without meaning to change the pipeline. When they disagree, the order wins for "what phase are we in", and dates will win on the Calendar when that lands. Each view uses the thing it's actually about.
 
 ---
+
+## Attaching entries to a phase
+
+Each milestone row has a line underneath it saying **"No entries yet"** or **"3 entries"**. Tap it and the list opens under that milestone, with two buttons:
+
+- **＋ Add entry** — pick something. Entries already in this project are listed first; anything else in Dash is underneath, and picking one of those adds it to the project as well
+- **＋ New entry in this phase** — creates it, attaches it, and opens it, in one go
+
+The ✕ next to an attached entry takes it **off the phase but leaves it in the project** — those are two different things, and collapsing them would quietly lose a project assignment.
+
+The project's existing by-type list below is untouched and still shows everything, so nothing you already rely on has moved.
+
+**An entry can sit on more than one phase.** That isn't a loose end — it's forced by how Dash merges. If you put an entry on "Research" on the Mac and on "Execution" on the phone while both are offline, both survive, and there's no way to enforce "only one" without inventing a conflict where the model says there isn't one. Better to allow it out in the open than to have it surprise you later.
+
+**Under the hood it's the same mechanism that puts an entry in a project** — a link. That's why this was a small change rather than a big one: no new kind of record, no new merge rules, no format bump. There's a test that literally asserts no new op kinds were introduced.
+
+Remove a phase and its entries keep their attachment quietly in the background; put the phase back and they come back with it.
 
 ## The stage chip
 
@@ -115,11 +132,12 @@ This covers ordinary fields too, not just milestones — a title edited on both 
 3. Give "Research" a date in the past. The row goes ember and says **Overdue**, and so does the chip by the project's title.
 4. Tick "Research" off. The chip moves to "Execution" immediately, and the ember goes away.
 5. Drag "Final" to the top, or use the ↑ arrows. Watch the chip change to "Final".
-6. Remove one with the ✕, then open **Removed milestones** and put it back.
-7. Switch to the **List** or **Board** view — every project carries its stage chip there too.
-8. **The two-device test.** Turn off wifi on both. On the Mac, date one milestone and tick another. On the iPhone, rename a *different* milestone of the same project and add a new one. Turn wifi back on, tap Sync on both. Everything should be there, on both, with no merge notes at all — different milestones can't collide.
-9. **Then force a collision.** Offline again, change the *same* milestone's date on both devices to different dates. Back online: the later edit wins on both, and one of the two devices grows a **⚠ Merge notes** button holding the one that lost.
-10. **Theme swap.** Drop a different theme JSON in `Dash/themes/default.json` (or hit dark mode). The milestone rows, the chip and the merge-notes window should all follow it — there is not a single hardcoded colour, size or font in any of the new code.
+6. Tap **"No entries yet"** under a milestone. Use **＋ Add entry** to attach a couple of things, then **✕** to take one back off — it stays in the project, just not on that phase.
+7. Remove a milestone with the ✕, then open **Removed milestones** and put it back.
+8. Switch to the **List** or **Board** view — every project carries its stage chip there too.
+9. **The two-device test.** Turn off wifi on both. On the Mac, date one milestone and tick another. On the iPhone, rename a *different* milestone of the same project and add a new one. Turn wifi back on, tap Sync on both. Everything should be there, on both, with no merge notes at all — different milestones can't collide.
+10. **Then force a collision.** Offline again, change the *same* milestone's date on both devices to different dates. Back online: the later edit wins on both, and one of the two devices grows a **⚠ Merge notes** button holding the one that lost.
+11. **Theme swap.** Drop a different theme JSON in `Dash/themes/default.json` (or hit dark mode). The milestone rows, the chip and the merge-notes window should all follow it — there is not a single hardcoded colour, size or font in any of the new code.
 
 ---
 
@@ -127,8 +145,8 @@ This covers ordinary fields too, not just milestones — a title edited on both 
 
 Same posture as the pet: the failure mode here is silent (a merge that drops an edit doesn't throw an error, it just quietly has less in it), so "it seemed to work" isn't evidence.
 
-- **171 merge and date assertions.** Hand-written two-device log fixtures — edits to different milestones, a same-field collision, remove-versus-edit, ops arriving before the thing they refer to, two devices inserting into the same gap — each replayed in **every possible order** and checked for an identical end state every time. Plus the real thing: two live copies of Dash making genuine offline edits and swapping log lines.
-- **65 render assertions** driving the actual milestone editor against a real DOM: adding, reordering (and checking a move really is *one* change to *one* milestone), ticking, removing, restoring, overdue flagging, a 40-milestone list, and a scan asserting no hardcoded colours or sizes.
+- **181 merge and date assertions.** Hand-written two-device log fixtures — edits to different milestones, a same-field collision, remove-versus-edit, ops arriving before the thing they refer to, two devices inserting into the same gap — each replayed in **every possible order** and checked for an identical end state every time. Plus the real thing: two live copies of Dash making genuine offline edits and swapping log lines.
+- **92 render assertions** driving the actual milestone editor against a real DOM: adding, reordering (and checking a move really is *one* change to *one* milestone), ticking, removing, restoring, overdue flagging, attaching and detaching entries, a 40-milestone list, and a scan asserting no hardcoded colours or sizes. One of them counts archive scans and fails if a 12-milestone project walks the archive more than once.
 - **Date logic across both 2026 daylight-saving switches**, month ends, a year end and a leap day — proving the date-only strings make all of it a non-event rather than assuming it.
 - A load check on every module and a `sw.js` audit confirming nothing on disk is missing from the cache list.
 

@@ -23,7 +23,8 @@
 // or font anywhere in this file. Ember appears only on an overdue date, which
 // is the indicator token doing exactly the job tokens.css reserves it for.
 
-import { el } from "./shared.js";
+import { el, typeChip } from "./shared.js";
+import { openEditor } from "../editor.js";
 import {
   visibleMilestones, removedMilestones, sortMilestones,
   orderBetween, needsRenumber, renumbered,
@@ -35,8 +36,9 @@ import {
 // cursor" and "is the removed drawer open".
 function scratchOf(ctx) {
   if (!ctx.viewLocal.ms) {
-    ctx.viewLocal.ms = { showRemoved: false, focusKey: null, focusSel: null, drafts: {} };
+    ctx.viewLocal.ms = { showRemoved: false, focusKey: null, focusSel: null, drafts: {}, expanded: {} };
   }
+  if (!ctx.viewLocal.ms.expanded) ctx.viewLocal.ms.expanded = {};
   return ctx.viewLocal.ms;
 }
 
@@ -46,6 +48,11 @@ export function renderMilestoneEditor(store, project, ctx) {
   const ms = visibleMilestones(project);
   const removed = removedMilestones(project);
   const progress = milestoneProgress(project);
+
+  // Which entries are on which phase — ONE scan of the archive for the whole
+  // section, not one per milestone. (Standing rule in the current-state doc:
+  // assume any new store scanner has the per-item-scan bug until checked.)
+  const membership = store.milestoneMembership(project.id);
 
   const section = el("section", { class: "ms-section", "aria-label": "Milestones" });
 
@@ -75,7 +82,9 @@ export function renderMilestoneEditor(store, project, ctx) {
     }));
   } else {
     const list = el("div", { class: "ms-list", role: "list" });
-    ms.forEach((m, i) => list.appendChild(milestoneRow(store, project, ctx, s, ms, m, i, today)));
+    ms.forEach((m, i) => list.appendChild(
+      milestoneBlock(store, project, ctx, s, ms, m, i, today, membership.get(m.mid) || [])
+    ));
     section.appendChild(list);
   }
 
@@ -113,15 +122,26 @@ export function renderMilestoneEditor(store, project, ctx) {
 }
 
 // ===================================================================
-//  ONE ROW
+//  ONE MILESTONE — the editing row, plus its (collapsed) entry list
 // ===================================================================
-function milestoneRow(store, project, ctx, s, list, m, index, today) {
+// The row and the entry panel are siblings inside a wrapper rather than the
+// panel living inside the row, because the ROW is the draggable thing. Nesting
+// a list of buttons inside a draggable element makes both harder to use.
+function milestoneBlock(store, project, ctx, s, list, m, index, today, entries) {
+  const block = el("div", { class: "ms-item", role: "listitem" });
+  const open = !!s.expanded[m.mid];
+
+  block.appendChild(milestoneRow(store, project, ctx, s, list, m, index, today, entries, open));
+  if (open) block.appendChild(entryPanel(store, project, ctx, s, m, entries));
+  return block;
+}
+
+function milestoneRow(store, project, ctx, s, list, m, index, today, entries, open) {
   const done = !!m.done;
   const overdue = !done && isOverdue(m.date, today);
 
   const row = el("div", {
     class: "ms-row" + (done ? " is-done" : "") + (overdue ? " is-overdue" : ""),
-    role: "listitem",
     "data-mid": m.mid,
   });
 
@@ -216,6 +236,27 @@ function milestoneRow(store, project, ctx, s, list, m, index, today) {
     onclick: () => store.removeMilestone(project.id, m.mid),
   });
 
+  // --- the entries disclosure ---
+  // A separate button rather than "tap the row", because the row's biggest
+  // target is the name box and tapping that has to keep meaning "edit the
+  // name". This is always present, including when the phase is empty, so
+  // there's an obvious way in to attach the first thing.
+  const count = entries.length;
+  const disclose = el("button", {
+    class: "ms-entries-toggle",
+    type: "button",
+    "aria-expanded": String(open),
+    "aria-label": `${open ? "Hide" : "Show"} entries in ${m.label || "this milestone"}`,
+    onclick: () => {
+      if (open) delete s.expanded[m.mid];
+      else s.expanded[m.mid] = true;
+      ctx.rerender();                      // UI-only: nothing is written to the store
+    },
+  }, [
+    el("span", { class: "caret", text: open ? "▾" : "▸" }),
+    el("span", { text: count === 0 ? "No entries yet" : `${count} ${count === 1 ? "entry" : "entries"}` }),
+  ]);
+
   row.append(
     handle,
     toggle,
@@ -226,12 +267,143 @@ function milestoneRow(store, project, ctx, s, list, m, index, today) {
         el("label", { class: "ms-date-field" }, [el("span", { class: "mk", text: "Remind" }), remindInput]),
         overdue ? el("span", { class: "mk mk-ember ms-overdue", text: `Overdue · ${formatDay(m.date)}` }) : null,
       ]),
+      disclose,
     ]),
     el("div", { class: "ms-controls" }, [up, down, del]),
   );
 
   attachDrag(row, store, project, list, m, index);
   return row;
+}
+
+// ===================================================================
+//  THE ENTRIES ON A PHASE
+// ===================================================================
+// Attaching is a link on the ENTRY (store.attachToMilestone), so it merges
+// with the same set semantics tags and project membership already use — no new
+// op kind, no format change. Detaching takes the entry off the phase but
+// leaves it in the project: those are two different things, and guessing
+// otherwise would silently lose a project assignment.
+function entryPanel(store, project, ctx, s, m, entries) {
+  const panel = el("div", { class: "ms-entries" });
+
+  if (entries.length === 0) {
+    panel.appendChild(el("p", {
+      class: "hint",
+      text: "Nothing on this phase yet. Attach entries that already belong to this project, or start a new one here.",
+    }));
+  } else {
+    for (const it of entries) panel.appendChild(entryRow(store, project, ctx, m, it));
+  }
+
+  panel.appendChild(el("div", { class: "ms-entry-actions" }, [
+    el("button", {
+      class: "btn", type: "button", text: "＋ Add entry",
+      onclick: () => openPhasePicker(store, project, m, ctx),
+    }),
+    el("button", {
+      class: "btn", type: "button", text: "＋ New entry in this phase",
+      onclick: () => {
+        const newId = store.createItem({ title: "" });
+        store.attachToMilestone(newId, project.id, m.mid);
+        openEditor(store, newId, { onClose: ctx.rerender, sync: ctx.sync });
+      },
+    }),
+  ]));
+
+  return panel;
+}
+
+// One attached entry: enough to recognise it, a way in, and a way off.
+// Deliberately NOT the full specimen row from the list view — this is a
+// sub-list inside an editor, and a full row here would swamp the milestone
+// it belongs to.
+function entryRow(store, project, ctx, m, it) {
+  const open = () => ctx.onOpen(it.id);
+  return el("div", { class: "ms-entry" }, [
+    el("button", {
+      class: "ms-entry-open", type: "button",
+      "aria-label": `Open ${it.title || "Untitled"}`,
+      onclick: open,
+    }, [
+      typeChip(store, it),
+      el("span", { class: "ms-entry-title", text: it.title || "Untitled" }),
+    ]),
+    el("button", {
+      class: "ms-move ms-del", type: "button", text: "✕",
+      "aria-label": `Take ${it.title || "this entry"} off ${m.label || "this milestone"} (it stays in the project)`,
+      onclick: () => store.detachFromMilestone(it.id, project.id, m.mid),
+    }),
+  ]);
+}
+
+// Pick something to attach. Entries already in the project come first, because
+// that's nearly always what's wanted; anything else in the archive is still
+// reachable underneath, and attaching one of those adds it to the project too
+// (being on a phase implies being in the project).
+function openPhasePicker(store, project, m, ctx) {
+  const onPhase = new Set(
+    (store.milestoneMembership(project.id).get(m.mid) || []).map(i => i.id)
+  );
+  const inProject = new Set(
+    store.all().filter(i => i.id !== project.id &&
+      i.links.some(l => l.target === project.id && l.label === "in project")).map(i => i.id)
+  );
+
+  const candidates = store.all().filter(i =>
+    i.id !== project.id && i.type !== "project" && !onPhase.has(i.id));
+
+  const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
+  const search = el("input", {
+    type: "text", placeholder: "Search entries…",
+    "aria-label": "Search entries to attach to this milestone",
+  });
+  const list = el("div", { class: "pick-list" });
+
+  function draw() {
+    list.innerHTML = "";
+    const q = search.value.trim().toLowerCase();
+    const matches = candidates.filter(i => (i.title || "").toLowerCase().includes(q));
+    const mine = matches.filter(i => inProject.has(i.id)).slice(0, 40);
+    const others = matches.filter(i => !inProject.has(i.id)).slice(0, 20);
+
+    const add = (it, alsoJoins) => el("button", {
+      class: "btn pick-row", type: "button",
+      onclick: () => { store.attachToMilestone(it.id, project.id, m.mid); scrim.remove(); },
+    }, [
+      el("span", { text: it.title || "Untitled" }),
+      alsoJoins ? el("span", { class: "mk", text: "joins project" }) : null,
+    ]);
+
+    if (mine.length) {
+      list.appendChild(el("div", { class: "mk", text: "In this project" }));
+      for (const it of mine) list.appendChild(add(it, false));
+    }
+    if (others.length) {
+      list.appendChild(el("div", { class: "mk", text: "Elsewhere in Dash" }));
+      for (const it of others) list.appendChild(add(it, true));
+    }
+    if (!mine.length && !others.length) {
+      list.appendChild(el("p", { class: "hint", text: "Nothing left to attach." }));
+    }
+  }
+  search.addEventListener("input", draw);
+  draw();
+
+  const modal = el("div", {
+    class: "modal", role: "dialog", "aria-modal": "true",
+    "aria-label": `Add an entry to ${m.label || "this milestone"}`,
+  }, [
+    el("h2", { text: `Add to “${m.label || "this milestone"}”` }),
+    search, list,
+    el("div", { class: "modal-actions" }, [
+      el("div", { class: "spacer" }),
+      el("button", { class: "btn", text: "Close", onclick: () => scrim.remove() }),
+    ]),
+  ]);
+  scrim.appendChild(modal);
+  document.body.appendChild(scrim);
+  search.focus();
 }
 
 // ===================================================================

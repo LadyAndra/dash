@@ -12,6 +12,23 @@ import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
+import { midFromLinkLabel } from "./store.js";
+
+// How a connection reads in the editor's list. Most links show as
+// "label: Other thing". A milestone attachment stores the milestone's mid in
+// the label — machine-readable, not human-readable — so it's translated back
+// into the milestone's actual name here. The link is still shown and still
+// removable, because it's real data and hiding it would make an attachment
+// impossible to undo from the entry's own page.
+function describeLink(store, link, target) {
+  const name = target ? (target.title || "Untitled") : "(missing)";
+  const mid = midFromLinkLabel(link.label);
+  if (mid && target) {
+    const ms = (target.milestones || []).find(x => x.mid === mid);
+    return `phase: ${ms ? (ms.label || "untitled milestone") : "removed milestone"} · ${name}`;
+  }
+  return `${link.label ? link.label + ": " : ""}${name}`;
+}
 
 export function openEditor(store, itemId, opts = {}) {
   const isNew = !itemId;
@@ -122,7 +139,7 @@ export function openEditor(store, itemId, opts = {}) {
     const current = store.get(id);
     for (const l of current.links) {
       const target = store.get(l.target);
-      const label = `${l.label ? l.label + ": " : ""}${target ? (target.title || "Untitled") : "(missing)"}`;
+      const label = describeLink(store, l, target);
       const chip = el("span", { class: "chip" }, [
         label,
         el("button", { type: "button", "aria-label": "Remove link", text: "✕",

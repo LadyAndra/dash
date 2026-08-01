@@ -38,6 +38,30 @@ export const FORMAT_VERSION = 2;
 export const PROJECT_TYPE = "project";
 export const PROJECT_LINK = "in project";
 
+// ---- entries attached to a milestone (August 2026) ----
+// An entry joins a PHASE of a project the same way it joins the project: with
+// a link. The label carries the milestone's mid, so the link is
+// { target: <projectId>, label: "phase:<mid>" }.
+//
+// Why a link and not a list on the milestone: `links` is already a set field
+// with add/remove op semantics (§6.1), so attaching on one device while
+// attaching something else on another merges with no new op kind, no new merge
+// rule, and no format bump. It also keeps the relationship in exactly ONE
+// place — the entry's own links — so there is nothing that can drift out of
+// step with anything else.
+//
+// A consequence worth knowing rather than fighting: an entry can end up on
+// more than one phase. Set-merge means two devices assigning the same entry to
+// different phases while offline BOTH survive; "only one phase" could not be
+// enforced without inventing a conflict where the model says there isn't one.
+export const MILESTONE_LINK_PREFIX = "phase:";
+export function milestoneLinkLabel(mid) { return MILESTONE_LINK_PREFIX + mid; }
+export function midFromLinkLabel(label) {
+  return (typeof label === "string" && label.startsWith(MILESTONE_LINK_PREFIX))
+    ? label.slice(MILESTONE_LINK_PREFIX.length)
+    : null;
+}
+
 // ---- op kinds (extend, never repurpose — §13.2 #1) ----
 export const OP = {
   CREATE: "create",   // value = full skeleton item
@@ -267,6 +291,69 @@ export class Store {
     it.dates.touched = new Date(ts.wall).toISOString();
     // touch is intentionally NOT logged every open to avoid log bloat;
     // it is persisted with the next snapshot. (Kept local + best-effort.)
+  }
+
+  // ---- entries attached to a phase of a project ----
+  // Being on a phase implies being in the project, so this adds both links.
+  // Idempotent: safe to call twice.
+  attachToMilestone(entryId, projectId, mid) {
+    if (!entryId || !projectId || !mid) return;
+    if (entryId === projectId) return;              // a project can't be its own member
+    this.assignToProject(entryId, projectId);
+    const label = milestoneLinkLabel(mid);
+    const already = this.get(entryId)?.links.some(l => l.target === projectId && l.label === label);
+    if (!already) this.addToSet(entryId, "links", { target: projectId, label });
+  }
+
+  // Removes the entry from the phase only. It stays in the project — taking
+  // something out of a phase is not the same as taking it out of the project,
+  // and guessing otherwise would silently lose an assignment.
+  detachFromMilestone(entryId, projectId, mid) {
+    const it = this.get(entryId);
+    if (!it) return;
+    const label = milestoneLinkLabel(mid);
+    for (const l of it.links.filter(l => l.target === projectId && l.label === label)) {
+      this.removeFromSet(entryId, "links", l);
+    }
+  }
+
+  // Which entries sit on which phase of this project, as mid -> [items].
+  //
+  // ONE pass over the archive, on purpose. Asking "what's on this phase?" per
+  // milestone would scan every item once per milestone — the exact bug the pet
+  // widget had with bulk edits, and the standing rule in the current-state doc
+  // says to assume any new store scanner has it until proven otherwise. The
+  // milestone editor calls this once per render and reads the map.
+  milestoneMembership(projectId) {
+    const map = new Map();
+    for (const it of this.all()) {
+      if (it.id === projectId) continue;
+      for (const l of it.links) {
+        if (l.target !== projectId) continue;
+        const mid = midFromLinkLabel(l.label);
+        if (!mid) continue;
+        if (!map.has(mid)) map.set(mid, []);
+        const bucket = map.get(mid);
+        if (!bucket.includes(it)) bucket.push(it);
+      }
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    }
+    return map;
+  }
+
+  // The phases of a given project that this entry is on (mids).
+  milestonesOfEntry(entryId, projectId) {
+    const it = this.get(entryId);
+    if (!it) return [];
+    const out = [];
+    for (const l of it.links) {
+      if (l.target !== projectId) continue;
+      const mid = midFromLinkLabel(l.label);
+      if (mid && !out.includes(mid)) out.push(mid);
+    }
+    return out;
   }
 
   // =====================================================
