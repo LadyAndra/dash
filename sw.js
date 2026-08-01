@@ -3,7 +3,7 @@
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
 
-const CACHE_VERSION = "dash-v15";
+const CACHE_VERSION = "dash-v16";
 const SHELL = [
   "./",
   "./index.html",
@@ -45,8 +45,36 @@ const SHELL = [
   "./logo-mark.png",
 ];
 
+// Why every fetch in here says cache: "no-store"
+// ----------------------------------------------
+// GitHub Pages serves assets with `Cache-Control: max-age=600`. That is the
+// BROWSER's own HTTP cache, which sits IN FRONT of this service worker — so
+// for ten minutes after a deploy, a plain fetch (even the module loader's
+// fetch for app.js) can be answered from disk without the network or this
+// file ever being consulted. Network-first below was therefore a promise the
+// worker couldn't keep: it looked like it was fetching, and it was being
+// handed a stale copy.
+//
+// Concretely: an uploaded fix would appear live on the server and still not
+// be what the app was running, which makes a fixed bug look unfixed. Asking
+// for "no-store" bypasses the HTTP cache and actually goes to the network.
+// The CACHE_VERSION cache below is still the offline copy; this only changes
+// where the fresh copy comes from.
+function fromNetwork(req) {
+  // A Request whose mode is "navigate" can't be reconstructed with an init,
+  // so fall back to re-fetching by URL in that case.
+  try { return fetch(req, { cache: "no-store" }); }
+  catch { return fetch(req.url, { cache: "no-store" }); }
+}
+
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE_VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE_VERSION)
+      // cache: "reload" for the same reason — precaching a stale copy of the
+      // shell would bake the old version into the offline cache.
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -60,9 +88,10 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return; // never touch Google etc.
+  if (e.request.method !== "GET") return;   // never intercept writes
   // network-first for HTML/JS so updates arrive; fall back to cache offline.
   e.respondWith(
-    fetch(e.request)
+    fromNetwork(e.request)
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
