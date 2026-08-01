@@ -48,12 +48,18 @@ button, input, textarea, select {
 .num { letter-spacing: 0.08em; }
 
 /* ---------- App shell: index + main ---------- */
+/* The sidebar is CLOSED by default (August 2026) — it was mostly taking
+   width. The "☰ Filters" button in the topbar adds .with-sidebar, and
+   Settings / Read-aloud moved to the topbar so nothing is ever stranded
+   behind this. Open/closed is remembered per device. */
 #app {
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 1fr;
   grid-template-rows: 100vh;
   height: 100vh;
 }
+#app.with-sidebar { grid-template-columns: 248px 1fr; }
+#app:not(.with-sidebar) > .sidebar { display: none; }
 
 /* ---------- Sidebar = catalog index ---------- */
 .sidebar {
@@ -798,7 +804,7 @@ button, input, textarea, select {
 
 /* ---------- Responsive: phone / tablet ---------- */
 @media (max-width: 820px) {
-  #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  #app, #app.with-sidebar { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar {
     grid-row: auto;
     flex-direction: row; flex-wrap: nowrap; align-items: center;
@@ -1300,4 +1306,74 @@ button, input, textarea, select {
 @media (max-width: 820px) {
   /* the grip is hidden on touch, so the indent shrinks to match */
   .ms-entries { margin-left: var(--space-4); }
+}
+
+/* ============================================================
+   The Today panel on Home  (August 2026)
+   ------------------------------------------------------------
+   Home became the Today panel when the corner widgets were
+   shelved. Overdue / Today / Next 14 days, drawn from project
+   milestones and ordinary item dates in one list.
+
+   Ember appears here in exactly three places, all indicators:
+   the Overdue section head, the "Overdue" mark on a row, and the
+   overdue count in the masthead and on the Home tab.
+   ============================================================ */
+
+.today { margin-bottom: var(--space-5); }
+
+.today-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-5) 0 var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-strong);
+}
+.today-head:first-child { margin-top: 0; }
+.today-head .group-count { margin-left: auto; color: var(--text-faint); letter-spacing: 0.08em; }
+/* the sanctioned ember: things whose date has passed */
+.today-head.is-overdue { color: var(--ember); border-bottom-color: var(--ember); }
+
+/* the day divider inside "Next 14 days" */
+.today-day {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.today-row { align-items: center; }
+.today-actions {
+  display: flex; align-items: center; gap: var(--space-2);
+  flex: none;
+}
+
+/* the masthead's overdue count, and the count on the Home tab */
+.lbl-ember { color: var(--ember); font-weight: 600; }
+
+.view-tab { display: inline-flex; align-items: center; gap: var(--space-2); }
+.tab-badge {
+  min-width: 1.6em;
+  padding: 0 0.4em;
+  border-radius: var(--radius-pill);
+  background: var(--ember);
+  color: var(--text-on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 820px) {
+  /* a dated row on a phone: the action sits under the text rather than
+     squeezing the title into a column two words wide */
+  .today-row { flex-wrap: wrap; }
+  .today-actions { width: 100%; justify-content: flex-end; margin-top: var(--space-2); }
 }

@@ -1,17 +1,31 @@
-// home.js — the daily specimen sheet (Update 2). This is where Dash opens.
-// A masthead (today's date + sheet number), then three plates:
-//   I   Accession   — quick capture, the fastest-reachable thing on the sheet
-//   II  Due & reminded today — fills in once dates exist (Update 3); empty now
+// home.js — the daily sheet, and as of August 2026 the TODAY PANEL as well.
+// ===================================================================
+// This is where Dash opens, and it now answers the question you open Dash to
+// ask: what's late, what's today, what's coming. Four plates:
+//   I   Accession   — quick capture, still first, still the fastest thing to
+//                     reach when a thought arrives
+//   II  Due & coming up — overdue, today, then the next fourteen days, drawn
+//                     from project milestones AND ordinary item dates
 //   III From the archive — the neglect register on the black "mount" panel,
-//       your longest-untouched items (powered by the existing `touched` date).
+//                     your longest-untouched items (the `touched` date)
+//
+// Deviation from the addendum, decided August 1 2026: §5.1 put the Today
+// panel in its OWN view, reasoning that Home had three more corner widgets
+// coming. Andra then walked the corner widgets back — the pet is shelved and
+// weather/tide/train are unscoped — so the crowding that argument rested on
+// no longer exists, and "what's due" is the thing she actually opens Dash for.
+// Home IS the Today panel. If ambient widgets ever return, this is the section
+// that would move out.
 //
 // Home is a registered view like any other (§4.1). It ignores the query
 // result and reads the store directly, since it's a dashboard, not a grouped
-// list. viewState/viewLocal preserves the capture box across re-renders so a
-// background sync never eats what you're typing.
+// list. viewLocal preserves the capture box across re-renders so a background
+// sync never eats what you're typing.
 
 import { el, catalogNo, typeChip, statusChip } from "./shared.js";
 import { toast } from "../ui/toast.js";
+import { todayGroups } from "../entries.js";
+import { formatDay, daysUntil } from "../milestones.js";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -21,20 +35,10 @@ function dayOfYear(d) {
   return Math.floor((d - start) / 86400000);
 }
 
-function startOfToday() { const d = new Date(); d.setHours(0,0,0,0); return d; }
-function isToday(iso) {
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (isNaN(d)) return false;
-  const t = startOfToday();
-  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
-}
-function isTodayOrPast(iso) {
-  if (!iso) return false;
-  const d = new Date(iso); if (isNaN(d)) return false;
-  const end = startOfToday(); end.setHours(23,59,59,999);
-  return d <= end;
-}
+// (The old isToday / isTodayOrPast helpers lived here. They compared full
+// timestamps and have been replaced by the date-only comparisons in
+// js/entries.js and js/milestones.js — one way of deciding "what day is this
+// on" for the whole app, instead of two that can disagree.)
 
 function daysSince(iso) {
   if (!iso) return null;
@@ -58,7 +62,11 @@ export const homeView = {
     const dateLine = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
     const sheetNo = `SHEET ${now.getFullYear()}·${String(dayOfYear(now)).padStart(3,"0")}`;
     const all = store.all();
-    const dueToday = all.filter(i => isToday(i.dates?.due) || isToday(i.dates?.remind));
+
+    // The whole dated picture, in ONE archive scan (js/entries.js does the
+    // scanning; this asks for it once per render and everything below reads
+    // the result). Never once per row, never once per section.
+    const groups = todayGroups(store);
 
     sheet.appendChild(el("div", { class: "sheet-masthead" }, [
       el("div", { class: "sheet-masthead-top" }, [
@@ -67,26 +75,22 @@ export const homeView = {
       ]),
       el("div", { class: "sheet-masthead-sub" }, [
         el("span", { class: "lbl", text: `${all.length} in collection` }),
-        el("span", { class: "lbl", text: `${dueToday.length} due today` }),
+        el("span", { class: "lbl", text: `${groups.now.length} due today` }),
+        groups.overdueCount
+          ? el("span", { class: "lbl lbl-ember", text: `${groups.overdueCount} overdue` })
+          : null,
       ]),
     ]));
 
     // ---------------- Plate I — Accession (capture) ----------------
+    // Deliberately still first: a thought you don't write down is gone, and
+    // the dated list isn't going anywhere while you scroll an inch.
     sheet.appendChild(plate("I", "Accession", "New entry"));
     sheet.appendChild(captureWell(ctx));
 
-    // ---------------- Plate II — Due & reminded today ----------------
-    sheet.appendChild(plate("II", "Due & reminded today", String(dueToday.length).padStart(2,"0")));
-    if (dueToday.length === 0) {
-      sheet.appendChild(el("div", { class: "sheet-empty" }, [
-        el("p", { text: "Nothing dated for today." }),
-        el("p", { class: "hint", text: "Due dates and reminders arrive in the next update — this fills in then." }),
-      ]));
-    } else {
-      const entries = el("div", { class: "entries" });
-      for (const it of dueToday) entries.appendChild(todayRow(store, it, ctx.onOpen));
-      sheet.appendChild(entries);
-    }
+    // ---------------- Plate II — Due & coming up ----------------
+    sheet.appendChild(plate("II", "Due & coming up", String(groups.total).padStart(2, "0")));
+    sheet.appendChild(todayPanel(store, ctx, groups));
 
     // ---------------- Plate III — From the archive (neglect) ----------------
     sheet.appendChild(plate("III", "From the archive", "Untouched longest"));
@@ -213,24 +217,166 @@ function captureWell(ctx) {
   ]);
 }
 
-// a today-panel row (due/remind) — same voice as a catalog entry
-function todayRow(store, item, onOpen) {
-  const overdue = isTodayOrPast(item.dates?.due) && !isToday(item.dates?.due);
-  const meta = el("div", { class: "item-meta" }, [
-    overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : null,
-    typeChip(store, item),
-    statusChip(store, item),
+// ===================================================================
+//  THE TODAY PANEL  (addendum §5.2)
+// ===================================================================
+// Three sections in order: Overdue, Today, then the next fourteen days
+// grouped by day. Milestones and ordinary entries interleave — sorted by
+// date, then by name — because on the day itself you don't care which kind
+// of thing it is, only that it's due.
+function todayPanel(store, ctx, groups) {
+  const wrap = el("div", { class: "today" });
+
+  if (groups.total === 0) {
+    // A real state, not a gap. Named plainly so an empty fortnight reads as
+    // "you're clear" rather than "something failed to load".
+    wrap.appendChild(el("div", { class: "sheet-empty" }, [
+      el("p", { text: "Nothing due in the next two weeks." }),
+      el("p", { class: "hint", text: "Dates you put on entries, and on a project's milestones, gather here." }),
+    ]));
+    return wrap;
+  }
+
+  if (groups.overdue.length) {
+    wrap.appendChild(sectionHead("Overdue", groups.overdue.length, true));
+    for (const e of groups.overdue) wrap.appendChild(entryRow(store, ctx, e, groups.today));
+  }
+
+  if (groups.now.length) {
+    wrap.appendChild(sectionHead("Today", groups.now.length, false));
+    for (const e of groups.now) wrap.appendChild(entryRow(store, ctx, e, groups.today));
+  }
+
+  if (groups.upcoming.length) {
+    wrap.appendChild(sectionHead("Next 14 days", groups.upcoming.reduce((n, g) => n + g.items.length, 0), false));
+    for (const { day, items } of groups.upcoming) {
+      wrap.appendChild(el("div", { class: "today-day" }, [
+        el("span", { class: "num", text: formatDay(day) }),
+        el("span", { class: "lbl lbl-faint", text: relativeDay(day, groups.today) }),
+      ]));
+      for (const e of items) wrap.appendChild(entryRow(store, ctx, e, groups.today));
+    }
+  }
+
+  return wrap;
+}
+
+function sectionHead(label, count, ember) {
+  return el("div", { class: "today-head" + (ember ? " is-overdue" : "") }, [
+    el("span", { text: label }),
+    el("span", { class: "group-count", text: String(count) }),
   ]);
+}
+
+function relativeDay(day, today) {
+  const n = daysUntil(day, today);
+  if (n === 1) return "tomorrow";
+  if (n != null && n > 1) return `in ${n} days`;
+  return "";
+}
+
+// One line per dated thing. Two shapes, because they can do different things:
+//
+//   milestone — project title · milestone name · date, with a DONE toggle
+//               (ticking it here removes the row and advances that project's
+//               stage chip), and tapping opens the project.
+//   entry     — type mark, title, date; tapping opens it. No "done" action is
+//               invented for an ordinary entry: what finished means depends on
+//               your own statuses, so the row opens the editor rather than
+//               guessing on your behalf.
+//
+// A REMINDER row is a nudge rather than the thing itself, so it says so and
+// offers "dismiss", which clears that reminder and nothing else.
+function entryRow(store, ctx, e, today) {
+  const isRemind = e.kind === "remind";
+  const item = store.get(e.itemId);
+
+  const meta = el("div", { class: "item-meta" }, [
+    e.overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : null,
+    isRemind ? el("span", { class: "mk", text: "Reminder" }) : null,
+    e.source === "milestone"
+      ? el("span", { class: "mk", text: "Milestone" })
+      : (item ? typeChip(store, item) : null),
+    item && e.source !== "milestone" ? statusChip(store, item) : null,
+    el("span", { class: "num", text: formatDay(e.start) }),
+    isRemind && e.dueOn
+      ? el("span", { class: "num", text: `due ${formatDay(e.dueOn)}` })
+      : null,
+  ]);
+
+  const title = e.context ? `${e.context} · ${e.label}` : e.label;
+
   const main = el("div", { class: "item-main" }, [
     meta,
-    el("h3", { class: "item-title", text: item.title || "Untitled" }),
+    el("h3", { class: "item-title", text: title }),
   ]);
-  return el("div", {
-    class: "item-row" + (overdue ? " flag" : ""),
+
+  // --- the row's own actions, kept out of the tap-to-open target ---
+  const actions = el("div", { class: "today-actions" });
+
+  if (e.source === "milestone" && !isRemind) {
+    actions.appendChild(el("button", {
+      class: "ms-tick", type: "button",
+      "aria-pressed": "false",
+      "aria-label": `Mark done: ${e.label}`,
+      onclick: (ev) => {
+        ev.stopPropagation();
+        store.setMilestoneField(e.itemId, e.mid, "done", new Date().toISOString());
+      },
+    }));
+  }
+
+  if (isRemind) {
+    actions.appendChild(el("button", {
+      class: "btn", type: "button", text: "Dismiss",
+      "aria-label": `Dismiss the reminder for ${e.label}`,
+      onclick: (ev) => {
+        ev.stopPropagation();
+        if (e.source === "milestone") store.setMilestoneField(e.itemId, e.mid, "remind", null);
+        else store.setField(e.itemId, "remind", null);
+      },
+    }));
+  }
+
+  const open = () => {
+    // A milestone row opens its PROJECT — that's where the milestone lives
+    // and can be edited. An ordinary row opens the entry itself.
+    ctx.onOpen(e.itemId);
+  };
+
+  const row = el("div", {
+    class: "item-row today-row" + (e.overdue ? " flag" : ""),
     role: "button", tabindex: "0",
-    onclick: () => onOpen(item.id),
-    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
-  }, [el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` }), main]);
+    onclick: open,
+    onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } },
+  }, [
+    el("span", { class: "item-no", text: item ? `№ ${catalogNo(store, item)}` : "№ ----" }),
+    main,
+    actions.childNodes.length ? actions : null,
+  ]);
+
+  return row;
+}
+
+// What the read-aloud button says on Home. Spoken top to bottom, in the same
+// order it's drawn, because the point is to be able to hear where you stand
+// without reading a screen (proposal §10, and the eye-strain constraint).
+export function speakToday(store) {
+  const g = todayGroups(store);
+  if (g.total === 0) return "Nothing due in the next two weeks.";
+  const say = (e) => (e.context ? `${e.context}, ${e.label}` : e.label);
+  const parts = [];
+  if (g.overdue.length) {
+    parts.push(`${g.overdue.length} overdue: ${g.overdue.map(say).join("; ")}.`);
+  }
+  if (g.now.length) {
+    parts.push(`Today: ${g.now.map(say).join("; ")}.`);
+  }
+  const later = g.upcoming.flatMap(d => d.items.map(e => `${say(e)}, ${formatDay(d.day)}`));
+  if (later.length) {
+    parts.push(`Next fourteen days: ${later.join("; ")}.`);
+  }
+  return parts.join(" ");
 }
 
 // the neglect register — the black mount panel. Longest-untouched items,

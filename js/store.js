@@ -75,6 +75,19 @@ export const OP = {
 const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
 
+// `due` and `remind` live INSIDE item.dates, not at the top level.
+//
+// This is a bug fix, August 2026. They were listed as ordinary scalar fields,
+// so a `set` op wrote item.due — while every reader in the app (the Home
+// panel, the query layer, this file's own emptyItem) looked at
+// item.dates.due. The two never met. Nothing had ever noticed because the
+// editor had no due-date field at all, so no set op for them was ever
+// written; the moment the Today panel needed them, it surfaced immediately.
+// Routing them here keeps the op shape identical — `{ field: "due" }` on the
+// wire, exactly as before — so old logs, LWW bookkeeping and merge are all
+// unaffected.
+const DATE_SCALARS = new Set(["due", "remind"]);
+
 // The only fields a milestone `set` op may touch (addendum §2.1). `mid` and
 // `created` are write-once at add time and deliberately not settable.
 const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"]);
@@ -454,7 +467,8 @@ export class Store {
       case OP.SET: {
         const it = this._ensure(op.itemId);
         if (this._winsLWW(it, op.field, op.ts)) {
-          it[op.field] = op.value;
+          if (DATE_SCALARS.has(op.field)) it.dates[op.field] = op.value;
+          else it[op.field] = op.value;
           it._fieldTs[op.field] = op.ts;
           this._bumpModified(it, op.ts);
         } else {
@@ -618,7 +632,7 @@ export class Store {
     if (prevTs.device === op.ts.device) return;         // same device correcting itself
     const current = key.startsWith("ms:")
       ? (this._msFieldValue(it, meta.mid, op.field))
-      : it[op.field];
+      : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
     if (sameValue(current, op.value)) return;           // both wrote the same thing
 
     const noteKey = `${it.id}|${key}|${op.ts.wall}.${op.ts.count}.${op.ts.device}`;

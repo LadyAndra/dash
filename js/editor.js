@@ -60,6 +60,45 @@ export function openEditor(store, itemId, opts = {}) {
   });
   body.value = item.body;
 
+  // --- due date + reminder (August 2026) ---
+  // These existed in the data model from day one and had NO user interface,
+  // which is why nothing ever appeared on the Home panel: there was no way to
+  // put a date on an entry in the first place. Added here so the Today panel
+  // has ordinary entries to show, not only project milestones.
+  //
+  // Stored as a timestamp, because that's the documented shape of dates.due
+  // (the addendum keeps it deliberately different from a milestone's date-only
+  // string). The picker is a plain day picker and the time is fixed at midday
+  // local — midday rather than midnight so that no timezone conversion
+  // anywhere can nudge the date onto the day before or after.
+  const dayValue = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const atMidday = (v) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || "");
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0).toISOString() : null;
+  };
+
+  const dueInput = el("input", {
+    type: "date", value: dayValue(item.dates?.due), "aria-label": "Due date",
+    onchange: (e) => store.setField(id, "due", atMidday(e.target.value)),
+  });
+  const remindInput = el("input", {
+    type: "date", value: dayValue(item.dates?.remind), "aria-label": "Reminder date",
+    onchange: (e) => store.setField(id, "remind", atMidday(e.target.value)),
+  });
+
+  const datesRow = el("div", { class: "row" }, [
+    el("div", { class: "field" }, [el("label", { text: "Due" }), dueInput]),
+    el("div", { class: "field" }, [
+      el("label", { text: "Remind me" }), remindInput,
+      el("div", { class: "hint", text: "Both show up on your Home sheet." }),
+    ]),
+  ]);
+
   // --- tags (freeform, add/remove as set ops) ---
   const tagWrap = el("div", { class: "chip-input" });
   function renderTags() {
@@ -255,6 +294,7 @@ export function openEditor(store, itemId, opts = {}) {
     ]),
     field("Title", title),
     el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
+    datesRow,
     field("Notes", body),
     sketchField,
     field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),

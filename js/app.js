@@ -13,10 +13,20 @@ import { openEditor } from "./editor.js";
 import { openSettings } from "./settings.js";
 import { createSelection } from "./selection.js";
 import { openMergeNotes, mergeNoteCount } from "./merge-notes.js";
-import { createCluster } from "./widgets/cluster.js";
-import { createPetWidget } from "./widgets/pet.js";
+import { overdueCount } from "./entries.js";
 
-import { homeView } from "./views/home.js";
+// ---- the Home corner cluster is SHELVED (August 1, 2026) ----------------
+// Andra's call: the ambient widgets were getting in the way and weren't
+// earning their space, and Home is now the Today panel instead. Nothing was
+// deleted — js/widgets/{motion,cluster,shapes,pet}.js are untouched on disk
+// and still in the service worker's SHELL, so bringing the pet back is
+// exactly this: uncomment the two imports and the two lines marked
+// "cluster" below. Weather / tide / train were never built and are back to
+// unscoped. See docs/dash-current-state.md.
+// import { createCluster } from "./widgets/cluster.js";
+// import { createPetWidget } from "./widgets/pet.js";
+
+import { homeView, speakToday } from "./views/home.js";
 import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { kanbanView } from "./views/kanban.js";
@@ -45,15 +55,9 @@ const sync = new Sync(store);
 // drift out of step with each other.
 const selection = createSelection(store, () => render());
 
-// The Home corner cluster: the ambient widgets. Built once, shown only while
-// the Home sheet is on screen. Widgets 2–4 (weather, tide, train) join this
-// array as they're built; nothing else here has to change for them.
-const cluster = createCluster({ widgets: [createPetWidget({ store })] });
-
-// The pet reacts to what you actually DO, so it listens on the store's ambient
-// action channel rather than to plain "something changed". Nothing is logged
-// or synced by this — see Store.onAction.
-store.onAction((kind, detail) => cluster.action(kind, detail));
+// ---- cluster (shelved — see the note by the imports above) ----
+// const cluster = createCluster({ widgets: [createPetWidget({ store })] });
+// store.onAction((kind, detail) => cluster.action(kind, detail));
 
 installGlobalErrorBanner();
 
@@ -114,7 +118,7 @@ store.subscribe(() => {
     toast("Tip: connect your Dash folder (top-right) so everything syncs across devices.", "info", 9000);
   }
   render();
-  // periodic pull on the Mac so other devices' changes appear
+  watchDayRollover();
   // periodic pull so other devices' changes appear automatically
   if (sync.mode === "dropbox") setInterval(() => sync.pull(), 10000);
   else if (sync.mode === "folder") setInterval(() => sync.dirHandle && sync.pull(), 8000);
@@ -127,28 +131,29 @@ function buildChrome() {
   const app = document.getElementById("app");
   app.innerHTML = "";
 
-  // ---- sidebar ----
-  const sidebar = el("aside", { class: "sidebar" });
+  // ---- sidebar: now CLOSED by default (August 1, 2026) ----
+  // It was the tag/type/status filter index plus two buttons, and in practice
+  // it was mostly taking width. Settings and Read-aloud have moved to the
+  // topbar so the sidebar is never *required* for anything; the filter list
+  // is still all there, one tap away, for the times a tag needs chasing.
+  // Open/closed is remembered per device (UI arrangement stays local).
+  const sidebar = el("aside", { class: "sidebar", id: "sidebar" });
   sidebar.appendChild(el("div", { class: "brand" }, [el("img", { class: "brand-mark", src: "logo-mark.png", alt: "" }), "Dash"]));
 
   const nav = el("div", { class: "sidebar-section", id: "nav-filters" });
   sidebar.appendChild(nav);
-
-  const footer = el("div", { class: "sidebar-footer" }, [
-    el("button", { class: "btn", text: "⚙ Settings", onclick: () => openSettings(store, sync) }),
-    el("button", { class: "btn", text: "🔊 Read this view", onclick: readCurrentView }),
-  ]);
-  sidebar.appendChild(footer);
 
   // ---- main ----
   const main = el("main", { class: "main" });
 
   const viewTabs = el("div", { class: "view-tabs", id: "view-tabs" });
   for (const v of VIEWS) {
-    viewTabs.appendChild(el("button", {
-      class: "view-tab", "data-view": v.name, text: v.label,
+    const tab = el("button", {
+      class: "view-tab", "data-view": v.name,
       onclick: () => { setView(v.name); },
-    }));
+    }, [el("span", { text: v.label })]);
+    if (v.name === "home") tab.appendChild(el("span", { class: "tab-badge", id: "home-badge" }));
+    viewTabs.appendChild(tab);
   }
 
   const groupSel = el("select", { id: "group-sel", "aria-label": "Group by", onchange: (e) => {
@@ -182,10 +187,28 @@ function buildChrome() {
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
+  // Filters toggle — the only way in and out of the sidebar now.
+  const filtersBtn = el("button", {
+    class: "btn", id: "filters-btn", "aria-controls": "sidebar",
+    onclick: () => setSidebar(!sidebarOpen()),
+  });
+
+  // Settings and Read-aloud used to live at the bottom of the sidebar. With
+  // the sidebar closed by default they'd have been unreachable, so they're
+  // first-class topbar buttons now.
+  const settingsBtn = el("button", {
+    class: "btn", text: "⚙ Settings", "aria-label": "Settings",
+    onclick: () => openSettings(store, sync),
+  });
+  const readBtn = el("button", {
+    class: "btn", text: "🔊 Read", "aria-label": "Read this view aloud",
+    onclick: readCurrentView,
+  });
+
   const topbar = el("div", { class: "topbar" }, [
-    viewTabs, groupSel,
+    filtersBtn, viewTabs, groupSel,
     el("div", { class: "search-wrap" }, [search]),
-    selectBtn, newBtn, mergeBtn, syncBtn, syncPill,
+    selectBtn, newBtn, mergeBtn, readBtn, settingsBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
@@ -199,6 +222,19 @@ function buildChrome() {
 
   sync.onStatus(updateSyncUI);
   updateSyncUI(sync.status);
+  setSidebar(localStorage.getItem("dash.sidebar") === "1");   // closed unless asked for
+}
+
+// ---- sidebar open/closed ----
+function sidebarOpen() { return document.getElementById("app")?.classList.contains("with-sidebar"); }
+function setSidebar(open) {
+  const app = document.getElementById("app");
+  const btn = document.getElementById("filters-btn");
+  if (!app || !btn) return;
+  app.classList.toggle("with-sidebar", !!open);
+  btn.textContent = open ? "✕ Filters" : "☰ Filters";
+  btn.setAttribute("aria-expanded", String(!!open));
+  localStorage.setItem("dash.sidebar", open ? "1" : "0");
 }
 
 // ===================================================
@@ -231,11 +267,18 @@ function render() {
   // off the catalog views' bottom-right corner, where the bulk-action bar and
   // the kanban columns already live — and pauses its animation, so nothing is
   // burning a frame budget behind a screen that can't see it.
-  cluster.setVisible(view.name === "home");
+  // (cluster.setVisible(view.name === "home") lived here — shelved.)
 
   // view tabs current state
   document.querySelectorAll(".view-tab").forEach(t =>
     t.setAttribute("aria-current", String(t.dataset.view === view.name)));
+
+  // The overdue count on the Home tab. Home IS the Today panel now, so the
+  // badge is both the signal ("something's late") and the way there — one
+  // number, shown only when it's not zero, in the indicator colour. This is
+  // what replaces the idea of a persistent dates rail: the same nudge from
+  // any view, and it works identically on a phone.
+  updateHomeBadge();
 
   // group selector: some views force their own grouping
   const groupSel = document.getElementById("group-sel");
@@ -293,6 +336,34 @@ function updateSelectUI(view) {
   btn.className = selection.active ? "btn btn-primary" : "btn";
 
   selection.renderBar(host);
+}
+
+// The overdue count on the Home tab. Shown only when it isn't zero, so it
+// costs nothing on a clear week.
+function updateHomeBadge() {
+  const badge = document.getElementById("home-badge");
+  if (!badge) return;
+  const n = overdueCount(store);
+  badge.textContent = n ? String(n) : "";
+  badge.style.display = n ? "" : "none";
+  badge.setAttribute("aria-label", n ? `${n} overdue` : "");
+}
+
+// "Today" changes at midnight while the app may well still be open, and every
+// date grouping on the Home sheet is computed against it. Rather than trusting
+// a long-lived constant, re-render when the app comes back to the foreground
+// and on a lazy once-a-minute check that only fires when the date has actually
+// rolled over (addendum §12). A no-op minute costs one string comparison and
+// redraws nothing.
+function watchDayRollover() {
+  let known = new Date().toDateString();
+  const check = () => {
+    const now = new Date().toDateString();
+    if (now !== known) { known = now; render(); }
+  };
+  setInterval(check, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+  window.addEventListener("focus", check);
 }
 
 // The merge-notes button is hidden unless there is genuinely something that
@@ -425,6 +496,13 @@ function openPortableSync() {
 // ===================================================
 function readCurrentView() {
   const view = activeView();
+
+  // On Home, "read this view" means read the day: what's late, what's today,
+  // what's coming. That's the daily brief made audible (proposal §10), and it
+  // serves the eye-strain constraint directly — you can hear where you stand
+  // without reading anything.
+  if (view.name === "home") { readAloud(speakToday(store)); return; }
+
   const groupBy = view.forceGroupBy || state.groupBy;
   const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });
   if (result.total === 0) { readAloud("This view is empty."); return; }

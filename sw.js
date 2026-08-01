@@ -3,7 +3,7 @@
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
 
-const CACHE_VERSION = "dash-v18";
+const CACHE_VERSION = "dash-v19";
 const SHELL = [
   "./",
   "./index.html",
@@ -23,12 +23,17 @@ const SHELL = [
   "./js/editor.js",
   "./js/selection.js",
   "./js/milestones.js",
+  "./js/entries.js",
   "./js/merge-notes.js",
   "./js/settings.js",
   "./js/blobs.js",
   "./js/sketch.js",
   "./js/ui/toast.js",
   "./js/ui/readaloud.js",
+  // The corner-cluster widgets are SHELVED (August 2026) — app.js no longer
+  // imports them. They stay cached on purpose: nothing costs anything, and
+  // bringing the pet back is then two uncommented lines in app.js with no
+  // risk of the classic "forgot to add it to SHELL" broken deploy.
   "./js/widgets/motion.js",
   "./js/widgets/cluster.js",
   "./js/widgets/shapes.js",
