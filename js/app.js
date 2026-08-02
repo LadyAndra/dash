@@ -48,6 +48,16 @@ import { projectView } from "./views/project.js";
 
 const VIEWS = [homeView, listView, boardView, projectView];
 
+// The Home tab shows this paw print instead of its text label — the word
+// "Home" was getting lost among the other tabs on narrow mobile screens, and
+// the paw doubles as a nod to Dash (the dog the app and Andra's queen-Victoria
+// reference are both named for). Solid fill, no stroke, so it inherits
+// currentColor exactly like the text label did: dim by default, ember when
+// this tab is active — no extra CSS required. Middle two toes are spaced to
+// match the outer pair (Andra's ask, Aug 2026) rather than the tighter,
+// more-realistic paw-print gap.
+const HOME_PAW_ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><ellipse cx="12" cy="16.2" rx="5.6" ry="4.6"/><ellipse cx="5.6" cy="9.6" rx="2.05" ry="2.6" transform="rotate(-24 5.6 9.6)"/><ellipse cx="9.3" cy="5.9" rx="2.15" ry="2.75" transform="rotate(-9 9.3 5.9)"/><ellipse cx="14.7" cy="5.9" rx="2.15" ry="2.75" transform="rotate(9 14.7 5.9)"/><ellipse cx="18.4" cy="9.6" rx="2.05" ry="2.6" transform="rotate(24 18.4 9.6)"/></svg>`;
+
 // What a view that reads the store itself gets handed instead of a real query
 // result (see render()). Frozen so nothing can quietly start writing to the
 // shared object.
@@ -186,11 +196,17 @@ function buildChrome() {
 
   const viewTabs = el("div", { class: "view-tabs", id: "view-tabs" });
   for (const v of VIEWS) {
+    const isHome = v.name === "home";
     const tab = el("button", {
-      class: "view-tab", "data-view": v.name,
+      class: isHome ? "view-tab view-tab-icon" : "view-tab",
+      "data-view": v.name,
+      // Icon-only tabs still need a spoken label — the paw is aria-hidden.
+      "aria-label": isHome ? v.label : null,
       onclick: () => { setView(v.name); },
-    }, [el("span", { text: v.label })]);
-    if (v.name === "home") tab.appendChild(el("span", { class: "tab-badge", id: "home-badge" }));
+    }, isHome
+      ? [el("span", { class: "tab-icon", html: HOME_PAW_ICON })]
+      : [el("span", { text: v.label })]);
+    if (isHome) tab.appendChild(el("span", { class: "tab-badge", id: "home-badge" }));
     viewTabs.appendChild(tab);
   }
 
