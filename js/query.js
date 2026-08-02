@@ -38,6 +38,9 @@ function sortItems(items, sortBy) {
     "created-desc":  (a, b) => cmpDate(b.dates.created, a.dates.created),
     "created-asc":   (a, b) => cmpDate(a.dates.created, b.dates.created),
     "title-asc":     (a, b) => (a.title || "").localeCompare(b.title || ""),
+    // Z–A, added August 2026 when Sort got a real control in the catalog band.
+    // Purely the mirror of title-asc — no new data, nothing else to keep in step.
+    "title-desc":    (a, b) => (b.title || "").localeCompare(a.title || ""),
     "touched-desc":  (a, b) => cmpDate(b.dates.touched, a.dates.touched),
   }[sortBy] || null;
   return by ? [...items].sort(by) : items;

@@ -47,11 +47,14 @@ button, input, textarea, select {
 }
 .num { letter-spacing: 0.08em; }
 
-/* ---------- App shell: index + main ---------- */
-/* The sidebar is CLOSED by default (August 2026) — it was mostly taking
-   width. The "☰ Filters" button in the topbar adds .with-sidebar, and
-   Settings / Read-aloud moved to the topbar so nothing is ever stranded
-   behind this. Open/closed is remembered per device. */
+/* ---------- App shell: index rail + main ---------- */
+/* The rail is OPEN by default on List and Board (August 2026) and absent
+   everywhere else. It reversed an earlier same-day decision to keep it
+   closed: it stopped being a drawer you had to remember and became where
+   filtering lives, so hiding it by default hid the point. The band's
+   "☰ Index" toggle adds/removes .with-sidebar; open/closed is per device
+   (dash.rail). Settings / Read-aloud stay in the topbar regardless, so
+   nothing is ever stranded behind this. */
 #app {
   display: grid;
   grid-template-columns: 1fr;
@@ -101,11 +104,6 @@ button, input, textarea, select {
   border-bottom: 1px solid var(--border);
 }
 .sidebar-section h2:first-child { margin-top: 0; }
-
-/* Group moved out of the topbar and into the panel (August 1, 2026). Same
-   control, so it keeps its #group-sel styling; it just fills the panel's
-   column now instead of sitting in an instrument strip. */
-#nav-arrange #group-sel { width: 100%; }
 
 .nav-btn {
   display: flex; align-items: center; gap: var(--space-2);
@@ -179,20 +177,10 @@ button, input, textarea, select {
   box-shadow: inset 0 -2px 0 var(--ember);
 }
 
-#group-sel {
-  min-height: var(--control-min);
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
+/* Pushes the verbs to the right now that Search has left the topbar. */
+.topbar-spacer { flex: 1; }
 
-.search-wrap { margin-left: auto; position: relative; }
+.search-wrap { position: relative; }
 .search-wrap input {
   min-height: var(--control-min);
   width: 260px; max-width: 40vw;
@@ -227,11 +215,131 @@ button, input, textarea, select {
 }
 .btn-primary:hover { background: var(--mount-soft); }
 
+/* The viewport itself no longer carries the page padding — the catalog band is
+   its first child and has to run edge to edge, so the padding moved onto
+   #view-host. Home and Project are unaffected: they render into #view-host and
+   get exactly the inset they had before. */
 .viewport {
   flex: 1; min-height: 0;
   overflow: auto;
-  padding: var(--space-5) var(--space-6);
+  padding: 0;
 }
+#view-host { padding: var(--space-5) var(--space-6); }
+
+/* =========================================================================
+   THE CATALOG BAND  (August 2026)
+   =========================================================================
+   The page's own header strip on List and Board, as distinct from .topbar,
+   which is the APP's. The split is the point: the topbar says where you are
+   and what you can do; the band says what you're looking at.
+
+   Mount ground with cream ink — Andra's call. It's an existing material in
+   the system (the Today rail is the same block), so nothing new is invented
+   and it inverts correctly on the dark theme for free. Ember is untouched by
+   this: it stays an indicator, and --ember-on-mount is the version of it that
+   stays legible here.
+
+   Sticky, not fixed: it belongs to the page and scrolls with it, but never
+   leaves — re-sorting a list you've scrolled halfway down shouldn't mean
+   scrolling back to the top first. */
+.catalog-band {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--mount);
+  color: var(--ink-on-mount);
+  padding: var(--space-4) var(--space-6);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+
+.band-top { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.band-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-on-mount);
+}
+.band-count { margin-left: auto; color: var(--ink-on-mount-muted); font-size: var(--text-label); }
+
+/* "You are looking at a slice." Quiet, but impossible to miss once it's there,
+   because a filter you forgot about looks exactly like missing data. */
+.band-filter {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: var(--control-min);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--ink-on-mount-muted);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-on-mount);
+}
+.band-filter-clear {
+  min-height: var(--control-min); min-width: var(--control-min);
+  border: none; background: transparent;
+  color: var(--ink-on-mount-muted);
+  cursor: pointer;
+  font-size: var(--text-label);
+}
+.band-filter-clear:hover { color: var(--ember-on-mount); }
+
+.band-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.band-controls .search-wrap { flex: 1 1 260px; max-width: 420px; }
+
+/* Controls sitting ON the mount. They'd otherwise be paper-coloured boxes on a
+   near-black band, which reads as holes punched in the strip. Tokens only —
+   --mount-soft is the raised variant of the ground, exactly like
+   --surface-raised is on paper. */
+.catalog-band .search-wrap input,
+.band-sel {
+  min-height: var(--control-min);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--mount-soft);
+  border: 1px solid var(--mount-soft);
+  border-radius: var(--radius);
+  color: var(--ink-on-mount);
+}
+.catalog-band .search-wrap input { font-family: var(--font-body); }
+.band-sel {
+  width: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.catalog-band .search-wrap input::placeholder { color: var(--ink-on-mount-muted); }
+.catalog-band .search-wrap input:hover,
+.band-sel:hover { border-color: var(--ink-on-mount-muted); }
+.catalog-band .search-wrap input:focus-visible,
+.band-sel:focus-visible {
+  border-color: var(--ink-on-mount);
+  box-shadow: 0 0 0 2px var(--mount), 0 0 0 4px var(--ember-on-mount);
+  outline: none;
+}
+/* The dropdown list is drawn by the OS on the page's own surface, not on the
+   mount — name both so a dark theme doesn't hand back an unreadable menu. */
+.band-sel option { background: var(--surface-raised); color: var(--text-primary); }
+
+/* The rail toggle. A band control, not a topbar button: quiet, outlined in the
+   ink it sits on, and it never appears on a view without a rail. */
+.band-btn {
+  min-height: var(--control-min);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--ink-on-mount-muted);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-on-mount);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+.band-btn:hover { background: var(--mount-soft); }
 
 /* ---------- Marks: type/status as dot-marks (was chips) ---------- */
 .mk {
@@ -1239,16 +1347,20 @@ button, input, textarea, select {
   .sidebar-section { display: flex; align-items: center; gap: var(--space-1); }
   .nav-btn { width: auto; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) var(--space-2); }
   /* the panel is a horizontal strip here, so Group sizes to its own text */
-  #nav-arrange #group-sel { width: auto; }
   .nav-btn[aria-current="true"] { box-shadow: inset 0 -2px 0 var(--ember); padding-left: var(--space-2); }
   .sidebar-footer { margin: 0; border: none; flex-direction: row; padding: var(--space-1) var(--space-2); }
   .brand { padding: var(--space-2) var(--space-3); }
-  .viewport { padding: var(--space-4); }
+  #view-host { padding: var(--space-4); }
   .topbar { padding: var(--space-3) var(--space-4); }
+  .topbar-spacer { display: none; }
   /* search used to be pinned to 160px here, which on a phone is about
      four characters of your own query. It now takes the row it's in. */
-  .search-wrap { flex: 1 1 100%; margin-left: 0; }
+  .band-controls .search-wrap { flex: 1 1 100%; max-width: none; }
   .search-wrap input { width: 100%; max-width: none; }
+  /* The band stacks rather than squeezing: title row, then controls, and the
+     selects sit side by side on their own line. */
+  .catalog-band { padding: var(--space-3) var(--space-4); }
+  .band-sel { flex: 1 1 auto; }
   .kanban-col { flex-basis: 78vw; }
   .finder-col { flex-basis: 70vw; }
   .item-row { grid-template-columns: auto 1fr; gap: var(--space-3); padding: var(--space-4) 0; }

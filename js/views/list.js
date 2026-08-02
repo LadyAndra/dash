@@ -8,7 +8,7 @@ export const listView = {
   label: "List",
   defaultGroupBy: "type",
   supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
-  supportsFilterPanel: true, // shows the "☰ Filters & Group" panel (app.js)
+  supportsCatalogChrome: true, // gets the catalog band + the index rail (app.js)
 
   render(result, ctx, container) {
     container.innerHTML = "";

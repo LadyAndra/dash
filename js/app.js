@@ -54,17 +54,27 @@ const state = {
   // view during a session is one tap; the landing is intentionally fixed.
   viewName: "home",
   groupBy: localStorage.getItem("dash.groupBy") || "type",
-  sortBy: "modified-desc",
+  // Sort was a hardcoded constant until August 1, 2026 — query.js had supported
+  // six orderings the whole time and nothing could reach them. Now it's a real
+  // control in the catalog band, remembered per device like the other
+  // arrangement settings.
+  sortBy: localStorage.getItem("dash.sortBy") || "modified-desc",
   filter: {},          // { text, type, status, tag }
   collapsed: new Set(JSON.parse(localStorage.getItem("dash.collapsed") || "[]")),
   viewLocal: {},       // scratch space for the active view (e.g. project selection)
 };
 
-// Whether the user likes the filters + group panel open. Per device, and only
-// a click changes it — separate from whether the CURRENT VIEW can use the panel
-// at all. See applyPanelChrome() below for why those are two different things.
+// Whether the user likes the index rail open. Per device, and only the band's
+// toggle changes it — separate from whether the CURRENT VIEW has a rail at all.
+// See applyCatalogChrome() below for why those are two different things.
 // Declared here rather than next to that function because boot() runs first.
-let panelPref = localStorage.getItem("dash.sidebar") === "1";
+//
+// Deliberately a NEW key rather than the old dash.sidebar: that key meant "the
+// drawer I open occasionally" and defaulted to closed. The rail is now where
+// filtering lives on List and Board, so it defaults to OPEN — and inheriting a
+// stale "0" from the old meaning would have hidden the thing this pass was
+// about. dash.sidebar is left behind on purpose; nothing reads it any more.
+let railOpen = localStorage.getItem("dash.rail") !== "0";
 
 const store = new Store();
 const sync = new Sync(store);
@@ -150,24 +160,18 @@ function buildChrome() {
   const app = document.getElementById("app");
   app.innerHTML = "";
 
-  // ---- the FILTERS + GROUP panel (the sidebar) ----
-  // Closed by default since August 1, 2026: it was mostly taking width, and
-  // Settings / Read-aloud moved to the topbar so it's never *required* for
-  // anything. Open/closed is remembered per device (UI arrangement stays
-  // local — see dash.sidebar).
+  // ---- the INDEX RAIL (the sidebar) ----
+  // Andra's call, August 1 2026: the controls that decide what you're looking
+  // at belong to the PAGE, not to the app's toolbar. So this rail is now the
+  // permanent home of the tag / type / status index on List and Board, and it
+  // is OPEN by default there — the opposite of the day's earlier decision,
+  // made deliberately once it stopped being a drawer you had to remember and
+  // became the thing you steer with. On Home and Project it isn't there at all.
   //
-  // Later the same day, Group moved IN HERE from the topbar. Filters and Group
-  // only ever did anything on List and Board, so a global topbar copy of each
-  // was two permanent controls that did nothing on two of the four views. Now
-  // they're one panel behind one button, and render() puts that button on
-  // screen only where it can do something. The filtering logic underneath is
-  // completely unchanged — this is placement, not a rebuild.
+  // Group and Sort do NOT live here; they're in the catalog band (below), with
+  // Search, because those three are one thought: "what am I looking at."
   const sidebar = el("aside", { class: "sidebar", id: "sidebar" });
   sidebar.appendChild(el("div", { class: "brand" }, [el("img", { class: "brand-mark", src: "logo-mark.png", alt: "" }), "Dash"]));
-
-  const arrange = el("div", { class: "sidebar-section", id: "nav-arrange" });
-  arrange.appendChild(el("h2", { text: "Arrange" }));
-  sidebar.appendChild(arrange);
 
   const nav = el("div", { class: "sidebar-section", id: "nav-filters" });
   sidebar.appendChild(nav);
@@ -184,22 +188,6 @@ function buildChrome() {
     if (v.name === "home") tab.appendChild(el("span", { class: "tab-badge", id: "home-badge" }));
     viewTabs.appendChild(tab);
   }
-
-  // Group lives inside the panel now, not in the topbar. Same control, same
-  // dash.groupBy key, same behaviour — it just isn't on screen on Home and
-  // Project any more, where it never did anything.
-  const groupSel = el("select", { id: "group-sel", "aria-label": "Group by", onchange: (e) => {
-    state.groupBy = e.target.value; localStorage.setItem("dash.groupBy", state.groupBy); render();
-  }}, [
-    el("option", { value: "type", text: "Group: Type" }),
-    el("option", { value: "status", text: "Group: Status" }),
-    el("option", { value: "tag", text: "Group: Tag" }),
-    el("option", { value: "none", text: "Group: None" }),
-  ]);
-  arrange.appendChild(groupSel);
-
-  const search = el("input", { type: "search", placeholder: "Search everything…", "aria-label": "Search",
-    oninput: (e) => { state.filter.text = e.target.value.trim() || undefined; render(); } });
 
   const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
 
@@ -220,13 +208,6 @@ function buildChrome() {
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
-  // The only way in and out of the panel. render() hides this button entirely
-  // on views the panel doesn't apply to.
-  const filtersBtn = el("button", {
-    class: "btn", id: "filters-btn", "aria-controls": "sidebar",
-    onclick: () => setSidebar(!panelPref),
-  });
-
   // Settings and Read-aloud used to live at the bottom of the sidebar. With
   // the sidebar closed by default they'd have been unreachable, so they're
   // first-class topbar buttons now.
@@ -239,13 +220,18 @@ function buildChrome() {
     onclick: readCurrentView,
   });
 
+  // The topbar is now ONLY "where am I, and what can I do" — the view tabs and
+  // the verbs. Everything that answers "what am I looking at" (search, group,
+  // sort, filters) moved down onto the page. That split is the whole point of
+  // this pass: two strips that each mean one thing, instead of one strip that
+  // meant both and carried controls that were dead on half the views.
   const topbar = el("div", { class: "topbar" }, [
-    filtersBtn, viewTabs,
-    el("div", { class: "search-wrap" }, [search]),
+    viewTabs, el("div", { class: "topbar-spacer" }),
     selectBtn, newBtn, mergeBtn, readBtn, settingsBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
+  viewport.append(buildCatalogBand(), el("div", { id: "view-host" }));
 
   // Where the bulk-action bar lives when select mode is on. Kept outside the
   // scrolling viewport so it stays put under your thumb while you scroll.
@@ -256,41 +242,154 @@ function buildChrome() {
 
   sync.onStatus(updateSyncUI);
   updateSyncUI(sync.status);
-  applyPanelChrome(activeView());   // closed unless asked for; absent where it doesn't apply
+  applyCatalogChrome(activeView());   // band + rail: present only on List and Board
 }
 
-// ---- the filters + group panel: open/closed, and whether it exists at all ----
-// Two ideas that used to be one, deliberately pulled apart (August 1, 2026):
+// ===================================================
+//  THE CATALOG BAND — the page's own header strip
+// ===================================================
+// A mount-coloured band at the top of List and Board, INSIDE the scrolling
+// page rather than in the app toolbar. It carries the three controls that
+// decide what you're looking at — Search, Group, Sort — plus what view you're
+// in, how many entries are showing, and (only when one is on) the active
+// filter with a way to clear it.
 //
-//   PREFERENCE  — "I like this panel open." Per device, remembered in
-//                 dash.sidebar exactly as before. Only a click changes it.
-//   AVAILABILITY — "this view can use the panel at all." Decided by the view
-//                 itself (list and board declare supportsFilterPanel).
+// It's `position: sticky`, which is the point of putting it here: it reads as
+// part of the page and scrolls with it, but never leaves — sorting a list you
+// scrolled halfway down shouldn't mean scrolling back up first.
 //
-// On Home and Project the panel and its button are ABSENT — not disabled, not
-// empty — and the preference is left untouched, so the panel is still open the
-// way you left it when you come back to List.
+// Built ONCE, like the rest of the chrome, and updated in render(). A select
+// that got rebuilt on every store change would close itself mid-choice.
+function buildCatalogBand() {
+  const railBtn = el("button", {
+    class: "band-btn", id: "rail-btn", "aria-controls": "sidebar",
+    onclick: () => setRail(!railOpen),
+  });
+
+  const search = el("input", {
+    type: "search", id: "band-search", placeholder: "Search everything…", "aria-label": "Search",
+    oninput: (e) => { state.filter.text = e.target.value.trim() || undefined; render(); },
+  });
+
+  const groupSel = el("select", { class: "band-sel", id: "group-sel", "aria-label": "Group by", onchange: (e) => {
+    state.groupBy = e.target.value; localStorage.setItem("dash.groupBy", state.groupBy); render();
+  }}, [
+    el("option", { value: "type", text: "Group: Type" }),
+    el("option", { value: "status", text: "Group: Status" }),
+    el("option", { value: "tag", text: "Group: Tag" }),
+    el("option", { value: "none", text: "Group: None" }),
+  ]);
+
+  // Every one of these already existed in query.js's sortItems() — they had
+  // simply never been wired to a control, so the app was permanently stuck on
+  // "recently changed". Labels say what you'd say out loud, not the key name.
+  const sortSel = el("select", { class: "band-sel", id: "sort-sel", "aria-label": "Sort by", onchange: (e) => {
+    state.sortBy = e.target.value; localStorage.setItem("dash.sortBy", state.sortBy); render();
+  }}, [
+    el("option", { value: "modified-desc", text: "Sort: Recently changed" }),
+    el("option", { value: "modified-asc",  text: "Sort: Longest untouched" }),
+    el("option", { value: "created-desc",  text: "Sort: Newest first" }),
+    el("option", { value: "created-asc",   text: "Sort: Oldest first" }),
+    el("option", { value: "title-asc",     text: "Sort: A → Z" }),
+    el("option", { value: "title-desc",    text: "Sort: Z → A" }),
+    el("option", { value: "touched-desc",  text: "Sort: Recently opened" }),
+  ]);
+
+  return el("div", { class: "catalog-band", id: "catalog-band" }, [
+    el("div", { class: "band-top" }, [
+      railBtn,
+      el("span", { class: "band-title", id: "band-title" }),
+      // The active filter, said in words, with an ✕. The rail already shows it
+      // as a current item, but the rail can be closed and the list can be
+      // scrolled — and "why is half my archive missing" is a genuinely
+      // confusing five minutes. One chip removes the whole category of bug.
+      el("span", { class: "band-filter", id: "band-filter", style: "display:none" }),
+      el("span", { class: "band-count num", id: "band-count" }),
+    ]),
+    el("div", { class: "band-controls" }, [
+      el("div", { class: "search-wrap" }, [search]),
+      groupSel, sortSel,
+    ]),
+  ]);
+}
+
+// Keep the band's readouts in step with what's actually on screen.
+function updateCatalogBand(view, result) {
+  const title = document.getElementById("band-title");
+  const count = document.getElementById("band-count");
+  const chip = document.getElementById("band-filter");
+  const groupSel = document.getElementById("group-sel");
+  const sortSel = document.getElementById("sort-sel");
+  const search = document.getElementById("band-search");
+  if (!title || !count || !chip) return;
+
+  title.textContent = view.label;
+  count.textContent = result.total === 1 ? "1 entry" : `${result.total} entries`;
+  if (groupSel) groupSel.value = state.groupBy;
+  if (sortSel) sortSel.value = state.sortBy;
+  // Only write the box if it has drifted — assigning to a focused search field
+  // on every keystroke's re-render would fight the cursor.
+  if (search && search.value !== (state.filter.text || "")) search.value = state.filter.text || "";
+
+  const label = activeFilterLabel();
+  chip.style.display = label ? "" : "none";
+  if (label) {
+    chip.innerHTML = "";
+    chip.append(
+      el("span", { text: label }),
+      el("button", {
+        class: "band-filter-clear", "aria-label": `Clear the ${label} filter`, text: "✕",
+        onclick: () => applyFilter({ text: state.filter.text }),
+      })
+    );
+  }
+}
+
+// What the current filter is, in words, or null when you're seeing everything.
+// Text search isn't included: the search box itself already shows that.
+function activeFilterLabel() {
+  const f = state.filter;
+  if (f.type) return store.typeDef(f.type)?.label || f.type;
+  if (f.status) return store.statusDef(f.status)?.label || f.status;
+  if (f.tag) return `#${f.tag}`;
+  if (f.untagged) return "Untagged";
+  return null;
+}
+
+// ---- the index rail: open/closed, and whether it exists at all ----
+// Two ideas kept deliberately apart:
 //
-// panelPref itself is declared up with `state`, NOT here: buildChrome() reads
+//   PREFERENCE   — "I like the rail open." Per device, in dash.rail. Only the
+//                  band's toggle changes it.
+//   AVAILABILITY — "this view has a rail at all." Decided by the view itself
+//                  (list and board declare supportsCatalogChrome).
+//
+// On Home and Project the rail, the band and the toggle are ABSENT — not
+// disabled, not empty — and the preference is left untouched, so the rail is
+// still open the way you left it when you come back to List.
+//
+// railOpen itself is declared up with `state`, NOT here: buildChrome() reads
 // it, boot() calls buildChrome() near the top of this file, and a `let` down
 // here would still be in its temporal dead zone at that point — a blank app
 // and a ReferenceError in the console. Declaration order is load-bearing.
-function setSidebar(open) {
-  panelPref = !!open;
-  localStorage.setItem("dash.sidebar", panelPref ? "1" : "0");
-  applyPanelChrome(activeView());
+function setRail(open) {
+  railOpen = !!open;
+  localStorage.setItem("dash.rail", railOpen ? "1" : "0");
+  applyCatalogChrome(activeView());
 }
 
-function applyPanelChrome(view) {
+function applyCatalogChrome(view) {
   const app = document.getElementById("app");
-  const btn = document.getElementById("filters-btn");
-  if (!app || !btn) return;
-  const available = !!view.supportsFilterPanel;
-  const open = available && panelPref;
+  const band = document.getElementById("catalog-band");
+  const btn = document.getElementById("rail-btn");
+  if (!app || !band || !btn) return;
+  const available = !!view.supportsCatalogChrome;
+  const open = available && railOpen;
   app.classList.toggle("with-sidebar", open);
-  btn.style.display = available ? "" : "none";
-  btn.textContent = open ? "✕ Filters & Group" : "☰ Filters & Group";
+  band.style.display = available ? "" : "none";
+  btn.textContent = open ? "✕ Index" : "☰ Index";
   btn.setAttribute("aria-expanded", String(open));
+  btn.title = open ? "Hide the tag / type / status index" : "Show the tag / type / status index";
 }
 
 // ===================================================
@@ -336,19 +435,20 @@ function render() {
   // any view, and it works identically on a phone.
   updateHomeBadge();
 
-  // The filters + group panel, and its topbar button: on screen only for the
-  // views that can actually use them (List and Board).
-  applyPanelChrome(view);
-  const groupSel = document.getElementById("group-sel");
-  if (groupSel) groupSel.value = state.groupBy;
+  // The catalog band and the index rail: on screen only for the views that can
+  // actually use them (List and Board).
+  applyCatalogChrome(view);
 
-  // build the panel's filter index (tags + types + statuses as quick filters)
+  // build the rail's filter index (tags + types + statuses as quick filters)
   renderSidebarFilters();
 
   const groupBy = view.forceGroupBy || (view.ownFilter ? "none" : (view.defaultGroupBy && !localStorage.getItem("dash.groupBy") ? view.defaultGroupBy : state.groupBy));
   const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });
+  updateCatalogBand(view, result);
 
-  const viewport = document.getElementById("viewport");
+  // Views render into #view-host, NOT the whole viewport: the catalog band is
+  // the viewport's other child, and every view starts by clearing its container.
+  const viewHost = document.getElementById("view-host");
   const ctx = {
     store,
     // ONE click path per item: while select mode is on, tapping an entry picks
@@ -371,7 +471,7 @@ function render() {
     rerender: render,
     sync,
   };
-  view.render(result, ctx, viewport);
+  view.render(result, ctx, viewHost);
 }
 
 // Keep the Select button and the bulk-action bar in step with the current view
