@@ -48,6 +48,11 @@ import { projectView } from "./views/project.js";
 
 const VIEWS = [homeView, listView, boardView, projectView];
 
+// What a view that reads the store itself gets handed instead of a real query
+// result (see render()). Frozen so nothing can quietly start writing to the
+// shared object.
+const EMPTY_RESULT = Object.freeze({ groups: Object.freeze([]), total: 0 });
+
 // ---------------- app state ----------------
 const state = {
   // Dash always opens on the Home sheet (Update 2). Switching to a catalog
@@ -439,12 +444,26 @@ function render() {
   // actually use them (List and Board).
   applyCatalogChrome(view);
 
-  // build the rail's filter index (tags + types + statuses as quick filters)
-  renderSidebarFilters();
+  // Build the rail's filter index (tags + types + statuses as quick filters)
+  // ONLY when the current view actually has a rail. It used to be built in
+  // full on every redraw and then hidden by CSS on Home and Project — the most
+  // expensive thing on the screen, drawn for nobody.
+  if (view.supportsCatalogChrome) renderSidebarFilters();
 
   const groupBy = view.forceGroupBy || (view.ownFilter ? "none" : (view.defaultGroupBy && !localStorage.getItem("dash.groupBy") ? view.defaultGroupBy : state.groupBy));
-  const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });
-  updateCatalogBand(view, result);
+
+  // A view that declares ownFilter (Home, Project) reads the store directly and
+  // throws this result away — so don't build one for it. query() filters AND
+  // sorts the whole archive, which is real work to do for nobody.
+  //
+  // The one thing to know if a future view is added: a view that wants the
+  // catalog band must NOT declare ownFilter, because the band's entry count
+  // comes out of this result.
+  const result = view.ownFilter
+    ? EMPTY_RESULT
+    : query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });
+
+  if (view.supportsCatalogChrome) updateCatalogBand(view, result);
 
   // Views render into #view-host, NOT the whole viewport: the catalog band is
   // the viewport's other child, and every view starts by clearing its container.
@@ -539,10 +558,55 @@ function applyFilter(next) {
   render();
 }
 
+// Tally everything the index rail needs in ONE walk of the archive.
+//
+// This is the standing rule from docs/dash-current-state.md — "anything that
+// repeatedly scans store.all() must be coalesced to one pass per frame" —
+// applied to the app's own chrome, which was the last place still breaking it.
+//
+// What it used to do: one full walk for the total, one MORE for every type,
+// one more for every status, one more for every tag on screen, plus
+// store.allTags() (which walks it again to collect the names). With five
+// types, three statuses and twenty tags that was about twenty-eight complete
+// walks of the archive on every single redraw — and a redraw happens on every
+// store change, including every keystroke in the item editor.
+//
+// Now it's one walk and three tallies. Same numbers on screen, same order.
+function railCounts() {
+  const byType = new Map();
+  const byStatus = new Map();
+  const byTag = new Map();
+  let total = 0;
+
+  const bump = (map, key) => map.set(key, (map.get(key) || 0) + 1);
+
+  for (const it of store.all()) {          // THE one pass
+    total++;
+    bump(byType, it.type);
+    bump(byStatus, it.status);
+
+    // A tag counts the ITEM, not the entry in the array. The old code asked
+    // "does this item have this tag", so an item could only ever count once
+    // however many times the tag appeared on it. store.addToSet already
+    // dedupes tags so a duplicate should be impossible — but a snapshot
+    // written by an older build could carry one, and the rail's number must
+    // never disagree with how many entries the list actually shows.
+    const seen = it.tags.length > 1 ? new Set() : null;
+    for (const t of it.tags) {
+      if (seen) { if (seen.has(t)) continue; seen.add(t); }
+      bump(byTag, t);
+    }
+  }
+
+  return { total, byType, byStatus, byTag };
+}
+
 function renderSidebarFilters() {
   const nav = document.getElementById("nav-filters");
   if (!nav) return;
   nav.innerHTML = "";
+
+  const { total, byType, byStatus, byTag } = railCounts();
 
   const mk = (label, active, onClick, count) => el("button", {
     class: "nav-btn", "aria-current": String(active), onclick: onClick,
@@ -550,12 +614,12 @@ function renderSidebarFilters() {
 
   nav.appendChild(el("h2", { text: "All" }));
   nav.appendChild(mk("Everything", !state.filter.type && !state.filter.status && !state.filter.tag,
-    () => applyFilter({ text: state.filter.text }), store.all().length));
+    () => applyFilter({ text: state.filter.text }), total));
 
-  // types
+  // types — listed in registry order, so the rail follows the order you set
   nav.appendChild(el("h2", { text: "Types" }));
   for (const t of store.types()) {
-    const count = store.all().filter(i => i.type === t.key).length;
+    const count = byType.get(t.key) || 0;
     if (count === 0) continue;
     nav.appendChild(mk(`${t.icon || "•"} ${t.label}`, state.filter.type === t.key,
       () => applyFilter({ text: state.filter.text, type: t.key }), count));
@@ -564,20 +628,19 @@ function renderSidebarFilters() {
   // statuses
   nav.appendChild(el("h2", { text: "Status" }));
   for (const s of store.statuses()) {
-    const count = store.all().filter(i => i.status === s.key).length;
+    const count = byStatus.get(s.key) || 0;
     if (count === 0) continue;
     nav.appendChild(mk(s.label, state.filter.status === s.key,
       () => applyFilter({ text: state.filter.text, status: s.key }), count));
   }
 
-  // top tags (cap to keep sidebar calm)
-  const tags = store.allTags();
+  // top tags (alphabetical, capped to keep the rail calm — unchanged)
+  const tags = [...byTag.keys()].sort((a, b) => a.localeCompare(b));
   if (tags.length) {
     nav.appendChild(el("h2", { text: "Tags" }));
     for (const tag of tags.slice(0, 20)) {
-      const count = store.all().filter(i => i.tags.includes(tag)).length;
       nav.appendChild(mk(`#${tag}`, state.filter.tag === tag,
-        () => applyFilter({ text: state.filter.text, tag }), count));
+        () => applyFilter({ text: state.filter.text, tag }), byTag.get(tag)));
     }
   }
 }

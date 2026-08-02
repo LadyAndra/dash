@@ -36,7 +36,16 @@
 // source that isn't item-derived declares `entriesFor` instead and fetches
 // its own way; the registry supports both.
 
-import { visibleMilestones, isOverdue, todayISO } from "./milestones.js";
+import { visibleMilestones, isOverdue, todayISO, compareMilestones } from "./milestones.js";
+
+// The one place this file decides what a project is. It's still the literal
+// string the rest of Dash uses (store.js exports PROJECT_TYPE for this, and
+// sweeping every hardcoded copy across the app is its own queued cleanup) —
+// but keeping it behind one function here means this file has exactly one line
+// to change when that sweep happens, rather than one per source.
+function isProject(item) {
+  return item.type === "project";
+}
 
 // ---- date helpers, all date-only strings (addendum §2.1) ----
 
@@ -73,8 +82,40 @@ function within(day, start, end) {
 
 const milestoneSource = {
   name: "milestone",
+
+  // Undated milestones (addendum §6.3). A milestone with no date can't sit on
+  // a grid, but silently dropping it re-creates the exact failure Dash exists
+  // to fight — things falling out of sight. So a source can also declare what
+  // it has that is REAL but UNPLACEABLE, and the Calendar's "Unscheduled" tray
+  // renders it.
+  //
+  // This is deliberately not an entry: an entry has a `start`, and this has no
+  // date by definition. It rides the same archive walk though (see collect()),
+  // so asking for both costs one pass, not two.
+  //
+  // Done-and-undated is excluded on purpose: a finished phase that never had a
+  // date is not something waiting to be scheduled.
+  unscheduledFromItem(item, emit, ctx) {
+    if (!isProject(item)) return;
+    for (const m of visibleMilestones(item)) {
+      if (m.date || m.done) continue;
+      emit({
+        id: `ms:${item.id}:${m.mid}:unscheduled`,
+        source: "milestone", kind: "unscheduled",
+        itemId: item.id, mid: m.mid,
+        label: m.label || "Untitled milestone",
+        context: item.title || "Untitled project",
+        start: null, end: null, allDay: true,
+        // the pipeline position, so the tray lists a project's phases in the
+        // order the project actually moves through them (addendum §3.2)
+        order: typeof m.order === "number" ? m.order : null,
+        done: false, overdue: false,
+      });
+    }
+  },
+
   fromItem(item, emit, ctx) {
-    if (item.type !== "project") return;
+    if (!isProject(item)) return;
     for (const m of visibleMilestones(item)) {
       const done = !!m.done;
 
@@ -154,32 +195,56 @@ export const SOURCES = [milestoneSource, itemDueSource];
 // `start` and `end` are inclusive date-only strings. Either may be null,
 // meaning "no bound in that direction" — which is how the Today panel asks
 // for "everything overdue" without inventing an arbitrary floor.
-export function entriesFor(store, start, end, opts = {}) {
+// The shared machinery. `want` says which of the two collections the caller
+// actually needs, and BOTH come out of the same walk of the archive — which is
+// the whole reason this is one function instead of two.
+//
+// The Calendar (M3) needs the dated entries for the grid AND the undated ones
+// for the tray on every render. Two separate queries would mean two full
+// archive scans per frame, which is the standing rule in
+// docs/dash-current-state.md ("coalesce to one pass per frame") broken on
+// arrival. Asking for both here costs one pass.
+function collect(store, start, end, opts, want) {
   const kinds = opts.kinds || ["due", "remind"];
   const today = opts.today || todayISO();
   const includeDone = opts.includeDone !== false;
 
-  const out = [];
-  const emit = (e) => { if (kinds.includes(e.kind)) out.push(e); };
+  const dated = [];
+  const undated = [];
+  const emit = (e) => { if (kinds.includes(e.kind)) dated.push(e); };
+  const emitUnscheduled = (e) => undated.push(e);
   const ctx = { store, start, end, today };
 
-  const itemSources = SOURCES.filter(s => typeof s.fromItem === "function");
+  // Only walk for sources that can actually contribute something we asked for.
+  const itemSources = SOURCES.filter(s =>
+    (want.entries && typeof s.fromItem === "function") ||
+    (want.unscheduled && typeof s.unscheduledFromItem === "function"));
+
   if (itemSources.length) {
     // THE one archive scan.
     for (const item of store.all()) {
-      for (const s of itemSources) s.fromItem(item, emit, ctx);
+      for (const s of itemSources) {
+        if (want.entries && s.fromItem) s.fromItem(item, emit, ctx);
+        if (want.unscheduled && s.unscheduledFromItem) s.unscheduledFromItem(item, emitUnscheduled, ctx);
+      }
     }
   }
   // Sources that aren't item-derived fetch their own way (none ship yet).
-  for (const s of SOURCES) {
-    if (typeof s.entriesFor === "function") {
-      for (const e of s.entriesFor(start, end, ctx) || []) emit(e);
+  if (want.entries) {
+    for (const s of SOURCES) {
+      if (typeof s.entriesFor === "function") {
+        for (const e of s.entriesFor(start, end, ctx) || []) emit(e);
+      }
     }
   }
 
-  const kept = includeDone ? out : out.filter(e => !e.done);
+  const kept = includeDone ? dated : dated.filter(e => !e.done);
   kept.sort(compareEntries);
-  return kept;
+  return { entries: kept, unscheduled: undated };
+}
+
+export function entriesFor(store, start, end, opts = {}) {
+  return collect(store, start, end, opts, { entries: true, unscheduled: false }).entries;
 }
 
 export function compareEntries(a, b) {
@@ -189,6 +254,91 @@ export function compareEntries(a, b) {
   const at = `${a.context || ""} ${a.label || ""}`;
   const bt = `${b.context || ""} ${b.label || ""}`;
   return at.localeCompare(bt);
+}
+
+// ===================================================================
+//  SHAPING: by day, and by project
+// ===================================================================
+// Both live here rather than in a view, for the same reason todayGroups does:
+// the grouping rule belongs next to the query it depends on, so there is one
+// definition of it rather than one per surface that wants it.
+
+// Bucket entries onto the day they start. Used by the Today panel's "next 14
+// days" and, from M3, by the Calendar's month grid — one bucketing rule for
+// both, so they can't drift apart.
+//
+// Note what this deliberately does NOT do: an entry with an `end` set (a
+// future ranged source — travel) lands only on its START day. Drawing a span
+// across several cells is a renderer change the addendum (§6.1) parks until
+// there's a source that produces one. Nothing here assumes single days; it
+// just doesn't invent the multi-day behaviour before it's needed.
+//
+// Expects entries already sorted (entriesFor sorts by date), so the days come
+// out in chronological order.
+export function groupByDay(entries) {
+  const byDay = new Map();
+  for (const e of entries || []) {
+    if (!e.start) continue;
+    if (!byDay.has(e.start)) byDay.set(e.start, []);
+    byDay.get(e.start).push(e);
+  }
+  return [...byDay.entries()].map(([day, items]) => ({ day, items }));
+}
+
+// Group unscheduled milestones under the project they belong to (addendum
+// §6.3 — "grouped by project"). Projects in alphabetical order; within a
+// project, phases in PIPELINE order, using the same comparison the milestone
+// list itself uses so the tray reads in the order the project moves through.
+export function groupByProject(list) {
+  const byProject = new Map();
+  for (const e of list || []) {
+    if (!byProject.has(e.itemId)) {
+      byProject.set(e.itemId, { projectId: e.itemId, title: e.context, items: [] });
+    }
+    byProject.get(e.itemId).items.push(e);
+  }
+  const groups = [...byProject.values()];
+  // compareMilestones reads .order and .mid, which these entries carry — so
+  // the tray and the project page order phases identically, by construction.
+  for (const g of groups) g.items.sort(compareMilestones);
+  groups.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  return groups;
+}
+
+// ===================================================================
+//  THE UNSCHEDULED TRAY  (addendum §6.3)
+// ===================================================================
+// Every undated, unfinished milestone, grouped by project. This is what stops
+// an undated phase from being invisible: the moment you're looking at a
+// calendar is the moment you're thinking about time, so "needs a date" belongs
+// one tap from the surface where the date will land.
+//
+// Standalone (one archive pass). The Calendar should call calendarData()
+// instead, which gets this AND the grid's entries out of a single pass.
+export function unscheduledFor(store, opts = {}) {
+  return groupByProject(collect(store, null, null, opts, { entries: false, unscheduled: true }).unscheduled);
+}
+
+// ===================================================================
+//  THE CALENDAR'S QUERY  (addendum §6.2)
+// ===================================================================
+// Everything the Calendar view needs for one render, from ONE archive pass:
+//
+//   entries      the dated things in the requested window, sorted
+//   days         those same entries bucketed by day, for the month grid
+//   unscheduled  the undated tray, grouped by project
+//
+// Done entries are INCLUDED by default, because §6.2 wants them rendered muted
+// rather than vanishing — a past month should read as history. Pass
+// { includeDone: false } for a view that only wants live things.
+export function calendarData(store, start, end, opts = {}) {
+  const { entries, unscheduled } = collect(store, start, end, opts, { entries: true, unscheduled: true });
+  return {
+    entries,
+    days: groupByDay(entries),
+    unscheduled: groupByProject(unscheduled),
+    unscheduledCount: unscheduled.length,
+  };
 }
 
 // ===================================================================
@@ -209,15 +359,12 @@ export function todayGroups(store, opts = {}) {
 
   const overdue = [];
   const now = [];
-  const upcoming = new Map();      // "YYYY-MM-DD" -> [entry]
+  const later = [];
 
   for (const e of all) {
     if (e.start < today) overdue.push(e);
     else if (e.start === today) now.push(e);
-    else {
-      if (!upcoming.has(e.start)) upcoming.set(e.start, []);
-      upcoming.get(e.start).push(e);
-    }
+    else later.push(e);
   }
 
   return {
@@ -225,7 +372,9 @@ export function todayGroups(store, opts = {}) {
     horizon,
     overdue,
     now,
-    upcoming: [...upcoming.entries()].map(([day, items]) => ({ day, items })),
+    // Bucketed by the shared rule, so the Today panel and the Calendar's month
+    // grid group days the same way by construction rather than by agreement.
+    upcoming: groupByDay(later),
     total: all.length,
     overdueCount: overdue.length,
   };
