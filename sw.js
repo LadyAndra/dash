@@ -3,7 +3,7 @@
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
 
-const CACHE_VERSION = "dash-v25";
+const CACHE_VERSION = "dash-v26";
 const SHELL = [
   "./",
   "./index.html",
@@ -43,6 +43,11 @@ const SHELL = [
   "./js/views/home.js",
   "./js/views/list.js",
   "./js/views/board.js",
+  // Kanban and Columns are UNREGISTERED (August 2026) — app.js no longer
+  // imports them, so nothing fetches these at runtime. They stay cached for
+  // the same reason the widgets do: it costs nothing, and putting either back
+  // is then one uncommented import in app.js with no risk of the classic
+  // "forgot to add it to SHELL" broken deploy.
   "./js/views/kanban.js",
   "./js/views/finder.js",
   "./js/views/project.js",

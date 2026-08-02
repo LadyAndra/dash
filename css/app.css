@@ -102,6 +102,11 @@ button, input, textarea, select {
 }
 .sidebar-section h2:first-child { margin-top: 0; }
 
+/* Group moved out of the topbar and into the panel (August 1, 2026). Same
+   control, so it keeps its #group-sel styling; it just fills the panel's
+   column now instead of sitting in an instrument strip. */
+#nav-arrange #group-sel { width: 100%; }
+
 .nav-btn {
   display: flex; align-items: center; gap: var(--space-2);
   width: 100%;
@@ -244,6 +249,56 @@ button, input, textarea, select {
   background: currentColor; flex: none;
 }
 .mk-ember { color: var(--ember); font-weight: 600; }
+
+/* ---------- Quick status control (list rows / board cards) ---------- */
+/* Reads as a .mk mark that happens to be tappable — same mono voice, same
+   5px dot drawn from currentColor, colour still set inline from the status
+   registry. It's a utility, not a new focal point on the row: no fill, no
+   border at rest, just a small caret so it doesn't look like plain text.
+   Sizing follows --control-min (28px on a mouse, 44px on a finger) like every
+   other control since the spacing pass. */
+.status-ctl {
+  display: inline-flex; align-items: center; gap: 0.45em;
+  min-height: var(--control-min);
+}
+.status-ctl::before {
+  content: "";
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; flex: none;
+}
+.status-ctl::after {
+  content: "▾";
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--text-faint);
+  margin-left: -0.25em;
+  pointer-events: none;
+}
+.status-ctl select {
+  min-height: var(--control-min);
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+.status-ctl select:hover { border-color: var(--border); background: var(--surface-raised); }
+.status-ctl select:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+/* The options themselves are drawn by the OS, which does not inherit the
+   inline registry colour — name the surface so a dark theme doesn't hand back
+   a white menu. */
+.status-ctl option { color: var(--text-primary); background: var(--surface-raised); }
 
 .tag {
   font-family: var(--font-mono);
@@ -1183,6 +1238,8 @@ button, input, textarea, select {
   .sidebar-section h2 { display: none; }
   .sidebar-section { display: flex; align-items: center; gap: var(--space-1); }
   .nav-btn { width: auto; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) var(--space-2); }
+  /* the panel is a horizontal strip here, so Group sizes to its own text */
+  #nav-arrange #group-sel { width: auto; }
   .nav-btn[aria-current="true"] { box-shadow: inset 0 -2px 0 var(--ember); padding-left: var(--space-2); }
   .sidebar-footer { margin: 0; border: none; flex-direction: row; padding: var(--space-1) var(--space-2); }
   .brand { padding: var(--space-2) var(--space-3); }

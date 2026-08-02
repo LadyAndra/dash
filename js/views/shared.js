@@ -39,6 +39,50 @@ export function statusChip(store, item) {
     [s?.label || item.status]);
 }
 
+// ---- the quick status control (August 1, 2026) ----
+// Kanban was unregistered because Andra doesn't use it, but it did one thing
+// nothing else could: change an entry's status without opening the editor.
+// This is that, moved onto the rows and cards themselves.
+//
+// It is deliberately BORING underneath. The options come from the same status
+// registry Kanban's columns were derived from (§2.2 — statuses are data, not
+// code), and choosing one calls the same store.setField() the editor calls. No
+// new op kind, no new field, nothing added to the data model. Add a status in
+// Settings and it appears in here, on every row, for free.
+//
+// Two details that matter:
+//   - Every event is stopped from bubbling. The row around it is a role=button
+//     that opens the editor, so without this a tap on the dropdown would open
+//     the item instead — and Enter/Space on the open dropdown would too.
+//   - An item can carry a status that has since been renamed or removed from
+//     the registry. Rather than silently snapping it to the first option, the
+//     unknown key is added as its own option so the control shows the truth.
+export function statusControl(store, item) {
+  const cur = store.statusDef(item.status);
+  const known = store.statuses();
+
+  const sel = el("select", {
+    "aria-label": "Status",
+    onclick: (e) => e.stopPropagation(),
+    onmousedown: (e) => e.stopPropagation(),
+    onkeydown: (e) => e.stopPropagation(),
+    onchange: (e) => {
+      e.stopPropagation();
+      store.setField(item.id, "status", e.target.value);
+    },
+  });
+  for (const s of known) sel.appendChild(el("option", { value: s.key, text: s.label || s.key }));
+  if (!known.some(s => s.key === item.status)) {
+    sel.appendChild(el("option", { value: item.status, text: item.status }));
+  }
+  sel.value = item.status;
+
+  // Colour comes from the registry, inline, exactly like a .mk mark — the dot
+  // and the caret are drawn from currentColor / a token in CSS, so a re-theme
+  // and a brand-new status both work without touching the stylesheet.
+  return el("span", { class: "status-ctl", style: `color:${colorToken(cur?.color)}` }, [sel]);
+}
+
 export function tagChips(item) {
   return item.tags.map(t => el("span", { class: "tag", text: t }));
 }
@@ -201,13 +245,16 @@ function sketchThumb(item, cls) {
 // opts.selection — the selection controller (see js/selection.js). When select
 // mode is on the row grows a checkbox and a picked state; the click handler is
 // unchanged, because onOpen is what app.js re-points at "toggle selection".
+// opts.statusControl — draw the status as an editable control rather than a
+// read-only mark. Opt-in, so List and Board get it and Project's connected-item
+// lists stay a quiet read-only index.
 export function itemRow(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
   const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
 
   const meta = el("div", { class: "item-meta" }, [
     typeChip(store, item),
-    statusChip(store, item),
+    editableStatus(opts) ? statusControl(store, item) : statusChip(store, item),
     stageChip(item),                 // projects only; null for everything else
     el("span", { class: "num", text: shortDate(item) }),
   ]);
@@ -240,7 +287,8 @@ export function itemCard(store, item, onOpen, opts = {}) {
   ]);
   const marks = el("div", { class: "item-meta" }, [
     opts.hideType ? null : typeChip(store, item),
-    opts.hideStatus ? null : statusChip(store, item),
+    opts.hideStatus ? null
+      : (editableStatus(opts) ? statusControl(store, item) : statusChip(store, item)),
     stageChip(item),                 // projects only; null for everything else
   ]);
 
@@ -261,6 +309,16 @@ export function itemCard(store, item, onOpen, opts = {}) {
   ]);
 
   return applySelectable(card, item, opts.selection);
+}
+
+// Should this row/card draw an editable status? Only if the view asked for it
+// AND we're not in select mode. While you're picking entries, a tap anywhere on
+// a row means "pick this" — a dropdown that opened instead, or worse quietly
+// changed a status mid-selection, would be exactly the kind of surprise bulk
+// editing must never cause. (Same reasoning that switched off kanban drag
+// during select mode.) The read-only mark takes its place, so nothing moves.
+function editableStatus(opts) {
+  return !!opts.statusControl && !(opts.selection && opts.selection.active);
 }
 
 // ---- select mode (the Pinterest-style "organise" toggle) ----

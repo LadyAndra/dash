@@ -9,6 +9,7 @@ export const boardView = {
   label: "Board",
   defaultGroupBy: "none",
   supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
+  supportsFilterPanel: true, // shows the "☰ Filters & Group" panel (app.js)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -22,7 +23,9 @@ export const boardView = {
     const board = el("div", { class: "board" });
     for (const group of result.groups) {
       for (const item of group.items) {
-        board.appendChild(itemCard(ctx.store, item, ctx.onOpen, { selection: ctx.selection }));
+        // statusControl: the card carries a quick status dropdown, so a status
+        // can be changed without opening the editor (what Kanban used to be for).
+        board.appendChild(itemCard(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
       }
     }
     container.appendChild(board);

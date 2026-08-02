@@ -8,6 +8,7 @@ export const listView = {
   label: "List",
   defaultGroupBy: "type",
   supportsSelect: true, // shows the Select button in the topbar (§ multi-select)
+  supportsFilterPanel: true, // shows the "☰ Filters & Group" panel (app.js)
 
   render(result, ctx, container) {
     container.innerHTML = "";
@@ -36,7 +37,9 @@ export const listView = {
         wrap.appendChild(head);
         if (collapsed) { container.appendChild(wrap); continue; }
       }
-      for (const item of group.items) wrap.appendChild(itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection }));
+      // statusControl: the row carries a quick status dropdown, so a status can
+      // be changed without opening the editor (what Kanban used to be for).
+      for (const item of group.items) wrap.appendChild(itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
       container.appendChild(wrap);
     }
   },

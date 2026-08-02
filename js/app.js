@@ -29,11 +29,24 @@ import { overdueCount } from "./entries.js";
 import { homeView, speakToday } from "./views/home.js";
 import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
-import { kanbanView } from "./views/kanban.js";
-import { finderView } from "./views/finder.js";
 import { projectView } from "./views/project.js";
 
-const VIEWS = [homeView, listView, boardView, kanbanView, finderView, projectView];
+// ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
+// Andra doesn't use either one, so they've come out of the view switcher.
+// Exactly the same treatment as the corner cluster above, for exactly the
+// same reason: NOTHING WAS DELETED. js/views/kanban.js and js/views/finder.js
+// are untouched on disk and still in the service worker's SHELL, so bringing
+// either back is this and only this — uncomment its import and put it back in
+// VIEWS — with no risk of the classic "forgot to add it to SHELL" broken
+// deploy.
+//
+// The one thing Kanban did that nothing else could — change an entry's status
+// without opening the editor — did NOT go away with it. It moved onto the
+// rows and cards themselves; see statusControl() in js/views/shared.js.
+// import { kanbanView } from "./views/kanban.js";
+// import { finderView } from "./views/finder.js";
+
+const VIEWS = [homeView, listView, boardView, projectView];
 
 // ---------------- app state ----------------
 const state = {
@@ -44,8 +57,14 @@ const state = {
   sortBy: "modified-desc",
   filter: {},          // { text, type, status, tag }
   collapsed: new Set(JSON.parse(localStorage.getItem("dash.collapsed") || "[]")),
-  viewLocal: {},       // scratch space for the active view (e.g. finder selection)
+  viewLocal: {},       // scratch space for the active view (e.g. project selection)
 };
+
+// Whether the user likes the filters + group panel open. Per device, and only
+// a click changes it — separate from whether the CURRENT VIEW can use the panel
+// at all. See applyPanelChrome() below for why those are two different things.
+// Declared here rather than next to that function because boot() runs first.
+let panelPref = localStorage.getItem("dash.sidebar") === "1";
 
 const store = new Store();
 const sync = new Sync(store);
@@ -131,14 +150,24 @@ function buildChrome() {
   const app = document.getElementById("app");
   app.innerHTML = "";
 
-  // ---- sidebar: now CLOSED by default (August 1, 2026) ----
-  // It was the tag/type/status filter index plus two buttons, and in practice
-  // it was mostly taking width. Settings and Read-aloud have moved to the
-  // topbar so the sidebar is never *required* for anything; the filter list
-  // is still all there, one tap away, for the times a tag needs chasing.
-  // Open/closed is remembered per device (UI arrangement stays local).
+  // ---- the FILTERS + GROUP panel (the sidebar) ----
+  // Closed by default since August 1, 2026: it was mostly taking width, and
+  // Settings / Read-aloud moved to the topbar so it's never *required* for
+  // anything. Open/closed is remembered per device (UI arrangement stays
+  // local — see dash.sidebar).
+  //
+  // Later the same day, Group moved IN HERE from the topbar. Filters and Group
+  // only ever did anything on List and Board, so a global topbar copy of each
+  // was two permanent controls that did nothing on two of the four views. Now
+  // they're one panel behind one button, and render() puts that button on
+  // screen only where it can do something. The filtering logic underneath is
+  // completely unchanged — this is placement, not a rebuild.
   const sidebar = el("aside", { class: "sidebar", id: "sidebar" });
   sidebar.appendChild(el("div", { class: "brand" }, [el("img", { class: "brand-mark", src: "logo-mark.png", alt: "" }), "Dash"]));
+
+  const arrange = el("div", { class: "sidebar-section", id: "nav-arrange" });
+  arrange.appendChild(el("h2", { text: "Arrange" }));
+  sidebar.appendChild(arrange);
 
   const nav = el("div", { class: "sidebar-section", id: "nav-filters" });
   sidebar.appendChild(nav);
@@ -156,6 +185,9 @@ function buildChrome() {
     viewTabs.appendChild(tab);
   }
 
+  // Group lives inside the panel now, not in the topbar. Same control, same
+  // dash.groupBy key, same behaviour — it just isn't on screen on Home and
+  // Project any more, where it never did anything.
   const groupSel = el("select", { id: "group-sel", "aria-label": "Group by", onchange: (e) => {
     state.groupBy = e.target.value; localStorage.setItem("dash.groupBy", state.groupBy); render();
   }}, [
@@ -164,6 +196,7 @@ function buildChrome() {
     el("option", { value: "tag", text: "Group: Tag" }),
     el("option", { value: "none", text: "Group: None" }),
   ]);
+  arrange.appendChild(groupSel);
 
   const search = el("input", { type: "search", placeholder: "Search everything…", "aria-label": "Search",
     oninput: (e) => { state.filter.text = e.target.value.trim() || undefined; render(); } });
@@ -187,10 +220,11 @@ function buildChrome() {
   const syncBtn = el("button", { class: "btn", id: "sync-btn", onclick: onSyncButton });
   const syncPill = el("div", { class: "sync-pill", id: "sync-pill" }, [el("span", { class: "dot" }), el("span", { id: "sync-label", text: "" })]);
 
-  // Filters toggle — the only way in and out of the sidebar now.
+  // The only way in and out of the panel. render() hides this button entirely
+  // on views the panel doesn't apply to.
   const filtersBtn = el("button", {
     class: "btn", id: "filters-btn", "aria-controls": "sidebar",
-    onclick: () => setSidebar(!sidebarOpen()),
+    onclick: () => setSidebar(!panelPref),
   });
 
   // Settings and Read-aloud used to live at the bottom of the sidebar. With
@@ -206,7 +240,7 @@ function buildChrome() {
   });
 
   const topbar = el("div", { class: "topbar" }, [
-    filtersBtn, viewTabs, groupSel,
+    filtersBtn, viewTabs,
     el("div", { class: "search-wrap" }, [search]),
     selectBtn, newBtn, mergeBtn, readBtn, settingsBtn, syncBtn, syncPill,
   ]);
@@ -222,19 +256,41 @@ function buildChrome() {
 
   sync.onStatus(updateSyncUI);
   updateSyncUI(sync.status);
-  setSidebar(localStorage.getItem("dash.sidebar") === "1");   // closed unless asked for
+  applyPanelChrome(activeView());   // closed unless asked for; absent where it doesn't apply
 }
 
-// ---- sidebar open/closed ----
-function sidebarOpen() { return document.getElementById("app")?.classList.contains("with-sidebar"); }
+// ---- the filters + group panel: open/closed, and whether it exists at all ----
+// Two ideas that used to be one, deliberately pulled apart (August 1, 2026):
+//
+//   PREFERENCE  — "I like this panel open." Per device, remembered in
+//                 dash.sidebar exactly as before. Only a click changes it.
+//   AVAILABILITY — "this view can use the panel at all." Decided by the view
+//                 itself (list and board declare supportsFilterPanel).
+//
+// On Home and Project the panel and its button are ABSENT — not disabled, not
+// empty — and the preference is left untouched, so the panel is still open the
+// way you left it when you come back to List.
+//
+// panelPref itself is declared up with `state`, NOT here: buildChrome() reads
+// it, boot() calls buildChrome() near the top of this file, and a `let` down
+// here would still be in its temporal dead zone at that point — a blank app
+// and a ReferenceError in the console. Declaration order is load-bearing.
 function setSidebar(open) {
+  panelPref = !!open;
+  localStorage.setItem("dash.sidebar", panelPref ? "1" : "0");
+  applyPanelChrome(activeView());
+}
+
+function applyPanelChrome(view) {
   const app = document.getElementById("app");
   const btn = document.getElementById("filters-btn");
   if (!app || !btn) return;
-  app.classList.toggle("with-sidebar", !!open);
-  btn.textContent = open ? "✕ Filters" : "☰ Filters";
-  btn.setAttribute("aria-expanded", String(!!open));
-  localStorage.setItem("dash.sidebar", open ? "1" : "0");
+  const available = !!view.supportsFilterPanel;
+  const open = available && panelPref;
+  app.classList.toggle("with-sidebar", open);
+  btn.style.display = available ? "" : "none";
+  btn.textContent = open ? "✕ Filters & Group" : "☰ Filters & Group";
+  btn.setAttribute("aria-expanded", String(open));
 }
 
 // ===================================================
@@ -280,15 +336,13 @@ function render() {
   // any view, and it works identically on a phone.
   updateHomeBadge();
 
-  // group selector: some views force their own grouping
+  // The filters + group panel, and its topbar button: on screen only for the
+  // views that can actually use them (List and Board).
+  applyPanelChrome(view);
   const groupSel = document.getElementById("group-sel");
-  if (groupSel) {
-    const forced = view.forceGroupBy;
-    groupSel.disabled = !!forced || view.ownFilter;
-    if (!forced && !view.ownFilter) groupSel.value = state.groupBy;
-  }
+  if (groupSel) groupSel.value = state.groupBy;
 
-  // build sidebar filters (tags + types + statuses as quick filters)
+  // build the panel's filter index (tags + types + statuses as quick filters)
   renderSidebarFilters();
 
   const groupBy = view.forceGroupBy || (view.ownFilter ? "none" : (view.defaultGroupBy && !localStorage.getItem("dash.groupBy") ? view.defaultGroupBy : state.groupBy));
