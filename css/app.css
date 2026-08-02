@@ -1720,6 +1720,10 @@ button, input, textarea, select {
 .ms-date-field { display: inline-flex; align-items: center; gap: var(--space-2); }
 .ms-date {
   min-height: var(--control-min);
+  /* a fixed, compact width rather than the browser's native default (which
+     runs much wider than "Aug 4, 2026" needs) — that's the room Due and
+     Remind need to sit on the same line whenever the row has space for it */
+  width: 8.5rem;
   padding: var(--space-1) var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -1792,15 +1796,27 @@ button, input, textarea, select {
 .merge-note-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .merge-note-actions .spacer { flex: 1; }
 
-/* ---- phone: the row stacks so nothing is squeezed under 44px ---- */
+/* ---- phone: the row stacks so nothing is squeezed under 44px ----
+   Due and Remind are deliberately left alone here: .ms-date-field is a
+   plain content-sized flex item (the default — nothing above sets flex-grow
+   on it), and .ms-dates already wraps. That combination is what lets the
+   two fields sit side by side whenever the row is wide enough (a phone in
+   landscape, a tablet, a desktop window) and drop to their own full lines
+   when it isn't (a phone in portrait), each at its natural width.
+
+   An earlier version forced both fields to flex:1 with a 9rem floor so
+   they'd divide the row evenly. That backfired: it required a native date
+   input to shrink below the width it actually renders at, so instead of
+   wrapping cleanly the second field ran off the edge of the screen — the
+   "crammed in portrait" bug. Deterministic sizing on .ms-date plus ordinary
+   wrapping fixes both that and the reverse problem (fields wrapping to two
+   lines with room to spare) at once. */
 @media (max-width: 820px) {
   .ms-row { flex-wrap: wrap; }
   .ms-grip { display: none; }        /* drag doesn't work on touch anyway */
   .ms-main { flex-basis: calc(100% - var(--control-min) - var(--space-3)); }
   .ms-controls { width: 100%; justify-content: flex-end; }
   .ms-dates { gap: var(--space-2); }
-  .ms-date-field { flex: 1; min-width: 9rem; }
-  .ms-date { flex: 1; min-width: 0; }
 }
 
 /* ---- entries attached to a phase (August 2026) ----
