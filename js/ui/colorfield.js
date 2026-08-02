@@ -35,7 +35,7 @@
 // to read. Then it's your call, and the button says so.
 
 import { el } from "../views/shared.js";
-import { colorReport, isHex, resolveHex } from "../theme.js";
+import { colorReport, isHex, resolveHex, defaultAccentHex } from "../theme.js";
 
 // opts:
 //   value        current colour — hex, palette name, or null
@@ -46,7 +46,11 @@ import { colorReport, isHex, resolveHex } from "../theme.js";
 //   note         a line of explanation under the control
 export function colorField(opts = {}) {
   const {
-    value = null, fallback = "#b23a14",
+    // No literal default here: both callers pass `fallback` explicitly today,
+    // but if one ever doesn't, "the accent as the theme defines it" is the
+    // right thing to open on — not a hex frozen into this file that a
+    // re-themed Dash would have moved past. (See defaultAccentHex in theme.js.)
+    value = null, fallback = defaultAccentHex(),
     onChange, onReset, resetLabel = "Reset", note = null,
   } = opts;
 

@@ -157,7 +157,7 @@ export const homeView = {
     // don't write down is gone, so it can never be something you're allowed to
     // reorder away or hide. The stats sit under it. Rail panels come after.
     const rail = el("div", { class: "dash-rail" });
-    rail.appendChild(plate("I", "Accession", "New entry"));
+    rail.appendChild(plate("Accession", "New entry"));
     rail.appendChild(captureWell(ctx));
     rail.appendChild(statStrip(store, groups));
     for (const p of PANELS) {
@@ -192,9 +192,13 @@ export const homeView = {
   },
 };
 
-function plate(no, title, right) {
+// A section head in the rail. It used to take a plate NUMBER as well — Home was
+// once a vertical run of numbered plates ("I. Accession", "II. …"). The panel
+// layout replaced that in August 2026 and only plate I survived, so the app was
+// showing a roman numeral one belonging to a sequence that no longer existed.
+// The number is gone; the mono voice and the right-hand readout stay.
+function plate(title, right) {
   return el("div", { class: "plate" }, [
-    el("span", { class: "plate-no", text: no }),
     el("span", { class: "plate-title", text: title }),
     right ? el("span", { class: "plate-right num", text: right }) : null,
   ]);

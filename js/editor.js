@@ -6,8 +6,8 @@
 // Edits call store methods directly (setField / addToSet / removeFromSet),
 // so each keystroke-save is one operation and sync/merge just works (§6).
 
-import { el } from "./views/shared.js";
-import { colorToken, resolveHex } from "./theme.js";
+import { el, groundStyle } from "./views/shared.js";
+import { resolveHex } from "./theme.js";
 import { colorField } from "./ui/colorfield.js";
 import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
@@ -145,7 +145,21 @@ export function openEditor(store, itemId, opts = {}) {
     projectWrap.querySelectorAll(".chip, .project-adder").forEach(n => n.remove());
     const assigned = store.projectsOf(id);
     for (const p of assigned) {
-      const chip = el("span", { class: "chip", style: `background:var(--tint-green); color:var(--color-green)` }, [
+      // The project wears its OWN colour here, like it does on its page and in
+      // the projects list. This used to be hardcoded to the green tint, which
+      // made every project chip green no matter what colour you'd picked —
+      // the one surface in Dash where a project didn't carry its own colour.
+      //
+      // groundStyle() also sets --ground-ink (the more readable of Dash's two
+      // inks on that particular colour), and the `on-ground` class is what
+      // makes the label and the ✕ read it. That pairing is what lets an
+      // arbitrary picked hex land here and stay legible — a tint background
+      // couldn't, because there is no tint variant of a custom colour, so the
+      // text and the background would have come out the same colour.
+      //
+      // A project with no colour of its own still inherits its type's green,
+      // so untouched projects look as they did.
+      const chip = el("span", { class: "chip on-ground", style: groundStyle(store, p) }, [
         `◆ ${p.title || "Untitled project"}`,
         el("button", { type: "button", "aria-label": `Remove from ${p.title}`, text: "✕",
           onclick: () => { store.unassignFromProject(id, p.id); renderProjects(); } }),
@@ -335,16 +349,52 @@ export function openEditor(store, itemId, opts = {}) {
   document.body.appendChild(scrim);
   title.focus();
 
+  // Closing has to be safe to ask for twice, and has to clean up after itself
+  // on EVERY path out — not just the one that happened to be written first.
+  //
+  // What was wrong before (found in the August 2026 code-health review): the
+  // Escape listener below was only removed inside the Escape branch. Closing
+  // with Done, with Delete, or by tapping the backdrop left it attached to the
+  // document forever. Pressing Escape any time afterwards then ran close() a
+  // second time on an editor that was already gone, and
+  // `document.body.removeChild(scrim)` threw because the scrim was no longer a
+  // child — which surfaced as the red "Something went wrong inside Dash"
+  // banner, apparently out of nowhere. One orphaned listener also piled up per
+  // editor you opened, for the life of the session.
+  //
+  // Three things fix it, and all three are worth keeping:
+  //   1. `closed` makes close() idempotent, so a second call is a no-op rather
+  //      than a half-run teardown (it would also have re-saved the sketch).
+  //   2. The listener comes off at the TOP of close(), so every exit path
+  //      cleans up, including ones added later.
+  //   3. scrim.remove() instead of document.body.removeChild(scrim) — same
+  //      result, but it can't throw if the node has already gone.
+  let closed = false;
   async function close() {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", escClose);
+
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter
     clearTimeout(sketchSaveTimer);
     if (sketchPad) { await saveSketch(); sketchPad.destroy(); }
     if (sketchBgUrl) URL.revokeObjectURL(sketchBgUrl);
-    document.body.removeChild(scrim);
+    scrim.remove();
     opts.onClose && opts.onClose();
   }
+
+  function escClose(e) {
+    if (e.key !== "Escape") return;
+    // Only the TOPMOST dialog answers Escape. The link picker, the inline
+    // project creator and the bulk-action sheets all open their own scrim on
+    // top of this one; without this check, Escape would close the editor
+    // underneath them and leave the picker floating on its own with nothing
+    // behind it.
+    const scrims = document.querySelectorAll(".modal-scrim");
+    if (scrims[scrims.length - 1] !== scrim) return;
+    close();
+  }
   document.addEventListener("keydown", escClose);
-  function escClose(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", escClose); } }
 }
 
 function field(label, control, hint) {

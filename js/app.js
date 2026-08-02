@@ -3,7 +3,7 @@
 // able to follow the whole control flow from here.
 
 import { Store } from "./store.js";
-import { Sync, supportsFolder } from "./sync.js";
+import { Sync } from "./sync.js";
 import { query } from "./query.js";
 import { loadSavedTheme, loadThemeFromFolder } from "./theme.js";
 import { installGlobalErrorBanner, toast } from "./ui/toast.js";
@@ -409,7 +409,11 @@ function setView(name) {
   // aren't even on screen any more, and acting on invisible items is exactly
   // the kind of surprise bulk editing must never cause.
   if (selection.active) selection.exit();
-  localStorage.setItem("dash.view", name);
+  // No localStorage write here. `dash.view` used to be saved on every switch
+  // and was read by NOTHING — Dash always opens on Home by design (see the
+  // note on state.viewName). It's abandoned in place, exactly like
+  // dash.sidebar: the old key may still be sitting in localStorage on your
+  // devices, and nothing looks at it.
   render();
 }
 
@@ -554,7 +558,7 @@ function updateMergeUI() {
 // no sense on the Home sheet, so a filter click there switches to the list.
 function applyFilter(next) {
   state.filter = next;
-  if (state.viewName === "home") { state.viewName = "list"; localStorage.setItem("dash.view", "list"); }
+  if (state.viewName === "home") state.viewName = "list";
   render();
 }
 

@@ -374,9 +374,7 @@ export class Sync {
     }
     await idbSet("blobOutbox", remaining);
   }
-  // Content-addressed means "does this file already exist" is a cheap check
-  // and never a conflict (§6.1).
-  // write any locally-ingested files into Dash/assets/<hash>.<ext> (§3),
+  // Write any locally-ingested files into Dash/assets/<hash>.<ext> (§3),
   // folder-backend version (Mac). Content-addressed means "does this file
   // already exist" is a cheap check and never a conflict (§6.1).
   async _flushBlobsToFolder() {
@@ -533,7 +531,10 @@ function downloadBlob(blob, filename) {
 function getDropboxToken() {
   try { return localStorage.getItem(DBX_TOKEN_KEY) || null; } catch { return null; }
 }
-function setDropboxToken(t) { try { localStorage.setItem(DBX_TOKEN_KEY, t); } catch {} }
+// (There is deliberately no setDropboxToken. Pasting a token by hand was the
+// OLD way in, and it's gone — connecting is the PKCE flow in dropbox-auth.js.
+// getDropboxToken above stays only to keep reading a token saved by that older
+// build, so a device that hasn't reconnected yet still syncs.)
 function clearDropboxToken() { try { localStorage.removeItem(DBX_TOKEN_KEY); } catch {} }
 
 function guessMime(ext) {

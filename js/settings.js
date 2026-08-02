@@ -127,7 +127,11 @@ export function openSettings(store, sync) {
     field("Automatic sync (Dropbox)", dbxWrap, "Connect once on each device. After that, Dash syncs across all your devices automatically — and stays connected."),
     el("hr", { style: "border:none; border-top:1px solid var(--border); margin:var(--space-4) 0" }),
     field("Types", typesWrap, "Add your own item types. New types appear everywhere immediately."),
-    field("Statuses", statusWrap, "Add your own statuses. Each status becomes a Kanban column."),
+    // Was "Each status becomes a Kanban column" — true until Kanban was
+    // unregistered on August 1, 2026. The status registry didn't go anywhere;
+    // what reads it now is the quick status dropdown on every row and card
+    // (statusControl in js/views/shared.js), the editor, and Group-by-status.
+    field("Statuses", statusWrap, "Add your own statuses. New statuses appear everywhere immediately — including the quick status dropdown on every row and card."),
     el("div", { class: "modal-actions" }, [el("div", { class: "spacer" }), el("button", { class: "btn btn-primary", text: "Done", onclick: () => scrim.remove() })]),
   );
 

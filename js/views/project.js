@@ -7,7 +7,7 @@
 // all surface together without needing folders (§0's core requirement).
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
-import { el, itemRow, emptyState, typeChip, stageChip,
+import { el, itemRow, emptyState, stageChip,
          renderPanel, groundStyle, itemColor } from "./shared.js";
 import { colorToken } from "../theme.js";
 import { openEditor } from "../editor.js";

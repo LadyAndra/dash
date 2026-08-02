@@ -22,10 +22,17 @@ body {
   line-height: var(--leading);
   -webkit-text-size-adjust: 100%;
   overflow: hidden; /* app owns its own scroll regions */
-  /* subtle material: a faint dot grain, felt not seen (§ design) */
+  /* Subtle material: a faint dot grain, felt not seen (§ design).
+     Drawn from the INK token rather than a fixed warm brown, so it inverts:
+     dark specks on cream paper, pale specks on the mount. It used to be a
+     literal rgba() and therefore stayed brown on the dark theme, where it
+     was effectively invisible.
+     The percentages are lower than the old alphas on purpose — near-black at
+     5% is about 1.6× stronger against cream than the mid-brown it replaces,
+     so 3% / 2% keeps the paper theme looking the way it always has. */
   background-image:
-    radial-gradient(circle at 18% 22%, rgba(120,108,84,.05) 0 1px, transparent 1px),
-    radial-gradient(circle at 68% 74%, rgba(120,108,84,.04) 0 1px, transparent 1px);
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--text-primary) 3%, transparent) 0 1px, transparent 1px),
+    radial-gradient(circle at 68% 74%, color-mix(in srgb, var(--text-primary) 2%, transparent) 0 1px, transparent 1px);
   background-size: 23px 23px, 31px 31px;
 }
 
@@ -61,7 +68,7 @@ button, input, textarea, select {
   grid-template-rows: 100vh;
   height: 100vh;
 }
-#app.with-sidebar { grid-template-columns: 248px 1fr; }
+#app.with-sidebar { grid-template-columns: var(--index-rail-w) 1fr; }
 #app:not(.with-sidebar) > .sidebar { display: none; }
 
 /* ---------- Sidebar = catalog index ---------- */
@@ -135,12 +142,8 @@ button, input, textarea, select {
   font-variant-numeric: tabular-nums;
 }
 
-.sidebar-footer {
-  margin-top: auto;
-  padding: var(--space-4);
-  border-top: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: var(--space-2);
-}
+/* (.sidebar-footer removed August 2026 — it held Settings and Read-aloud until
+   those moved to the topbar, and nothing has rendered it since.) */
 
 /* ---------- Main area ---------- */
 .main {
@@ -498,7 +501,7 @@ button, input, textarea, select {
 
 /* ---------- Board (masonry) view ---------- */
 .board {
-  column-width: 260px;
+  column-width: var(--board-col-w);
   column-gap: var(--space-5);
 }
 .board .card {
@@ -606,7 +609,12 @@ button, input, textarea, select {
 /* ---------- Modal / detail editor ---------- */
 .modal-scrim {
   position: fixed; inset: 0;
-  background: rgba(23,21,15,0.42);
+  /* The dim behind a dialog. --mount is the near-black material and is what
+     this literal already was; going through the token means it follows a
+     re-theme instead of being a fixed colour that happens to match. A shadow
+     stays dark in BOTH themes — this deliberately doesn't use an ink token,
+     which would invert and give a pale "shadow". */
+  background: color-mix(in srgb, var(--mount) 42%, transparent);
   display: flex; align-items: flex-start; justify-content: center;
   padding: var(--space-5);
   overflow-y: auto;
@@ -674,7 +682,18 @@ button, input, textarea, select {
 .modal-actions { display: flex; gap: var(--space-2); margin-top: var(--space-5); flex-wrap: wrap; }
 .modal-actions .spacer { flex: 1; }
 .btn-danger { color: var(--ember); border-color: var(--ember); background: transparent; }
-.btn-danger:hover { background: var(--ember-soft); }
+/* The hover is a wash of the accent ITSELF, not a fixed pale tint.
+   --ember-soft was a literal peach that was never in ACCENT_TOKENS and never
+   had a dark-theme value, which broke it two ways at once: on the dark theme
+   the lettering fell to 1.91:1 (AA wants 4.5), and once Settings could change
+   the accent, a blue accent gave you a blue Delete button that hovered to
+   peach. Deriving it from --ember fixes both by construction — it follows the
+   theme and it follows whatever accent is in force.
+   10% specifically: measured 4.69:1 on paper and 5.17:1 on the mount with the
+   default ember, both clear of AA, and it's the same weight as every other
+   button's hover in this file. Going stronger costs contrast — 14% drops the
+   paper reading to 4.43 and under the floor. */
+.btn-danger:hover { background: color-mix(in srgb, var(--ember) 10%, transparent); }
 
 /* ---------- Attachments (files/images) ---------- */
 .attach-list {
@@ -763,7 +782,8 @@ button, input, textarea, select {
   content: "";
   width: 18px; height: 18px; border-radius: var(--radius-pill);
   background: var(--swatch);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+  /* a hairline inside the ink dot so a pale pen still has a defined edge */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mount) 10%, transparent);
 }
 .sketch-color[aria-pressed="true"] {
   border-color: var(--swatch);
@@ -781,7 +801,9 @@ button, input, textarea, select {
   background-image:
     radial-gradient(120% 100% at 50% 0%, transparent 60%, var(--sketch-paper-edge) 100%),
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.04'/></svg>");
-  box-shadow: inset 0 1px 3px rgba(23,21,15,0.10), inset 0 0 40px rgba(23,21,15,0.05);
+  /* the paper's own inset shading — a shadow, so it stays dark on both themes */
+  box-shadow: inset 0 1px 3px color-mix(in srgb, var(--mount) 10%, transparent),
+              inset 0 0 40px color-mix(in srgb, var(--mount) 5%, transparent);
   touch-action: none;
 }
 .sketch-canvas {
@@ -883,7 +905,6 @@ button, input, textarea, select {
   font-weight: 400; letter-spacing: -0.01em; line-height: 1.05;
   margin: 0;
 }
-.sheet-masthead-sub { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-2); }
 
 /* numbered plate section head */
 .plate {
@@ -892,10 +913,8 @@ button, input, textarea, select {
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border-strong);
 }
-.plate-no {
-  font-family: var(--font-mono); font-size: var(--text-label);
-  letter-spacing: 0.1em; color: var(--ember); font-weight: 600;
-}
+/* (.plate-no removed August 2026 with the roman numerals — see plate() in
+   js/views/home.js.) */
 .plate-title {
   font-family: var(--font-mono); font-size: var(--text-label);
   letter-spacing: 0.22em; text-transform: uppercase;
@@ -936,15 +955,13 @@ button, input, textarea, select {
   background: var(--mount);
   color: var(--ink-on-mount);
   padding: var(--space-5) var(--space-5) var(--space-5);
-  background-image: radial-gradient(circle at 30% 35%, rgba(240,232,215,0.05) 0 1px, transparent 1px);
+  /* the same dot grain as the paper, but in the mount's own cream ink —
+     --ink-on-mount is what this literal already was, to within a shade */
+  background-image: radial-gradient(circle at 30% 35%, color-mix(in srgb, var(--ink-on-mount) 5%, transparent) 0 1px, transparent 1px);
   background-size: 19px 19px;
 }
-.mount-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  border-bottom: 1px solid var(--rule-mount);
-  padding-bottom: var(--space-2); margin-bottom: var(--space-3);
-}
-.mount-head .lbl { color: var(--ink-on-mount-muted); }
+/* (.mount-head removed August 2026 — the neglect register stopped drawing its
+   own header once it sat in a panel that carries the title.) */
 .mount-row {
   display: grid; grid-template-columns: 64px 1fr auto; gap: var(--space-4);
   align-items: baseline;
@@ -1115,6 +1132,14 @@ button, input, textarea, select {
    one nothing in this stylesheet could have anticipated — still be legible. */
 .on-ground,
 .project-banner { color: var(--ground-ink, var(--text-on-accent)); }
+/* A chip that IS a colour block (a project chip in the item editor) keeps its
+   hairline, but the hairline has to come from the block's own ink — the paper
+   --border would draw a pale outline around a saturated colour. Same
+   color-mix-over-a-token trick the banner's rules use, so it re-themes and
+   works for a hex no stylesheet has seen. */
+.chip.on-ground {
+  border-color: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 40%, transparent);
+}
 .on-ground .lbl,
 .project-banner .lbl,
 .on-ground .num,
@@ -1275,11 +1300,6 @@ button, input, textarea, select {
 }
 
 /* a row of buttons that closes out a column */
-.rail-actions {
-  display: flex; gap: var(--space-2); flex-wrap: wrap;
-  margin-top: var(--space-4);
-}
-
 /* a quiet explanatory line. The scoped .hint rules elsewhere in this
    file are more specific and still win where they apply. */
 .hint { color: var(--text-faint); font-size: var(--text-sm); }
@@ -1318,8 +1338,6 @@ button, input, textarea, select {
 .search-wrap input { width: 100%; max-width: 320px; min-width: 0; }
 .search-wrap { flex: 1 1 12rem; min-width: 0; }
 
-/* an attached file's name had an 80px ceiling — barely a word */
-.attach-name { max-width: 16ch; }
 
 /* a project in the projects list wears its own colour as a proper edge
    rather than the 3px hairline an ordinary entry gets */
@@ -1348,7 +1366,6 @@ button, input, textarea, select {
   .nav-btn { width: auto; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) var(--space-2); }
   /* the panel is a horizontal strip here, so Group sizes to its own text */
   .nav-btn[aria-current="true"] { box-shadow: inset 0 -2px 0 var(--ember); padding-left: var(--space-2); }
-  .sidebar-footer { margin: 0; border: none; flex-direction: row; padding: var(--space-1) var(--space-2); }
   .brand { padding: var(--space-2) var(--space-3); }
   #view-host { padding: var(--space-4); }
   .topbar { padding: var(--space-3) var(--space-4); }
@@ -1900,8 +1917,7 @@ button, input, textarea, select {
   flex: none;
 }
 
-/* the masthead's overdue count, and the count on the Home tab */
-.lbl-ember { color: var(--ember); font-weight: 600; }
+/* the count on the Home tab */
 
 .view-tab { display: inline-flex; align-items: center; gap: var(--space-2); }
 .tab-badge {

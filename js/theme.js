@@ -3,8 +3,6 @@
 // tweaking a theme touches ZERO component code. This is the mechanism that
 // lets Andra restyle the whole app later from one JSON file / theme editor.
 
-import { toast } from "./ui/toast.js";
-
 const LS_KEY = "dash.theme";
 const LS_SCALE = "dash.textScale";
 const LS_DARK = "dash.dark";
@@ -21,11 +19,12 @@ export function colorToken(name) {
   if (isHex(name)) return name;
   return `var(--color-${name})`;
 }
-export function tintToken(name) {
-  if (!name) return "var(--tint-gray)";
-  if (isHex(name)) return name;   // no tint variant of a custom colour
-  return `var(--tint-${name})`;
-}
+// (tintToken was removed August 2026 — the --tint-* tokens it mapped to had no
+// readers left. It could never have worked for a custom hex anyway: there is no
+// tint variant of an arbitrary colour, so it handed the colour straight back and
+// a "tinted" background came out the same colour as the text on it. Anything
+// wanting a colour block should use groundStyle() in js/views/shared.js, which
+// picks a readable ink to go with it.)
 
 export function isHex(v) {
   return typeof v === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v.trim());
@@ -152,10 +151,26 @@ export function getAccent() {
   return isHex(v) ? v : null;      // null = still using the built-in ember
 }
 
+// What ember is when nobody has picked a custom accent — the colour "Reset to
+// ember" goes back to, and what the picker shows before you've chosen anything.
+//
+// This used to return a hardcoded "#b23a14" under a comment describing an
+// approach that was never actually written. The cost of that: re-valuing ember
+// in tokens.css (or loading a theme JSON that changes it) left Settings
+// offering to "reset" to a colour the app no longer uses anywhere.
+//
+// Note it reads --ember-DEFAULT, not --ember. That distinction is the whole
+// point: setAccent() writes --ember as an inline style on :root, which beats
+// the stylesheet, so reading --ember back would just hand you the custom
+// accent you're trying to reset away from. --ember-default is never written by
+// the accent flow, so it always answers the question actually being asked. It
+// also flips with the theme, so resetting in dark mode offers dark's ember.
+//
+// The literal below is a last-resort fallback for the case where the
+// stylesheet hasn't loaded yet, in the same spirit as every other tokenHex()
+// call in this file — it is not the answer, just a floor under it.
 export function defaultAccentHex() {
-  // read it off a fresh element so a custom accent already on :root
-  // doesn't answer the question "what is ember normally?"
-  return "#b23a14";
+  return tokenHex("--ember-default", "#b23a14");
 }
 
 export function setAccent(hex) {

@@ -60,9 +60,29 @@
   --text-faint:    #6a6252;   /* counts, hints, dates */
   --text-on-accent:#f8f4ea;
 
+  /* Removed August 2026 (code-health cleanup #11), all with zero readers:
+       --tint-green … --tint-gray  the seven soft tint backgrounds. Their only
+         consumers were the Kanban column wells and the Finder selection, both
+         unregistered, and one hardcoded use on a project chip that now takes
+         the project's own colour instead.
+       --ember-soft  the Delete button's hover, which now derives from --ember
+         so it follows the theme and any custom accent.
+       --accent-1 / --accent-3 / --accent-4  "quiet accents, demoted" — never
+         referenced by anything.
+     --accent-2 deliberately STAYS: setAccent() in js/theme.js still writes it,
+     and it is named in the original proposal §10. */
+
   /* ---- THE accent: ember. Indicator only. AA on paper. ---- */
   --accent-2:      #b23a14;   /* ember — legacy name kept; = indicator red */
   --ember:         #b23a14;
+  /* What ember is when NOBODY has picked a custom accent.
+     Settings can replace the accent, and it does so by writing --ember as an
+     inline style on :root — which beats this stylesheet. So "what is ember
+     normally?" can't be answered by reading --ember back; it would hand back
+     whatever custom colour is currently in force. This token is the answer,
+     and the accent flow deliberately never writes it (see setAccent /
+     resetAccent in js/theme.js). Keep it equal to --ember above. */
+  --ember-default: #b23a14;
   /* The ink that goes ON an ember ground (the overdue block, the tab
      badge, the late flag). A separate token because Settings can now
      replace the accent with any colour, and the ink on top has to be
@@ -70,14 +90,8 @@
      Left pointing at --text-on-accent so it follows the theme until
      someone actually picks a custom accent. */
   --ember-ink:     var(--text-on-accent);
-  --ember-soft:    #e8d2c4;
   --ember-on-mount:#ef7a4e;   /* same lamp, legible on the mount */
   --warn-on-mount: #c9a24f;   /* mid-band "aging", mount ground only */
-
-  /* ---- quiet accents (kept for compatibility; demoted) ---- */
-  --accent-1: #4a6353;   /* green — primary type/status ink */
-  --accent-3: #4c6076;   /* slate blue */
-  --accent-4: #7d6538;   /* ochre */
 
   /* named status/type palette — data references these by name
      (registry color:"green"); see js/theme.js colorToken().
@@ -89,16 +103,6 @@
   --color-plum:   #5f4a5c;
   --color-slate:  #575a5e;
   --color-gray:   #6a6252;
-
-  /* soft tint backgrounds — now barely-there, cream-biased. Used by the
-     kanban column wells and the finder selection only. */
-  --tint-green: #e6e6d8;
-  --tint-clay:  #ece0d3;
-  --tint-blue:  #e2e6da;
-  --tint-ochre: #ece4d2;
-  --tint-plum:  #e8e0da;
-  --tint-slate: #e6e4dc;
-  --tint-gray:  #eae4d6;
 
   /* ---- typography ---- */
   --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -156,13 +160,25 @@
      --rail-w      the fixed left rail. HOME ONLY — capture lives
                    there and has to stay reachable. A project page has
                    no rail; its controls moved into the colour banner.
+     --index-rail-w the OTHER rail: the tag / type / status index on
+                   List and Board. Deliberately its own number rather
+                   than sharing --rail-w — the two rails hold different
+                   things (capture vs. a list of filters) and want
+                   different widths. It was a literal 248px in app.css
+                   until August 2026, which meant one rail was tunable
+                   from here and the other wasn't.
+     --board-col-w how wide one column of cards is on the Board. The
+                   masonry layout fits as many of these as will go, so
+                   this is the Board's density knob.
 
      Adding a widget later needs none of these touched: the panel grid
      fits what it's given and reflows. */
-  --page-max:   1500px;
-  --panel-min:  480px;
-  --panel-max:  660px;
-  --rail-w:     340px;
+  --page-max:      1500px;
+  --panel-min:     480px;
+  --panel-max:     660px;
+  --rail-w:        340px;
+  --index-rail-w:  248px;
+  --board-col-w:   260px;
 
   /* ---- interaction ---- */
   /* --tap-min is the TOUCH floor and does not move. 44px, always, on
@@ -202,6 +218,9 @@
 
   --ember:         #ef7a4e;
   --accent-2:      #ef7a4e;
+  /* the dark theme's own ember, so "reset to ember" in dark mode offers the
+     colour ember actually is here — not the paper theme's */
+  --ember-default: #ef7a4e;
 
   --color-green:  #7fa38c;
   --color-clay:   #cf8a63;
@@ -210,14 +229,6 @@
   --color-plum:   #a988a6;
   --color-slate:  #9ca0a6;
   --color-gray:   #928a76;
-
-  --tint-green: #232a24;
-  --tint-clay:  #2c241d;
-  --tint-blue:  #222a30;
-  --tint-ochre: #2a271b;
-  --tint-plum:  #282230;
-  --tint-slate: #24262a;
-  --tint-gray:  #262319;
 
   --sketch-paper:      #2a2620;
   --sketch-paper-edge: #211d18;

@@ -1,8 +1,8 @@
 // shared.js — small DOM helpers shared by views. Keeping these in one place
 // means every view renders items consistently (§4.1 "views own layout").
-// Views MUST NOT read raw colors; they call colorToken()/tintToken() (§10).
+// Views MUST NOT read raw colors; they call colorToken() or groundStyle() (§10).
 
-import { colorToken, tintToken, inkFor, resolveHex } from "../theme.js";
+import { colorToken, inkFor, resolveHex } from "../theme.js";
 import { blobObjectURL } from "../blobs.js";
 import { stageOf } from "../milestones.js";
 
@@ -109,10 +109,6 @@ export function stageChip(item) {
     class: "stage-chip" + (stage.overdue ? " overdue" : "") + (stage.complete ? " complete" : ""),
     title: stage.overdue ? "This stage's date has passed" : "Current stage",
   }, [stage.label]);
-}
-
-export function swatch(store, item) {
-  return el("div", { class: "item-swatch", style: `background:${colorToken(itemColor(store, item))}` });
 }
 
 // ===================================================================
