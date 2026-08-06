@@ -1,0 +1,203 @@
+/*
+  Prairie Village
+  Phase 2.2 — Invisible Floating Mobile Controls
+
+  This file controls the page presentation and invisible mobile input
+  overlay. The game world itself is drawn in game.js.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  color: #273126;
+  background: #e9e2cf;
+}
+
+.game-shell {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding:
+    max(24px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+}
+
+.game-header {
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
+  line-height: 1.15;
+}
+
+.instructions {
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+
+.canvas-frame {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  overflow: hidden;
+
+  border: 4px solid #5b654c;
+  border-radius: 8px;
+  background: #c9c0a7;
+  box-shadow: 0 8px 24px rgb(39 49 38 / 18%);
+}
+
+/*
+  game-stage positions both the canvas and the invisible mobile overlay.
+*/
+.game-stage {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #8fa36a;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+
+  background: #8fa36a;
+  touch-action: none;
+}
+
+#game-canvas:focus {
+  outline: 4px solid #7a875d;
+  outline-offset: -4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Invisible mobile split-control overlay                              */
+/* ------------------------------------------------------------------ */
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+
+  display: none;
+  grid-template-columns: 1fr 1fr;
+
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+
+  /*
+    The overlay is intentionally invisible.
+  */
+  background: transparent;
+}
+
+.control-zone {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+
+  background: transparent;
+  border: 0;
+  outline: 0;
+
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.joystick-zone,
+.action-zone {
+  pointer-events: auto;
+}
+
+.game-footer {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #4a5544;
+}
+
+.game-footer p {
+  margin: 0;
+}
+
+/*
+  Show the touch overlay when the primary input is touch-like.
+
+  The width fallback also helps phones whose browser reports unusual
+  pointer capabilities.
+*/
+@media (hover: none) and (pointer: coarse), (max-width: 700px) {
+  .touch-controls {
+    display: grid;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-shell {
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .game-header {
+    margin-bottom: 10px;
+  }
+
+  .instructions {
+    margin-top: 7px;
+    font-size: 0.9rem;
+  }
+
+  .canvas-frame {
+    padding: 5px;
+    border-width: 3px;
+  }
+
+  .game-footer {
+    margin-top: 10px;
+    font-size: 0.82rem;
+  }
+}
