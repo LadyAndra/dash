@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Dash — Home sheet preview (real CSS)</title>
+<!-- Loads the ACTUAL app stylesheets. Markup mirrors what js/views/home.js
+     produces. Preview of Update 2 before uploading. -->
+<link rel="stylesheet" href="../css/tokens.css" />
+<link rel="stylesheet" href="../css/app.css" />
+</head>
+<body>
+<div id="app">
+
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-mark" src="../logo-mark.png" alt="" />Dash</div>
+    <div class="sidebar-section">
+      <h2>All</h2>
+      <button class="nav-btn"><span>Everything</span><span class="count">23</span></button>
+      <h2>Types</h2>
+      <button class="nav-btn"><span>⚡ Quick idea</span><span class="count">13</span></button>
+      <button class="nav-btn"><span>◆ Active project</span><span class="count">8</span></button>
+      <button class="nav-btn"><span>• Note</span><span class="count">2</span></button>
+      <h2>Status</h2>
+      <button class="nav-btn"><span>Active</span><span class="count">20</span></button>
+      <button class="nav-btn"><span>On hold</span><span class="count">3</span></button>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn">⚙ Settings</button>
+      <button class="btn">🔊 Read this view</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="view-tabs">
+        <button class="view-tab" aria-current="true">Home</button>
+        <button class="view-tab">List</button>
+        <button class="view-tab">Board</button>
+        <button class="view-tab">Kanban</button>
+        <button class="view-tab">Columns</button>
+        <button class="view-tab">Project</button>
+      </div>
+      <div class="search-wrap"><input type="search" placeholder="Search everything…" /></div>
+      <button class="btn">⟳ Sync now</button>
+      <div class="sync-pill ok"><span class="dot"></span><span>Synced via Dropbox</span></div>
+    </div>
+
+    <div class="viewport">
+      <div class="sheet-page">
+
+        <div class="sheet-masthead">
+          <div class="sheet-masthead-top">
+            <h1 class="sheet-h1">Saturday, 25 July</h1>
+            <span class="num">SHEET 2026·206</span>
+          </div>
+          <div class="sheet-masthead-sub">
+            <span class="lbl">23 in collection</span>
+            <span class="lbl">0 due today</span>
+          </div>
+        </div>
+
+        <!-- Plate I — Accession (capture at the top) -->
+        <div class="plate">
+          <span class="plate-no">I</span>
+          <span class="plate-title">Accession</span>
+          <span class="plate-right num">New entry</span>
+        </div>
+        <div class="capture">
+          <textarea placeholder="Say or type anything…"></textarea>
+          <div class="capture-row">
+            <button class="btn btn-primary">File it</button>
+            <button class="btn">● Record</button>
+            <button class="btn">✎ Sketch</button>
+            <button class="btn">Full editor</button>
+            <span class="lbl lbl-faint capture-note">Files as Quick idea · Active</span>
+          </div>
+        </div>
+
+        <!-- Plate II — Due & reminded today (empty until Update 3) -->
+        <div class="plate">
+          <span class="plate-no">II</span>
+          <span class="plate-title">Due &amp; reminded today</span>
+          <span class="plate-right num">00</span>
+        </div>
+        <div class="sheet-empty">
+          <p>Nothing dated for today.</p>
+          <p class="hint">Due dates and reminders arrive in the next update — this fills in then.</p>
+        </div>
+
+        <!-- Plate III — From the archive (neglect register) -->
+        <div class="plate">
+          <span class="plate-no">III</span>
+          <span class="plate-title">From the archive</span>
+          <span class="plate-right num">Untouched longest</span>
+        </div>
+        <div class="mount">
+          <div class="mount-head">
+            <span class="lbl">Neglect register</span>
+            <span class="lbl">Days since touched</span>
+          </div>
+          <div class="mount-row" role="button" tabindex="0">
+            <span class="mount-no">№ 0003</span>
+            <span class="mount-title">Freelance transition</span>
+            <span class="mount-age stale">94d</span>
+          </div>
+          <div class="mount-row" role="button" tabindex="0">
+            <span class="mount-no">№ 0021</span>
+            <span class="mount-title">E-ink notebook</span>
+            <span class="mount-age stale">61d</span>
+          </div>
+          <div class="mount-row" role="button" tabindex="0">
+            <span class="mount-no">№ 0011</span>
+            <span class="mount-title">Batch organize notes</span>
+            <span class="mount-age aging">38d</span>
+          </div>
+          <div class="mount-row" role="button" tabindex="0">
+            <span class="mount-no">№ 0018</span>
+            <span class="mount-title">Name “SKU”</span>
+            <span class="mount-age aging">31d</span>
+          </div>
+          <div class="heat-strip" aria-hidden="true">
+            <span class="heat-dot"></span><span class="heat-dot"></span><span class="heat-dot cold"></span>
+            <span class="heat-dot"></span><span class="heat-dot warm"></span><span class="heat-dot"></span>
+            <span class="heat-dot cold"></span><span class="heat-dot"></span><span class="heat-dot"></span>
+            <span class="heat-dot warm"></span><span class="heat-dot"></span><span class="heat-dot cold"></span>
+            <span class="heat-dot"></span><span class="heat-dot"></span><span class="heat-dot warm"></span>
+            <span class="heat-dot"></span><span class="heat-dot cold"></span><span class="heat-dot"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
