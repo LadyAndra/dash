@@ -7,12 +7,11 @@
 // all surface together without needing folders (§0's core requirement).
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
-import { el, itemRow, emptyState, stageChip,
-         renderPanel, groundStyle, itemColor } from "./shared.js";
-import { colorToken } from "../theme.js";
+import { el, itemRow, emptyState,
+         renderPanel, groundStyle, catalogNo } from "./shared.js";
 import { openEditor } from "../editor.js";
 import { renderMilestoneEditor } from "./milestone-editor.js";
-import { visibleMilestones, stageOf, milestoneProgress, formatDay } from "../milestones.js";
+import { stageOf, milestoneProgress, formatDay } from "../milestones.js";
 
 export const projectView = {
   name: "project",
@@ -78,42 +77,55 @@ function renderPicker(store, state, ctx) {
   wrap.appendChild(head);
   const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects",
     style: "width:100%; max-width:28rem; margin-bottom:var(--space-3)" });
-  const list = el("div", {});
+  const shelf = el("div", { class: "project-shelf" });
+  const shelfWrap = el("div", { class: "project-shelf-wrap" }, [shelf]);
 
   function draw() {
-    list.innerHTML = "";
+    shelf.innerHTML = "";
     const q = search.value.toLowerCase();
     const items = store.projects()
       .filter(i => (i.title || "").toLowerCase().includes(q));
     for (const it of items) {
+      // Width stands for how much is IN the project — an entry-heavy
+      // project reads as a fatter spine (css/app.css clamps it, so it
+      // never drops below the --tap-min tap target).
       const count = membersOf(store, it.id).length;
-      const msCount = visibleMilestones(it).length;
-      list.appendChild(el("div", {
-        class: "item-row", role: "button", tabindex: "0",
+      // Where the project is right now — derived, never stored (§3.3).
+      const stage = stageOf(it);
+      const overdue = !!(stage && stage.overdue);
+
+      const nameParts = [it.title || "Untitled project"];
+      if (stage) nameParts.push(stage.complete ? "complete" : stage.label);
+      nameParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
+      if (overdue) nameParts.push("overdue");
+      const accessibleName = nameParts.join(", ");
+
+      shelf.appendChild(el("button", {
+        // The project's OWN colour, via the same groundStyle() the project
+        // banner uses — so a picked colour (or a custom hex) is legible here
+        // too, not only on the project's own page.
+        class: "spine on-ground",
+        style: `${groundStyle(store, it)};--n:${count}`,
+        "aria-label": accessibleName,
+        title: accessibleName,
         onclick: () => { state.projectId = it.id; ctx.rerender(); },
       }, [
-        // The project's OWN colour, not a hardcoded green — so the colour you
-        // picked identifies it here too, not only on its own page. The full
-        // list rebuild (progress, next date) is still to come; this is just
-        // the colour carrying through.
-        el("div", { class: "item-swatch is-project", style: `background:${colorToken(itemColor(store, it))}` }),
-        el("div", { class: "item-main" }, [
-          el("h3", { class: "item-title", text: it.title || "Untitled project" }),
-          el("div", { class: "item-meta" }, [
-            // Where the project is right now — derived, never stored (§3.3).
-            stageChip(it),
-            el("span", { class: "chip", text: `${count} ${count === 1 ? "entry" : "entries"}` }),
-            msCount ? el("span", { class: "chip", text: `${msCount} ${msCount === 1 ? "milestone" : "milestones"}` }) : null,
-          ]),
-        ]),
+        // Sighted only — the accessible name above already says "overdue"
+        // for anyone using a screen reader.
+        overdue ? el("span", { class: "spine-flag", "aria-hidden": "true" }) : null,
+        el("span", { class: "spine-title", "aria-hidden": "true", text: it.title || "Untitled project" }),
+        // The catalogue number every item already carries (catalogNo, from
+        // shared.js) — same № convention used elsewhere in Dash, not a new
+        // numbering scheme just for the shelf.
+        el("span", { class: "spine-no num", "aria-hidden": "true", text: `№ ${catalogNo(store, it)}` }),
       ]));
     }
-    if (items.length === 0) list.appendChild(el("p", { class: "item-body-preview", text: "No matching projects." }));
+    if (items.length === 0) shelf.appendChild(el("p", { class: "item-body-preview", text: "No matching projects." }));
   }
   search.addEventListener("input", draw);
   draw();
 
-  wrap.append(search, list);
+  wrap.append(search, shelfWrap);
   return wrap;
 }
 

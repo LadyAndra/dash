@@ -1241,6 +1241,89 @@ button, input, textarea, select {
               0 0 0 4px var(--ground-ink, var(--text-on-accent));
 }
 
+/* ---------- the projects list, as a shelf (August 2026) ----------
+   Replaces the plain item-row list on the Projects picker page. Same
+   data as before — a project's own colour via groundStyle(), whether
+   it's overdue via stageOf() — just read as spines instead of rows.
+   Colour, ink and the focus ring all follow the same ground-block
+   pattern as the banner above, so a picked colour (or a custom hex)
+   stays legible here too, on any theme.
+   ------------------------------------------------------------ */
+.project-shelf-wrap {
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+.project-shelf {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: max-content;
+}
+
+.spine {
+  /* thickness stands for how much is in the project — never thinner
+     than --tap-min, the accessibility floor, however few entries */
+  width: clamp(var(--tap-min), calc(28px + var(--n, 8) * 2.6px), 96px);
+  height: clamp(220px, 42vh, 360px);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-1) var(--space-2);
+  font-family: var(--font-body);
+  position: relative;
+  transition: transform 0.12s ease;
+}
+.spine:hover,
+.spine:focus-visible {
+  transform: translateY(-8px) rotate(-3deg);
+}
+.spine:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ground-bg, var(--surface)),
+              0 0 0 4px var(--ground-ink, var(--text-on-accent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .spine { transition: none; }
+  .spine:hover, .spine:focus-visible { transform: none; }
+}
+
+.spine-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: var(--text-base);
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  max-height: calc(100% - 2.5rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: var(--space-2);
+}
+.spine-no { writing-mode: horizontal-tb; }
+
+.spine-flag {
+  position: absolute;
+  top: 0; right: 8px;
+  width: 13px; height: 20px;
+  background: var(--ember);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+}
+
+/* Phone portrait: real phones sit well under this width, and turning
+   to landscape crosses back over it — so the shelf wraps into extra
+   rows there instead of needing a sideways scroll to search. */
+@media (max-width: 600px) {
+  .project-shelf-wrap { overflow-x: visible; }
+  .project-shelf {
+    flex-wrap: wrap;
+    row-gap: var(--space-5);
+    min-width: 0;
+  }
+}
+
 /* ---------- the colour picker (js/ui/colorfield.js) ----------
    The picker itself is the SYSTEM one — <input type="color"> opens
    macOS/iOS's own spectrum, sliders and eyedropper. What's styled
