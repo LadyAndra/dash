@@ -1297,9 +1297,11 @@ button, input, textarea, select {
 
 .spine {
   /* thickness stands for how much is in the project — never thinner
-     than --tap-min, the accessibility floor, however few entries */
-  width: clamp(var(--tap-min), calc(28px + var(--n, 8) * 2.6px), 96px);
-  height: clamp(220px, 42vh, 360px);
+     than --tap-min, the accessibility floor, however few entries.
+     (20% bigger, Aug 2026 — the floor itself doesn't move; only the
+     part driven by entry count and the ceiling above it do.) */
+  width: clamp(var(--tap-min), calc(34px + var(--n, 8) * 3.1px), 115px);
+  height: clamp(264px, 50vh, 432px);
   border: none;
   cursor: pointer;
   display: flex;
