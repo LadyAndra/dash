@@ -1241,6 +1241,41 @@ button, input, textarea, select {
               0 0 0 4px var(--ground-ink, var(--text-on-accent));
 }
 
+/* ---------- the Projects page's own band ----------
+   Same dark-ground language as the catalog band List/Board use — mount
+   ground, cream ink, mono uppercase title, a recessed search box — so the
+   picker page reads as one family with the rest of the app.
+
+   It's a separate set of classes rather than a reuse of .catalog-band
+   itself: Project has always opted out of that shared component
+   (ownFilter: true in project.js), its search is a plain text filter
+   rather than the shared query/group/sort pipeline, and .catalog-band is
+   sticky and edge-to-edge in a way that assumes it sits OUTSIDE the
+   padded #view-host — Project renders inside it, like Home does. Sitting
+   inset here keeps it predictable rather than fighting that layout.
+   ------------------------------------------------------------ */
+.project-picker-band {
+  background: var(--mount);
+  color: var(--ink-on-mount);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.project-picker-band .search-wrap input {
+  background: var(--mount-soft);
+  border: 1px solid var(--mount-soft);
+  color: var(--ink-on-mount);
+}
+.project-picker-band .search-wrap input::placeholder { color: var(--ink-on-mount-muted); }
+.project-picker-band .search-wrap input:hover { border-color: var(--ink-on-mount-muted); }
+.project-picker-band .search-wrap input:focus-visible {
+  border-color: var(--ink-on-mount);
+  box-shadow: 0 0 0 2px var(--mount), 0 0 0 4px var(--ember-on-mount);
+  outline: none;
+}
+
 /* ---------- the projects list, as a shelf (August 2026) ----------
    Replaces the plain item-row list on the Projects picker page. Same
    data as before — a project's own colour via groundStyle(), whether
@@ -1274,11 +1309,17 @@ button, input, textarea, select {
   padding: var(--space-3) var(--space-1) var(--space-2);
   font-family: var(--font-body);
   position: relative;
-  transition: transform 0.12s ease;
+  /* pivot from where it "stands" on the shelf, not its centre — that's
+     what makes the hover read as a tilt-out rather than a sideways jump */
+  transform-origin: bottom center;
+  transition: transform 0.15s ease-out;
 }
 .spine:hover,
 .spine:focus-visible {
-  transform: translateY(-8px) rotate(-3deg);
+  transform: translateY(-10px) rotate(-3deg);
+  /* without this the tilted spine can render UNDER its neighbour and
+     look clipped — this keeps it drawing on top while it leans out */
+  z-index: 2;
 }
 .spine:focus-visible {
   outline: none;

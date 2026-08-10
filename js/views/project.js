@@ -70,13 +70,19 @@ function createProject(store, ctx) {
 
 function renderPicker(store, state, ctx) {
   const wrap = el("div", {});
-  const head = el("div", { style: "display:flex; align-items:center; gap:var(--space-3); margin-bottom:var(--space-3)" }, [
-    el("h2", { text: "Projects", style: "font-family:var(--font-ui); font-size:var(--text-lg); margin:0; flex:1" }),
-    el("button", { class: "btn btn-primary", text: "＋ New project", onclick: () => createProject(store, ctx) }),
+  const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects" });
+  const bandCount = el("span", { class: "band-count" });
+  const band = el("div", { class: "project-picker-band" }, [
+    el("div", { class: "band-top" }, [
+      el("h2", { class: "band-title", text: "Projects" }),
+      bandCount,
+      el("button", { class: "band-btn", text: "＋ New project", onclick: () => createProject(store, ctx) }),
+    ]),
+    el("div", { class: "band-controls" }, [
+      el("div", { class: "search-wrap" }, [search]),
+    ]),
   ]);
-  wrap.appendChild(head);
-  const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects",
-    style: "width:100%; max-width:28rem; margin-bottom:var(--space-3)" });
+  wrap.appendChild(band);
   const shelf = el("div", { class: "project-shelf" });
   const shelfWrap = el("div", { class: "project-shelf-wrap" }, [shelf]);
 
@@ -85,6 +91,7 @@ function renderPicker(store, state, ctx) {
     const q = search.value.toLowerCase();
     const items = store.projects()
       .filter(i => (i.title || "").toLowerCase().includes(q));
+    bandCount.textContent = items.length === 1 ? "1 project" : `${items.length} projects`;
     for (const it of items) {
       // Width stands for how much is IN the project — an entry-heavy
       // project reads as a fatter spine (css/app.css clamps it, so it
@@ -125,7 +132,7 @@ function renderPicker(store, state, ctx) {
   search.addEventListener("input", draw);
   draw();
 
-  wrap.append(search, shelfWrap);
+  wrap.append(shelfWrap);
   return wrap;
 }
 
