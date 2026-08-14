@@ -76,8 +76,13 @@ export function renderProjectPage(store, project, ctx, actions) {
 
   const state = deskState(ctx);
   const drawer = drawers(store, project, ctx, data, state);
+  // NOTE: the drawer body is NOT appended here. It already lives inside
+  // drawer.handles, which is `position: relative` and therefore the thing its
+  // `top: 100%` resolves against. Appending it to the page as a sibling moved
+  // it out of that containing block, so it opened a full viewport height down
+  // — off screen, looking exactly like "the drawers don't open". A layout bug,
+  // which is why the jsdom render test sailed past it: jsdom has no layout.
   page.appendChild(drawer.handles);
-  page.appendChild(drawer.body);
   page.appendChild(surface(store, project, ctx, data, state, drawer));
   return page;
 }
@@ -323,6 +328,17 @@ function surface(store, project, ctx, data, state, drawer) {
   }
 
   wireDesk(store, project, ctx, data, state, { view, deskEl, drawer });
+
+  // The window IS the viewport: the desk takes whatever height is left under
+  // the banner and the handles, rather than a guessed vh. Measured, because
+  // the chrome above it is not a fixed height (a long project name wraps).
+  const fit = () => {
+    const top = view.getBoundingClientRect().top;
+    view.style.height = Math.max(320, window.innerHeight - top) + "px";
+  };
+  requestAnimationFrame(fit);
+  window.addEventListener("resize", fit);
+  view._deskFit = fit;                     // so teardown can take it off again
 
   // scroll position survives the re-render that every write triggers
   requestAnimationFrame(() => { view.scrollLeft = state.scrollX; view.scrollTop = state.scrollY; });
@@ -579,7 +595,8 @@ function wireDesk(store, project, ctx, data, state, dom) {
     view.scrollLeft = glance.sl; view.scrollTop = glance.st;   // exactly back
     glance = null;
   };
-  const glanceBtn = dom.deskEl.closest(".desk-page")?.querySelector(".banner-glance");
+  const page = deskEl.closest(".desk-page");
+  const glanceBtn = page ? page.querySelector(".banner-glance") : null;
   if (glanceBtn) {
     glanceBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); glanceOn(); });
     for (const ev of ["pointerup", "pointerleave", "blur"]) glanceBtn.addEventListener(ev, glanceOff);
@@ -608,6 +625,7 @@ function wireDesk(store, project, ctx, data, state, dom) {
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", glanceOff);
+    if (view._deskFit) window.removeEventListener("resize", view._deskFit);
     obs.disconnect();
   });
   obs.observe(document.body, { childList: true, subtree: true });

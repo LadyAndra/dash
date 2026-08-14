@@ -536,6 +536,19 @@ What that costs, and how it was answered: every component in the drawer (list ro
 
 **Round-5 bug: two banners drew at once.** `.pb-b`'s base rule carried `display: grid`, which has the same specificity as the `.pb { display: none }` that hides all candidates and came later in the sheet — so banner B rendered underneath whichever candidate was actually selected. Only the `[data-banner]` rules may switch a candidate on; a variant's own rule must never set `display`. Worth remembering generally: **in this codebase, "hide everything then show one" only works if the hiding rule is not out-specified or out-ordered by a sibling.**
 
+### 14.20 First-deploy fixes (D1, 14 August 2026)
+
+Four of these were bugs; two are decisions worth keeping.
+
+- **Decision 50 — the desk page runs edge to edge.** The banner, the drawer handles and the surface all span the window, the way the catalog band does on List and Board, rather than sitting inset inside the page's normal padding. The desk is the page; a framed box in the middle of a page is a different object.
+- **Decision 51 — the desk has no visible scrollbars.** The way around it is dragging it (the trackpad still works, it is just not advertised with a bar down the side). A bounded scroll box with native scrollbars is not the pan/glance model decision 28 was revised into — it is the default the browser gives you when you forget to build one.
+- **The banner's controls recede into the ground.** `app.css` scoped its "controls on a colour ground" rules to `.project-banner .btn`, and the new banner is `.on-ground`, so every button fell back to the paper default — cream boxes on a saturated ground, the loudest thing on the page. The selector is now widened to `.on-ground .btn` exactly as §14.14 said it should be, **and the primary no longer inverts to a solid block on this banner**: it stays in the ground's family with a full-strength border and weight. Ink-on-ground is the measured pair, so contrast is unchanged.
+- **More air under the title rule.** The progress fraction is set large with no line-height of its own — its glyphs overflow the line box on purpose (§14.19), and the padding is what they overflow into. There wasn't enough of it, so the number touched the rule above.
+
+**The blocking bug, and what it teaches.** The drawers appeared not to open at all. The drawer body was being appended to the page as a sibling of the handle row, which moved it out of the only positioned ancestor it had — so its `top: 100%` resolved against the whole page and it opened a full viewport height below the fold. It *was* opening, off screen.
+
+Worth recording because of what caught it and what didn't: the jsdom render test asserted the drawer's contents mount, and they did. **jsdom has no layout**, so nothing about position, size or overflow is testable there. The test now asserts the drawer's parent element instead of only its contents — a structural fact jsdom *can* see. The general rule for this codebase: headless tests can check structure and data, never geometry; geometry is checked by looking.
+
 ### 14.15 Confirmed, not new
 
 **Un-placing a card back to the tray is already D1 scope** (§13: "drag from drawer to desk, move, raise, un-place"), implemented as `vs set removed` with restore, per §12.1's never-delete rule.

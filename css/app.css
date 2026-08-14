@@ -1216,15 +1216,33 @@ button, input, textarea, select {
   border-top: 1px solid color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 45%, transparent);
 }
 
-.project-banner .btn {
+.project-banner .btn,
+.on-ground .btn {
   background: transparent;
   color: var(--ground-ink, var(--text-on-accent));
   border-color: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 55%, transparent);
 }
-.project-banner .btn:hover {
+.project-banner .btn:hover,
+.on-ground .btn:hover {
   background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 14%, transparent);
   border-color: var(--ground-ink, var(--text-on-accent));
 }
+/* The primary action on the DESK's banner does not invert to a solid block —
+   there it read as the loudest thing on the page, which is the opposite of
+   what a banner control should do. It stays in the ground's own family and
+   earns its place with a full-strength border and weight. Ink on the ground
+   is the pair the token system already measured, so contrast is unchanged.
+   (The old .project-banner keeps its inversion below; nothing else uses it.) */
+.on-ground .btn-primary {
+  background: transparent;
+  color: var(--ground-ink, var(--text-on-accent));
+  border-color: var(--ground-ink, var(--text-on-accent));
+  font-weight: 600;
+}
+.on-ground .btn-primary:hover {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 20%, transparent);
+}
+
 /* the primary flips: the block's ink becomes the fill, and the block's
    own colour becomes the lettering */
 .project-banner .btn-primary {
@@ -1235,7 +1253,8 @@ button, input, textarea, select {
 .project-banner .btn-primary:hover {
   background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 88%, transparent);
 }
-.project-banner .btn:focus-visible {
+.project-banner .btn:focus-visible,
+.on-ground .btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ground-bg, var(--surface)),
               0 0 0 4px var(--ground-ink, var(--text-on-accent));
@@ -2196,8 +2215,15 @@ button, input, textarea, select {
   --pb-count-size:     22px;     /* locked r5 — the progress fraction */
   --pb-rule: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 45%, transparent);
 }
-/* the desk owns the page width; the sheet's inset would waste it */
-.sheet-page-desk { max-width: none; }
+/* The desk owns the whole window. #view-host carries the page inset for every
+   other view, so the desk bleeds back out through it with negative margins —
+   the same trick the overdue band already uses to escape .panel-body's
+   padding. The banner, the handles and the surface then run edge to edge, the
+   way the catalog band does on List and Board. */
+.sheet-page-desk {
+  max-width: none;
+  margin: calc(var(--space-5) * -1) calc(var(--space-6) * -1);
+}
 
 /* ---------- the banner: ledger band (§14.17, candidate A) ---------- */
 .pb-a {
@@ -2209,7 +2235,7 @@ button, input, textarea, select {
 }
 .pb-head {
   display: flex; align-items: flex-start; gap: var(--space-4);
-  padding: var(--space-3) var(--space-5) var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-3);
   margin: 0 var(--space-5);
   padding-left: 0; padding-right: 0;
   border-bottom: 1px solid var(--pb-rule);
@@ -2232,7 +2258,10 @@ button, input, textarea, select {
 .pb-line {
   display: flex; flex-wrap: wrap; align-items: center;
   row-gap: var(--space-2);
-  padding: var(--space-2) var(--space-5) var(--space-3);
+  /* The progress fraction is set large with no line-height of its own, so its
+     glyphs overflow the line box on purpose — the padding here is what they
+     overflow INTO. Too little and the number touches the rule above it. */
+  padding: var(--space-4) var(--space-5) var(--space-4);
   margin: 0 var(--space-5);
   padding-left: 0; padding-right: 0;
   border-bottom: 1px solid var(--pb-rule);
@@ -2388,12 +2417,17 @@ button, input, textarea, select {
 /* ---------- the surface: bounded, its own scroll region, pannable ---------- */
 .desk-viewport {
   position: relative;
-  height: var(--desk-view-h);
+  height: var(--desk-view-h);          /* replaced by a measured height in JS */
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-top: none;
+  /* No border and no visible scrollbars: the window is the viewport, and the
+     way around the desk is dragging it (or the trackpad, which still works —
+     it is just not advertised with a bar down the side). A framed box with
+     scrollbars is a different object from a desk. */
+  border: none;
+  scrollbar-width: none;               /* Firefox */
+  -ms-overflow-style: none;
   /* The viewport OWNS its stacking context. Without this it is
      `position: relative; z-index: auto`, which does NOT create one — so every
      card's z-index competes with the banner and drawer at page level and a
@@ -2408,6 +2442,7 @@ button, input, textarea, select {
   cursor: grab;                       /* empty desk drags the DESK, not a card */
   transition: transform var(--desk-glance-ms) ease;
 }
+.desk-viewport::-webkit-scrollbar { width: 0; height: 0; }   /* Safari / Chrome */
 .desk-surface.is-panning { cursor: grabbing; }
 .desk-viewport.is-glancing { overflow: hidden; }
 .desk-viewport.is-glancing .desk-surface { pointer-events: none; }   /* view only */
