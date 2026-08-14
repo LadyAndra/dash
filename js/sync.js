@@ -175,7 +175,30 @@ export class Sync {
     // snapshot over items edited locally since the last push can undo them.
     if (snapText && snapText !== this._lastSnapText) {
       this._lastSnapText = snapText;
-      try { this.store.loadSnapshot(JSON.parse(snapText)); } catch { /* torn snapshot; logs will rebuild */ }
+    // A remote snapshot is a BASE, not the truth. Loading one used to
+    // Object.assign straight over live items — including their _fieldTs
+    // bookkeeping — so any local edit made since that snapshot was written
+    // vanished. The comment above already named the hazard; this is the fix.
+    //
+    // Symptom it produced: type a title into a new entry, press Done, and the
+    // entry reverts to "Untitled" a few seconds later, when the next poll
+    // happens to see a changed snapshot. Intermittent, because it depends on
+    // the poll landing between the edit and the push.
+    //
+    // Two things put local work back on top, in the order they can be lost:
+    //   1. Our own log is authoritative for our own ops, so its read offset is
+    //      reset and the whole log replays over the snapshot. Replay is
+    //      idempotent by design — that is the premise of an append-only log.
+    //   2. Ops written but not yet in ANY log (still pending a push) are
+    //      re-applied directly. They carry their original timestamps, so LWW
+    //      puts them back exactly where they belong.
+      const pending = this.store.pendingOps.slice();
+      const ownLog = `${LOG_PREFIX}${this.logSlug}${LOG_EXT}`;
+      try {
+        this.store.loadSnapshot(JSON.parse(snapText));
+        this.readOffsets[ownLog] = 0;
+        for (const op of pending) this.store._applyOp(op, false);
+      } catch { /* torn snapshot; logs will rebuild */ }
     }
     // every device log — replay only the unseen tail, tracked by byte length
     const entries = await this.dbx.list("/data");
@@ -238,7 +261,13 @@ export class Sync {
         const snapText = JSON.stringify(snap);
         if (snapText !== this._lastSnapText) {
           this._lastSnapText = snapText;
-          this.store.loadSnapshot(snap);
+          // same hazard, same fix as pullDropbox() above: a snapshot is a base,
+        // and local work goes back on top of it
+        const pending = this.store.pendingOps.slice();
+        const ownLog = `${LOG_PREFIX}${this.logSlug}${LOG_EXT}`;
+        this.store.loadSnapshot(snap);
+        this.readOffsets[ownLog] = 0;
+        for (const op of pending) this.store._applyOp(op, false);
         }
       }
 

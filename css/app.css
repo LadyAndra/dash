@@ -2540,3 +2540,22 @@ button, input, textarea, select {
 @media (prefers-reduced-motion: reduce) {
   .desk-drawer, .desk-surface { transition: none; }
 }
+
+/* ---------- desk round-2 fixes ---------- */
+/* An expanded card is two surfaces: a header you drag it by, and a body you
+   read, select, copy from and click links in. Without this the whole card was
+   one draggable object and text couldn't be selected at all. */
+.dcard.is-expanded { user-select: text; -webkit-user-select: text; cursor: default; }
+.dcard.is-expanded .dcard-drag {
+  user-select: none; -webkit-user-select: none;
+  cursor: grab;
+  margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.dcard.is-expanded.is-dragging .dcard-drag { cursor: grabbing; }
+.dcard-grip { color: var(--text-faint); letter-spacing: 0.1em; }
+.dcard-link { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
+.dcard-link:hover { color: var(--ember); }

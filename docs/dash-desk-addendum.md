@@ -549,6 +549,25 @@ Four of these were bugs; two are decisions worth keeping.
 
 Worth recording because of what caught it and what didn't: the jsdom render test asserted the drawer's contents mount, and they did. **jsdom has no layout**, so nothing about position, size or overflow is testable there. The test now asserts the drawer's parent element instead of only its contents — a structural fact jsdom *can* see. The general rule for this codebase: headless tests can check structure and data, never geometry; geometry is checked by looking.
 
+### 14.21 Second-deploy fixes (D1, 14 August 2026)
+
+**The data one, and it was not the desk.** New entries were reverting to "Untitled" after Done. The editor was writing the title correctly on every keystroke; the loss happened afterwards, in sync. `pullDropbox()` treats a changed remote snapshot as state to `Object.assign` over the live store — including each item's `_fieldTs` bookkeeping — so any local edit made since that snapshot was written simply vanished. The hazard was already named in a comment above the call; it just wasn't guarded. A snapshot is a BASE, not the truth, and local work now goes back on top of it two ways: our own log's read offset is reset so it replays in full (replay is idempotent — that is the premise of an append-only log), and ops still pending a push are re-applied directly, carrying their original timestamps so LWW puts them back exactly. Both backends. There is now a headless test that reproduces the loss on the old path and proves the new one.
+
+**Decision 52 — nothing may write to the store between pointerdown and pointerup.** §8.34 said drags commit on drop; the raise-on-touch was writing immediately, which emitted a store change, which re-rendered the desk, which destroyed the card element the pointer had just captured. That single violation produced *four* reported symptoms — a card needing a click before it would drag, drags not registering, drops snapping back, and general lag and flicker. The raise is now local (an inline z-index) and is committed on release, batched with the position. The rule is absolute and worth stating as one: **the pointer owns the desk until it lets go.**
+
+**Decision 53 — an expanded card is two surfaces.** Drag and text-selection want the same pixels, so they get different ones: the card's header is the drag handle (with a grip mark), and everything below it is text you can select, copy from, and click links in. Outside the header the desk does not capture the pointer or prevent default at all, which is what makes selection work; double-click collapses only from the header, so double-click in the body still selects a word. Bare URLs in a body are rendered as real links at render time — the body stays plain text, this is a courtesy, not a format.
+
+**Two more that were just wrong:**
+- The banner's ✧ never worked, only the `Z` key. `wireDesk` looked the button up with `closest(".desk-page")` while the surface was still detached from the page, so it found nothing and attached no listener. It is passed in now.
+- The view jumped to the top-left corner after editing an entry, and opened there too. Restoring a scroll position is itself a scroll event, and the listener recorded the half-restored value as the new truth; a flag now keeps a restore from overwriting what it is restoring. A desk that has never been looked at now opens **centred on the mat's eye** rather than in the corner of a 4400 × 2900 sheet.
+
+### 14.22 Raised for later (not scope)
+
+- **Show attached drawings and images on the card itself**, rather than only referencing them. (`sketchThumb()` in `views/shared.js` already does this for list rows and board cards, so the card renderer can borrow it.)
+- **Dragging a card toward the drawer should open it**, so the card can be dropped back inside — rather than dropping onto a closed handle.
+- **Rename "Unplaced"** to something more on-brand. No replacement chosen.
+- **Double-click empty desk to make a post-it there.** This is D2 territory (`note` collection, §12.3) and should be designed with it.
+
 ### 14.15 Confirmed, not new
 
 **Un-placing a card back to the tray is already D1 scope** (§13: "drag from drawer to desk, move, raise, un-place"), implemented as `vs set removed` with restore, per §12.1's never-delete rule.

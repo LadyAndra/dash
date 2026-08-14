@@ -76,6 +76,7 @@ export function renderProjectPage(store, project, ctx, actions) {
 
   const state = deskState(ctx);
   const drawer = drawers(store, project, ctx, data, state);
+  const glanceBtn = page.querySelector(".banner-glance");
   // NOTE: the drawer body is NOT appended here. It already lives inside
   // drawer.handles, which is `position: relative` and therefore the thing its
   // `top: 100%` resolves against. Appending it to the page as a sibling moved
@@ -83,7 +84,7 @@ export function renderProjectPage(store, project, ctx, actions) {
   // — off screen, looking exactly like "the drawers don't open". A layout bug,
   // which is why the jsdom render test sailed past it: jsdom has no layout.
   page.appendChild(drawer.handles);
-  page.appendChild(surface(store, project, ctx, data, state, drawer));
+  page.appendChild(surface(store, project, ctx, data, state, drawer, glanceBtn));
   return page;
 }
 
@@ -93,7 +94,11 @@ export function renderProjectPage(store, project, ctx, actions) {
 // ARRANGEMENT syncs; the furniture around it does not).
 function deskState(ctx) {
   const v = ctx.viewLocal;
-  if (!v.desk) v.desk = { drawer: null, scrollX: 0, scrollY: 0, expanded: null };
+  // scrollX/Y start as null meaning "never looked at this desk" — the first
+  // render then centres the view on the middle of the surface, which is where
+  // the mat's eye is. Zero would have meant the top-left corner of a
+  // 4400 x 2900 sheet, which is a corner of an empty room.
+  if (!v.desk) v.desk = { drawer: null, scrollX: null, scrollY: null, expanded: null };
   return v.desk;
 }
 
@@ -305,7 +310,7 @@ function milestonesShelf(store, project, ctx) {
 // ===================================================================
 //  THE DESK SURFACE
 // ===================================================================
-function surface(store, project, ctx, data, state, drawer) {
+function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   const view = el("div", { class: "desk-viewport" });
   const deskEl = el("div", {
     class: "desk-surface",
@@ -327,22 +332,41 @@ function surface(store, project, ctx, data, state, drawer) {
     ]));
   }
 
-  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer });
+  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn });
 
   // The window IS the viewport: the desk takes whatever height is left under
   // the banner and the handles, rather than a guessed vh. Measured, because
   // the chrome above it is not a fixed height (a long project name wraps).
   const fit = () => {
     const top = view.getBoundingClientRect().top;
-    view.style.height = Math.max(320, window.innerHeight - top) + "px";
+    const h = Math.max(320, Math.round(window.innerHeight - top)) + "px";
+    if (view.style.height !== h) view.style.height = h;   // idempotent: no needless reflow
   };
-  requestAnimationFrame(fit);
+
+  // Restoring is a WRITE to scrollLeft/Top, which fires a scroll event — and
+  // the listener below would happily record the half-restored value as the new
+  // truth. The flag is what keeps a restore from overwriting what it is
+  // restoring, which is how the view kept jumping to the corner after an edit.
+  let restoring = true;
+  const restore = () => {
+    fit();
+    if (state.scrollX == null) {
+      state.scrollX = Math.max(0, Math.round((view.scrollWidth - view.clientWidth) / 2));
+      state.scrollY = Math.max(0, Math.round((view.scrollHeight - view.clientHeight) / 2));
+    }
+    view.scrollLeft = state.scrollX;
+    view.scrollTop = state.scrollY;
+    requestAnimationFrame(() => { restoring = false; });
+  };
+  requestAnimationFrame(restore);
   window.addEventListener("resize", fit);
   view._deskFit = fit;                     // so teardown can take it off again
 
-  // scroll position survives the re-render that every write triggers
-  requestAnimationFrame(() => { view.scrollLeft = state.scrollX; view.scrollTop = state.scrollY; });
-  view.addEventListener("scroll", () => { state.scrollX = view.scrollLeft; state.scrollY = view.scrollTop; });
+  view.addEventListener("scroll", () => {
+    if (restoring) return;
+    state.scrollX = view.scrollLeft;
+    state.scrollY = view.scrollTop;
+  });
   return view;
 }
 
@@ -380,17 +404,24 @@ function card(store, project, ctx, p, weight, state) {
   // the wobble: derived, static, never stored (§12.1)
   node.style.setProperty("--rot", (expanded ? 0 : p.rot).toFixed(3) + "deg");
 
-  node.appendChild(el("div", { class: "dcard-meta" }, [
-    el("span", { class: "dcard-no", text: `№ ${catalogNo(store, it)}` }),
-    typeChip(store, it),
-  ]));
-  node.appendChild(el("h3", { class: "dcard-title", text: it.title || "Untitled" }));
+  // The header is the drag handle when the card is expanded, and simply the
+  // top of the card when it isn't. Marking it rather than the whole card is
+  // what lets an open card be both draggable and readable (§14.21).
+  const head = el("div", { class: "dcard-drag" }, [
+    el("div", { class: "dcard-meta" }, [
+      expanded ? el("span", { class: "dcard-grip", "aria-hidden": "true", text: "⠿" }) : null,
+      el("span", { class: "dcard-no", text: `№ ${catalogNo(store, it)}` }),
+      typeChip(store, it),
+    ]),
+    el("h3", { class: "dcard-title", text: it.title || "Untitled" }),
+  ]);
+  node.appendChild(head);
   if (it.body) node.appendChild(el("p", { class: "dcard-body", text: it.body }));
 
   if (expanded) {
     // Expanded in place (§14.5): the whole entry, where it sits, not a modal.
     const full = el("div", { class: "dcard-full" });
-    if (it.body) full.appendChild(el("p", { text: it.body }));
+    if (it.body) full.appendChild(el("p", {}, linkify(it.body)));
     if (it.tags.length) full.appendChild(el("div", { class: "item-foot" }, tagChips(it)));
     full.appendChild(el("div", { class: "dcard-acts" }, [
       el("button", {
@@ -416,6 +447,25 @@ function card(store, project, ctx, p, weight, state) {
     el("span", { class: "num", text: shortDate(it) }),
   ]));
   return node;
+}
+
+// Turn bare URLs in a body into real links. Plain text in, nodes out — the
+// body is stored as plain text and stays that way; this is a render-time
+// courtesy, not a format. Anything that isn't a link is a text node, so
+// selection and copy behave exactly as they would without this.
+const URL_RE = /\bhttps?:\/\/[^\s<>()]+[^\s<>().,;:!?'"]/g;
+function linkify(text) {
+  const out = [];
+  let last = 0;
+  for (const m of String(text).matchAll(URL_RE)) {
+    if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
+    out.push(el("a", {
+      href: m[0], target: "_blank", rel: "noopener noreferrer", class: "dcard-link", text: m[0],
+    }));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+  return out;
 }
 
 // The same rule a list row uses, and the only ember on the desk.
@@ -446,14 +496,22 @@ function wireDesk(store, project, ctx, data, state, dom) {
     const cardNode = e.target.closest(".dcard");
 
     if (cardNode && state.expanded === cardNode.dataset.id) {
-      // an expanded card is being read, not moved — but it still listens for
-      // the second click, so the gesture that opened it closes it
-      drag = { kind: "tap", id: cardNode.dataset.id, x0: e.clientX, y0: e.clientY };
+      // An expanded card is TWO surfaces, because two gestures want the same
+      // pixels: its header is a handle you can drag it by, and its body is
+      // text you can select, copy and click links in. Anything outside the
+      // header is left entirely to the browser — no capture, no preventDefault
+      // — which is what makes selection and links work at all.
+      if (!e.target.closest(".dcard-drag")) return;
+      const p = placedById.get(cardNode.dataset.id);
+      drag = p
+        ? { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ: null, wasExpanded: true }
+        : { kind: "tap", id: cardNode.dataset.id, x0: e.clientX, y0: e.clientY };
+      if (p) cardNode.classList.add("is-dragging");
     } else if (cardNode) {
       const p = placedById.get(cardNode.dataset.id);
       if (!p) return;
-      raise(p, cardNode);
-      drag = { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY };
+      const pendingZ = raiseLocally(p, cardNode);
+      drag = { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ };
       cardNode.classList.add("is-dragging");
     } else {
       // empty desk pans the view, so nothing can end up unreachable (§14.2)
@@ -497,10 +555,13 @@ function wireDesk(store, project, ctx, data, state, dom) {
         state.expanded = state.expanded === id ? null : id;
         ctx.rerender();
       } else if (kind === "card") {
-        // a plain tap only raises, and raising already happened locally; the
-        // op (if any) was written in raise()
         d.node.style.removeProperty("--dx");
         d.node.style.removeProperty("--dy");
+        // a plain tap: commit the raise, if it actually changed anything
+        if (d.pendingZ != null) {
+          store.setDeskField(d.p.id, project.id, "z", d.pendingZ);
+          ctx.rerender();
+        }
       }
       return;
     }
@@ -515,18 +576,28 @@ function wireDesk(store, project, ctx, data, state, dom) {
     const pos = D.clampPos(
       { x: d.p.pos.x + dx, y: d.p.pos.y + dy },
       d.node.offsetWidth, d.node.offsetHeight);
+    // both writes for this card, together, on release — never before
+    if (d.pendingZ != null) store.setDeskField(d.p.id, project.id, "z", d.pendingZ);
     store.setDeskField(d.p.id, project.id, "pos", pos);
     ctx.rerender();
   });
 
-  // Touching a card brings it to the top (§8.9). Only writes when it isn't
-  // already on top — otherwise every idle tap would append an op.
-  function raise(p, node) {
-    const top = data.maxZ;
-    if (p.z >= top) return;
-    const z = top + 1;
+  // Touching a card brings it to the top (§8.9) — VISUALLY, right now, with no
+  // store write. The write happens on release, batched with the position.
+  //
+  // This was the whole family of drag bugs on the first deploy. Writing the
+  // raise on pointerdown emitted a store change, which re-rendered the desk,
+  // which destroyed the very card element the pointer had just captured. So:
+  // the first click on a card did nothing but rebuild it (and had to be
+  // repeated), drags didn't register, drops landed on a stale node and snapped
+  // back, and the whole thing felt laggy and flickered. One rule, broken in
+  // one place: NOTHING may write to the store between pointerdown and
+  // pointerup (§8.34).
+  function raiseLocally(p, node) {
+    if (p.z >= data.maxZ) return null;             // already on top: nothing to do
+    const z = data.maxZ + 1;
     node.style.zIndex = String(10 + z);
-    store.setDeskField(p.id, project.id, "z", z);
+    return z;                                      // caller commits this on drop
   }
 
   function overUnplacedHandle(e) {
@@ -595,8 +666,10 @@ function wireDesk(store, project, ctx, data, state, dom) {
     view.scrollLeft = glance.sl; view.scrollTop = glance.st;   // exactly back
     glance = null;
   };
-  const page = deskEl.closest(".desk-page");
-  const glanceBtn = page ? page.querySelector(".banner-glance") : null;
+  // Passed in, not looked up: wireDesk runs while the surface is still
+  // detached from the page, so closest(".desk-page") was null and the banner's
+  // ✧ silently got no listener — only the Z key worked.
+  const glanceBtn = dom.glanceBtn;
   if (glanceBtn) {
     glanceBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); glanceOn(); });
     for (const ev of ["pointerup", "pointerleave", "blur"]) glanceBtn.addEventListener(ev, glanceOff);
