@@ -2161,3 +2161,347 @@ button, input, textarea, select {
   .today-row { flex-wrap: wrap; }
   .today-actions { width: 100%; justify-content: flex-end; margin-top: var(--space-2); }
 }
+
+/* ============================================================
+   THE DESK  (docs/dash-desk-addendum.md, Phase D1)
+   ------------------------------------------------------------
+   Half of the desk's constants live here; the other half — the ones the
+   JavaScript needs to reason about — are in js/desk.js, named once. Both
+   halves were chosen by pushing sliders in mockups/desk-preview.html across
+   four rounds; §14.7 of the addendum is the table.
+
+   Nothing here names a colour. The project's own ground and ink arrive as
+   --ground-bg / --ground-ink from groundStyle(), which is what lets a banner,
+   a drawer and a handle all wear a colour this stylesheet has never seen and
+   stay legible.
+   ============================================================ */
+
+.desk-page {
+  --desk-rot-max:      2.3deg;   /* locked r3 */
+  --desk-w:            4400px;   /* locked r3 — must match DESK_W in js/desk.js */
+  --desk-h:            2900px;   /* locked r3 — must match DESK_H */
+  --desk-view-h:       74vh;
+  --desk-card-min:     260px;    /* locked r2 — must match CARD_MIN_W */
+  --desk-card-max:     410px;    /* locked r2 — must match CARD_MAX_W */
+  --desk-card-open-w:  460px;    /* locked r2 */
+  --desk-card-pad:     var(--space-3);
+  --desk-mat-ink:      12%;      /* locked r4 (app.css's body grain is 3% / 2%) */
+  --desk-mat-w:        2000px;   /* locked r4 — the mat's OWN footprint */
+  --desk-drawer-ms:    380ms;    /* locked r2 — open AND close */
+  --desk-drawer-cap:   56vh;
+  --desk-drawer-min-w: 360px;
+  --desk-settle-ms:    200ms;    /* locked r3 */
+  --desk-glance-ms:    380ms;    /* locked r3 */
+  --desk-weight-step:  3px;
+  --pb-count-size:     22px;     /* locked r5 — the progress fraction */
+  --pb-rule: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 45%, transparent);
+}
+/* the desk owns the page width; the sheet's inset would waste it */
+.sheet-page-desk { max-width: none; }
+
+/* ---------- the banner: ledger band (§14.17, candidate A) ---------- */
+.pb-a {
+  background: var(--ground-bg, var(--surface-sunken));
+  color: var(--ground-ink, var(--text-primary));
+  background-image: radial-gradient(circle at 30% 35%,
+    color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 12%, transparent) 0 1px, transparent 1px);
+  background-size: 19px 19px;
+}
+.pb-head {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  padding: var(--space-3) var(--space-5) var(--space-2);
+  margin: 0 var(--space-5);
+  padding-left: 0; padding-right: 0;
+  border-bottom: 1px solid var(--pb-rule);
+}
+/* the name owns the top line, always: a long one wraps in its own column and
+   pushes the actions nowhere, because the facts are a separate row entirely */
+.pb-name {
+  flex: 1; min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  font-weight: 400; letter-spacing: -0.01em; line-height: 1.1;
+  margin: 0; overflow-wrap: anywhere;
+}
+.pb-acts { flex: none; display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+.banner-glance { padding: 0; min-width: var(--control-min); font-size: var(--text-lg); line-height: 1; letter-spacing: 0; }
+
+/* ONE thin line for stage · progress · entries · next, in cells divided by the
+   same hairline the drawer handles use. Weight carries the hierarchy: the
+   stage and what's next come forward, the counts fall back (§14.19). */
+.pb-line {
+  display: flex; flex-wrap: wrap; align-items: center;
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-5) var(--space-3);
+  margin: 0 var(--space-5);
+  padding-left: 0; padding-right: 0;
+  border-bottom: 1px solid var(--pb-rule);
+  --fact-ink: var(--ground-ink, var(--text-primary));
+}
+.pb-line > * {
+  color: color-mix(in srgb, var(--fact-ink) 58%, transparent);
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--pb-rule);
+}
+.pb-line > *:first-child { padding-left: 0; border-left: none; }
+.pb-f-stage, .pb-f-strong { color: var(--fact-ink); font-weight: 600; }
+/* The fraction is set large but contributes NOTHING to the line box, so the
+   band's height and both hairlines stay exactly where they are (§14.19). */
+.pb-f-count {
+  font-size: var(--pb-count-size);
+  line-height: 0; font-weight: 400; letter-spacing: 0.04em;
+}
+/* ember keeps its own tight block: cell padding would just widen the alarm */
+.pb-line > .banner-late {
+  border-left: none; margin-left: var(--space-4); padding: 0 var(--space-2);
+  font-weight: 600; background: var(--ember); color: var(--ember-ink);
+}
+
+/* ---------- Peek: three independent mini-drawers (§14.4) ---------- */
+.desk-handles {
+  position: relative;
+  display: flex; gap: 1px;
+  background: var(--pb-rule);
+  border-bottom: 1px solid var(--pb-rule);
+}
+.desk-handle {
+  flex: 1;
+  min-height: var(--control-min);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: var(--ground-bg, var(--surface-sunken));
+  color: var(--ground-ink, var(--text-primary));
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+}
+.desk-handle:hover,
+.desk-handle.is-drop-target {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-primary)) 14%, var(--ground-bg, var(--surface-sunken)));
+}
+.desk-handle.is-drop-target { box-shadow: inset 0 0 0 2px var(--ground-ink, var(--text-primary)); }
+.desk-handle:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ground-ink, var(--text-primary)); }
+.desk-handle[aria-expanded="true"] { box-shadow: inset 0 calc(var(--space-1) * -1) 0 var(--ground-ink, var(--text-primary)); }
+.desk-handle-count { opacity: 0.75; }
+
+/* A drawer opens UNDER ITS OWN HANDLE, at that handle's width — one drawer in
+   a run of drawers. It slides OVER the desk rather than pushing it: opening a
+   drawer must never move a placement (§14.18). */
+.desk-drawer {
+  position: absolute; top: 100%; left: 0;
+  width: 33%; z-index: 4;
+  overflow: hidden; max-height: 0;
+  background: var(--ground-bg, var(--surface-raised));
+  color: var(--ground-ink, var(--text-primary));
+  border: 1px solid color-mix(in srgb, var(--ground-ink, var(--text-primary)) 40%, transparent);
+  border-top: none;
+  box-shadow: var(--shadow-2);
+  transition: max-height var(--desk-drawer-ms) ease;   /* the same both ways */
+}
+.desk-drawer-inner { overflow: auto; max-height: var(--desk-drawer-cap); padding: var(--space-4) var(--space-5) var(--space-5); }
+.desk-shelf-head {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  padding-bottom: var(--space-2); margin-bottom: var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--ground-ink, var(--text-primary)) 38%, transparent);
+}
+.desk-shelf-head .group-count { margin-left: auto; letter-spacing: 0.08em; }
+
+/* Everything in the drawer was built for paper, so each piece is re-drawn from
+   --ground-ink. The type/status marks are the interesting case: a registry
+   colour is not guaranteed legible as TEXT on an arbitrary project colour, so
+   on a colour ground the identity moves from the letters to the dot — the
+   label draws in the drawer's ink and the 5px mark keeps its registry colour.
+   A dot carries no contrast requirement; the words do. */
+.desk-drawer .item-row,
+.desk-drawer .item-row:first-child,
+.desk-drawer .ms-row,
+.desk-drawer .ms-item:first-child .ms-row,
+.desk-drawer .ms-head { border-color: color-mix(in srgb, var(--ground-ink) 38%, transparent); }
+.desk-drawer .plate-title,
+.desk-drawer .item-title,
+.desk-drawer .lbl,
+.desk-drawer .num,
+.desk-drawer .group-count,
+.desk-drawer .desk-unplaced-title { color: var(--ground-ink); }
+.desk-drawer .hint,
+.desk-drawer .item-no,
+.desk-drawer .item-body-preview,
+.desk-drawer .tag { color: color-mix(in srgb, var(--ground-ink) 76%, transparent); }
+.desk-drawer .item-row:hover,
+.desk-drawer .ms-row:hover { background: color-mix(in srgb, var(--ground-ink) 10%, transparent); }
+.desk-drawer .mk { color: var(--ground-ink); }
+.desk-drawer .mk::before { background: var(--mk-dot, currentColor); }
+.desk-drawer .mk-ember { color: var(--ember-ink); background: var(--ember); padding: 0 var(--space-2); font-weight: 600; }
+.desk-drawer .mk-ember::before { background: var(--ember-ink); }
+.desk-drawer .status-ctl { color: var(--ground-ink); }
+.desk-drawer .status-ctl::before { background: var(--mk-dot, currentColor); }
+.desk-drawer .status-ctl::after { color: color-mix(in srgb, var(--ground-ink) 70%, transparent); }
+.desk-drawer .status-ctl select { color: var(--ground-ink); }
+.desk-drawer .status-ctl select:hover {
+  border-color: color-mix(in srgb, var(--ground-ink) 45%, transparent);
+  background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
+}
+/* the OS draws the open menu and inherits none of this, so name a real pair */
+.desk-drawer .status-ctl option { color: var(--text-primary); background: var(--surface-raised); }
+.desk-drawer .desk-unplaced-row,
+.desk-drawer .ms-label,
+.desk-drawer .ms-date {
+  background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ground-ink) 40%, transparent);
+  color: var(--ground-ink);
+}
+.desk-drawer .ms-grip { color: color-mix(in srgb, var(--ground-ink) 70%, transparent); }
+.desk-drawer .ms-tick { border-color: color-mix(in srgb, var(--ground-ink) 55%, transparent); }
+.desk-drawer .ms-tick.on { background: var(--ground-ink); border-color: var(--ground-ink); color: var(--ground-bg); }
+.desk-drawer .ms-move {
+  color: var(--ground-ink); background: transparent;
+  border-color: color-mix(in srgb, var(--ground-ink) 40%, transparent);
+}
+.desk-drawer .ms-move:hover { background: color-mix(in srgb, var(--ground-ink) 14%, transparent); }
+.desk-drawer .ms-row.is-done .ms-label { color: color-mix(in srgb, var(--ground-ink) 65%, transparent); }
+.desk-drawer .btn {
+  background: transparent;
+  color: var(--ground-ink);
+  border-color: color-mix(in srgb, var(--ground-ink) 55%, transparent);
+}
+.desk-drawer .btn:hover { background: color-mix(in srgb, var(--ground-ink) 14%, transparent); }
+
+.desk-unplaced { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.desk-unplaced-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  min-height: var(--control-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: grab; touch-action: none;
+  max-width: var(--desk-card-max);
+}
+.desk-unplaced-row .item-no { padding-top: 0; }
+.desk-unplaced-title { font-family: var(--font-body); font-size: var(--text-sm); }
+/* the row being dragged out of the drawer, following the pointer */
+.desk-ghost {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0.85;
+  background: var(--surface-raised); color: var(--text-primary);
+}
+
+/* ---------- the surface: bounded, its own scroll region, pannable ---------- */
+.desk-viewport {
+  position: relative;
+  height: var(--desk-view-h);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-top: none;
+  /* The viewport OWNS its stacking context. Without this it is
+     `position: relative; z-index: auto`, which does NOT create one — so every
+     card's z-index competes with the banner and drawer at page level and a
+     recently-touched card paints over the open drawer. */
+  z-index: 0;
+  isolation: isolate;
+}
+.desk-surface {
+  position: relative;
+  width: var(--desk-w); height: var(--desk-h);
+  transform-origin: 0 0;
+  cursor: grab;                       /* empty desk drags the DESK, not a card */
+  transition: transform var(--desk-glance-ms) ease;
+}
+.desk-surface.is-panning { cursor: grabbing; }
+.desk-viewport.is-glancing { overflow: hidden; }
+.desk-viewport.is-glancing .desk-surface { pointer-events: none; }   /* view only */
+.desk-empty {
+  position: absolute; left: var(--space-6); top: var(--space-6);
+  max-width: 40ch;
+}
+
+/* the mat: its own fixed footprint, centred, decorative and inert. Never a
+   container, a drop zone or a boundary (§14.13). */
+.desk-mat {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: var(--desk-mat-w);
+  aspect-ratio: 3 / 2;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  color: var(--text-primary);
+}
+.desk-mat path, .desk-mat circle {
+  fill: none;
+  stroke: color-mix(in srgb, currentColor var(--desk-mat-ink), transparent);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---------- a card ---------- */
+.dcard {
+  position: absolute;
+  width: max-content;
+  min-width: var(--desk-card-min);
+  max-width: var(--desk-card-max);
+  padding: var(--desk-card-pad);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  /* the wobble is a STATIC rotation derived from entry id + project id, so it
+     is identical on every device and survives prefers-reduced-motion */
+  transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(var(--rot, 0deg));
+  cursor: grab; touch-action: none; user-select: none;
+}
+.dcard:hover { border-color: var(--text-faint); }
+.dcard.is-dragging { cursor: grabbing; }
+.dcard:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* the one ember on the desk: identical to a list row's overdue mark */
+.dcard.flag { box-shadow: inset 2px 0 0 var(--ember); }
+
+.dcard-no { font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.06em; color: var(--text-faint); }
+.dcard-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: var(--space-1); }
+.dcard-title { font-family: var(--font-body); font-size: var(--text-base); line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
+.dcard-body {
+  color: var(--text-muted); font-size: var(--text-sm); margin: var(--space-2) 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dcard-foot { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
+.dcard-full { display: none; }
+.dcard-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-4); }
+
+/* expanded in place: the whole entry, where it sits, square to the page */
+.dcard.is-expanded {
+  width: var(--desk-card-open-w);
+  max-width: var(--desk-card-open-w);
+  padding: var(--space-4);
+  border-color: var(--text-faint);
+  box-shadow: var(--shadow-2);
+  cursor: default;
+  z-index: 60;
+}
+.dcard.is-expanded .dcard-body { display: none; }
+.dcard.is-expanded .dcard-full { display: block; }
+.dcard.is-expanded .dcard-title { font-size: var(--text-lg); }
+.dcard-full p { color: var(--text-muted); margin: var(--space-3) 0 0; }
+
+/* PILE WEIGHT — hairline sheets under a crowded card. A render effect from
+   local density; nothing about a pile is stored (§12.5). */
+.dcard[data-w="1"]:not(.flag) {
+  box-shadow: var(--desk-weight-step) var(--desk-weight-step) 0 calc(var(--desk-weight-step) * -1) var(--border-strong);
+}
+.dcard[data-w="2"]:not(.flag) {
+  box-shadow: var(--desk-weight-step) var(--desk-weight-step) 0 calc(var(--desk-weight-step) * -1) var(--border-strong),
+              calc(var(--desk-weight-step) * 2) calc(var(--desk-weight-step) * 2) 0 calc(var(--desk-weight-step) * -1) var(--border);
+}
+.dcard[data-w="3"]:not(.flag) {
+  box-shadow: var(--desk-weight-step) var(--desk-weight-step) 0 calc(var(--desk-weight-step) * -1) var(--border-strong),
+              calc(var(--desk-weight-step) * 2) calc(var(--desk-weight-step) * 2) 0 calc(var(--desk-weight-step) * -1) var(--border),
+              calc(var(--desk-weight-step) * 3) calc(var(--desk-weight-step) * 3) 0 calc(var(--desk-weight-step) * -1) var(--border);
+}
+
+/* ---------- the phone's Peek page (§7) ---------- */
+.peek-page { padding: var(--space-5) 0 0; }
+.peek-page .desk-shelf-head:not(:first-child) { margin-top: var(--space-6); }
+
+/* Motion is the drawer, the glance and the settle — all of it optional.
+   The wobble is a static rotation and is unaffected either way. */
+@media (prefers-reduced-motion: reduce) {
+  .desk-drawer, .desk-surface { transition: none; }
+}

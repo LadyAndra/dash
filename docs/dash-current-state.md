@@ -4,6 +4,8 @@
 
 **Last updated:** August 1, 2026 — later the same day. Phase M1 milestones + the stage chip + merge notes; Home became the Today panel and the corner cluster was shelved; then a **visual-system pass**: Home and Project rebuilt as panel layouts, colour allowed to be a ground, per-project and custom accent colours, and the spatial parameters (control sizing, column widths) reworked; then a **navigation-streamlining pass**: Kanban and Columns unregistered and a quick status control added to rows and cards; then the **catalog band**: search / group / sort moved out of the toolbar onto the page, the tag index became a permanent rail on List and Board, and Sort got a control for the first time; then a **code-health pass** — a structural review of the whole codebase before starting M3, and thirteen cleanups from it: the app stopped re-reading the archive ~30 times per redraw, `js/entries.js` gained the query the Calendar's Unscheduled tray needs, a real bug in the item editor was fixed, two colours that were frozen in the code now come from the theme and from your data, the last literal colours left `app.css`, and eleven dead tokens plus a pile of dead code came out. Live at `dash-v29`.
 
+**Updated August 14, 2026 — Phase D1 of the Desk** (`dash-desk-addendum.md`). A project page is now a **desk**: entries are cards you place, move, raise, expand in place and take back to the tray, with the structured view beside it in three drawers that hang off the banner. The banner itself was rebuilt as a compact ledger band. `formatVersion` 2 → 3, one new op kind (`"vs"`), two new files, and the first `tests/` folder. Live at `dash-v31`.
+
 **Companion docs in `docs/`:** `dash-architecture-proposal.md` (the original design), `dash-milestones-calendar-addendum.md` (milestones, stage, Today panel, Calendar — Phase M1 of it is built), `deploy-runbook.md` (how to upload to GitHub, step by step), `changes-2026-07-31-pet.md` (the corner cluster build note — now shelved), `changes-2026-08-01-milestones.md`, `changes-2026-08-01-today.md`, `changes-2026-08-01-home-panels.md` (Home's two-column panel layout), `changes-2026-08-01-projects-and-colour.md` (colour as ground + the project page), `changes-2026-08-01-colour-pickers.md` (the pickers and the custom accent), `changes-2026-08-01-spacing.md` (control sizing and column widths), `changes-2026-08-01-banner-controls.md` (the project banner takes over), `changes-2026-08-01-navigation.md` (unregistering Kanban/Columns, the row status control), `changes-2026-08-01-catalog-band.md` (the two-strip split, the index rail, Sort), and then the code-health pass: `review-2026-08-01-code-health.md` (**the review itself — read this before the five notes that follow, it explains what was found and why each cleanup exists**), `changes-2026-08-01-render-scans.md`, `changes-2026-08-01-unscheduled-source.md`, `changes-2026-08-01-editor-escape.md`, `changes-2026-08-01-colour-truth.md`, `changes-2026-08-01-css-literals.md`, `changes-2026-08-01-danger-hover.md`, `changes-2026-08-01-dead-weight.md`.
 
 **`mockups/home-panels-preview.html` is part of the working method now, not a leftover.** It links the *real* `tokens.css` and `app.css` with stand-in content, and has buttons for Home / One project / **List (band + rail)** / Colour pickers, a mount-theme toggle, and live colour pickers running a copy of the real contrast maths. Because Dash can only be checked by deploying, this is how a layout gets seen before it's uploaded. **Keep it current when the CSS changes** — a stale preview is worse than none. It is a mockup and is deliberately *not* in `SHELL` and not uploaded.
@@ -135,6 +137,60 @@ If it becomes a problem again, the available mitigation is a keyboard-aware edit
 - **Per-device panel reordering / show-hide.** Deliberately not built. If it's wanted, it's `localStorage` state keyed off each panel's `id`, the same way `dash.sidebar` and `dash.collapsed` already work — which is exactly why panels carry a stable `id` they don't otherwise use yet. Draggable column widths would live here too; see the reasoning under Key decisions for why automatic came first
 - **A home for the shelved corner widgets, if they return.** The old open question was "where do they now live, since Home is the Today panel." The panel registry is the answer: each would be one panel object with a `column`, and the grid finds room. Nothing has been built toward this, but nothing blocks it either
 
+---
+
+## The Desk (Phase D1, August 14 2026)
+
+**A project page is the desk.** No toggle, no second face: the banner sits on top, three Peek drawers hang off its bottom edge, and everything below is a bounded surface you arrange by hand. The panels that used to be here have homes — the entry groups became the Filed drawer, the milestone editor moved into its own drawer (mount point only; its focus bookkeeping is untouched).
+
+### What's built
+
+- **Place, move, raise, expand, un-place, restore.** Drag a row out of the Unplaced drawer onto the desk; drag cards around; a tap brings a card to the top; double-click expands it in place into the full entry and again collapses it; drag a card onto the Unplaced handle (or use *Return to tray* on an expanded card) to take it off. Un-placing keeps the position, so putting it back puts it back where it was.
+- **Drag empty desk to pan.** The surface is 4400 × 2900 — bigger than the frame on purpose, sized for ~100 entries with room left over.
+- **Hold `Z`, or hold the ✧ in the banner, to glance.** The whole desk scales to fit what's actually placed, centred; let go and you're exactly where you were. No zoom state is kept anywhere.
+- **Three mini-drawers**, each opening under its own handle at that handle's width, only as tall as its contents need, painted in the project's colour and sliding *over* the desk — opening one never moves a placement. Clicking away closes it, and that click does nothing else.
+- **The phone gets Peek as the page**: no desk, no Unplaced shelf (nothing to be unplaced from), milestones as a section.
+
+### The data (desk addendum §12.1)
+
+Desk position is `item.viewState["desk:<projectId>"] = { pos, z, clip, removed, created }`, carried by the new **`"vs"` op** with per-field last-writer-wins. Because the key namespaces the project, the same entry can sit placed on one project's desk and unplaced on another's at the same time, and the two never contest.
+
+Milestones and desk placements are now **the same merge code** — one shared sub-record engine both op kinds call, keyed exactly as Phase M1 keyed it, so existing logs and snapshots merge byte-identically to before.
+
+`formatVersion` is **3**. It marks the desk format *family*: the later phases' `"dk"` and `"hl"` op kinds are covered by the same 3 deliberately, and ignore-and-preserve makes a device that's behind safe regardless.
+
+### Rules this code must keep
+
+- **One archive pass per render.** `deskData()` in `js/desk.js` is the only thing that walks `store.all()`; the drawers read the same result. Test-enforced.
+- **Drags commit on drop, never per frame.** Pointer-move is local state; nothing writes — and therefore nothing re-renders — until release, so a sync landing mid-drag can't steal the card.
+- **Positions clamp in the model, not just on screen.** Clamping only at draw time leaves a stored position off the edge, which reads as a stuck card.
+- **A raise only writes when the card isn't already on top**, or every idle tap would append an op.
+- **The desk viewport owns its stacking context** (`z-index: 0; isolation: isolate`). Without it, card z-indices compete with the banner and drawer at page level and a recently-touched card paints over an open drawer.
+- **`viewState` is excluded from create-skeleton filling** in `fillCreateBlanks`, exactly as `milestones` is. Without that, a create op arriving after a placement op wipes the placement — see the D1 change note.
+- **Desk arrangement is pointer-only, and that is honest only because Peek exists.** Nothing may ever live as an arrangement alone.
+
+### Files
+
+```
+js/desk.js              pure rules: the desk key, the locked constants, wobble,
+                        clamping, z-order, pile weight, glance framing, the mat
+                        geometry, and deskData() — imports nothing
+js/views/desk.js        the surface, the drawers, the banner, the phone's Peek
+tests/desk-d1.test.mjs        36 merge + geometry checks (node, no install)
+tests/desk-d1.render.test.mjs 27 render + write checks (node + jsdom)
+```
+
+`css/app.css` gained a `THE DESK` section at the bottom; half the locked constants live there and half in `js/desk.js`, each marked with the round that locked it.
+
+### Not built yet (D2–D4)
+
+Clips and post-its (D2), wonder symbols (D3), highlights (D4). The data model already has room for all of them and `deskData` already carries `clip` through; none of them needs this code rewritten. The D0 mockup (`mockups/desk-preview.html`) shows all of it and stays the visual reference.
+
+### Deliberately not done
+
+- **Editing text inside an expanded card.** Expanding shows the whole entry and offers *Edit entry*, which opens the real editor. Inline editing on the desk would need the full deferred-commit trio (draft on `viewLocal`, focus + cursor restore) and belongs with the post-it editor in D2.
+- **Un-placing from the phone.** There is no desk there to un-place from.
+
 ## Key decisions still standing
 
 - Dropbox over iCloud/Google Drive: Android compatibility + no recurring re-auth
@@ -159,7 +215,7 @@ If it becomes a problem again, the available mitigation is a keyboard-aware edit
 - **An edit could arrive before the thing it edits was created, and the creation was thrown away.** Found August 1, 2026 by the Phase M1 out-of-order replay tests. Each device's log is read independently, so a `set` for an item can land before that item's `create` — `_ensure()` would conjure a blank to hold the edit, and the real `create` was then skipped by its own `if (!this.items.has(id))` guard. The entry kept the blank's empty title and default type permanently. Fixed with the same blank-filling rule milestone `add` uses: a late `create` supplies only fields no later op has claimed, merges rather than replaces set fields, takes the max of the date stamps, and never resurrects a tombstone. Tracked by `_fieldTs.__create` so a genuinely repeated create is still a no-op. **This class of bug is invisible in normal use** — it needs a specific arrival order — which is exactly why the replay-every-permutation test exists
 - **The "newer format" guard no longer throws.** It used to stop with an error, which meant that the moment one updated device wrote a v2 snapshot, every not-yet-updated device was stuck until it refreshed. The addendum (§4.3) requires brief version skew to be survivable, and it is: logs are the source of truth and append-only, unknown op kinds are ignored-and-preserved, and unknown item fields ride through `Object.assign` untouched. It now sets `store.formatNotice` and app.js toasts it once. **The fix only helps forward** — a device on older code still throws, so every format bump needs "update all devices before editing" in its upload note
 - **Format version lives in two places now.** `FORMAT_VERSION` in `store.js` stamps the snapshot header; `sync.js` also writes one `{"op":"header", formatVersion, device, at}` line per run at the top of that session's batch of log lines. Logs are append-only so they can't be re-headed retrospectively — per-run segment stamps are the honest equivalent, and they say which build produced which ops. `replayLog` skips `op: "header"` explicitly. `exportForSync()` had `formatVersion: 1` hardcoded and now reads the constant; check for that kind of literal on any future bump
-- **`sw.js` must be updated with every upload.** Bump `CACHE_VERSION` (currently `dash-v29`) or devices serve stale cached code, and add any **new** JS file to the `SHELL` array or the app breaks offline. `selection.js` was added in v9; `js/widgets/{motion,cluster,shapes,pet}.js` in v10–v12; `js/milestones.js`, `js/merge-notes.js` and `js/views/milestone-editor.js` in v17/v18; `js/entries.js` in v19; `js/ui/colorfield.js` in v23. The code-health pass (v28–v29) added no new files, so `SHELL` was untouched — `js/views/calendar.js` will be the next addition to it. Fetch strategy is network-first, so online updates arrive once Pages redeploys
+- **`sw.js` must be updated with every upload.** Bump `CACHE_VERSION` (currently `dash-v31`) or devices serve stale cached code, and add any **new** JS file to the `SHELL` array or the app breaks offline. `selection.js` was added in v9; `js/widgets/{motion,cluster,shapes,pet}.js` in v10–v12; `js/milestones.js`, `js/merge-notes.js` and `js/views/milestone-editor.js` in v17/v18; `js/entries.js` in v19; `js/ui/colorfield.js` in v23; `js/desk.js` and `js/views/desk.js` in v31. The code-health pass (v28–v29) added no new files, so `SHELL` was untouched — `js/views/calendar.js` will be the next addition to it. Fetch strategy is network-first, so online updates arrive once Pages redeploys
 - **`SHELL` was cross-checked against the files on disk in the code-health pass and was completely correct** — nothing missing, nothing stale. The only two files not in it are `js/focus-debug.js` (dynamically imported only under `?focusdebug=1`, deliberately excluded) and `sw.js` itself. That check is cheap and worth repeating whenever a file is added or renamed; it's the one that has silently broken deploys before
 - **`js/views/home.js` and `js/views/shared.js` are now coupled** — home imports `renderPanel` from shared. Uploading one without the other breaks Home. In practice this is a non-issue because deployment drags whole folders, but it's the first real cross-file dependency between views and worth knowing when debugging a half-broken deploy
 - **`--ember` and `--ember-default` must be kept equal in `tokens.css`.** The second one exists because `setAccent()` writes `--ember` as an *inline style* on `:root`, which beats the stylesheet — so "what is ember when nobody has picked anything?" cannot be answered by reading `--ember` back; it hands you the custom accent instead. `--ember-default` is never written by the accent flow, which is what makes it the honest answer, and it flips per theme so resetting in dark mode offers dark's ember. Added August 2026 in the code-health pass

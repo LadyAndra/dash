@@ -26,11 +26,19 @@
 import { ulid } from "./ulid.js";
 import { now as clockNow, compare as clockCompare } from "./clock.js";
 import { nextOrder } from "./milestones.js";
+import { deskKey } from "./desk.js";
 
 // 1 -> 2 in August 2026: adds the "ms" op kind and the optional milestones
 // array on project items (addendum §4.3). This marks CAPABILITY, not
 // incompatibility — see loadSnapshot() for how a version mismatch is handled.
-export const FORMAT_VERSION = 2;
+//
+// 2 -> 3 in August 2026: the Desk (desk addendum §12). Adds the "vs" op kind
+// and the optional `viewState` object on any item. The version marks the desk
+// format FAMILY — the later phases' "dk" and "hl" op kinds are covered by this
+// same 3, deliberately, so that "what version am I on" keeps meaning
+// something (desk addendum §12.7). Ignore-and-preserve in _applyOp makes a
+// device that is behind safe regardless.
+export const FORMAT_VERSION = 3;
 
 // The dedicated "Project" type. An entry assigned to a project links to it
 // with the PROJECT_LINK relationship label, which lets us tell project
@@ -70,7 +78,27 @@ export const OP = {
   REMOVE: "remove",   // field (a set) + value (element)
   DELETE: "delete",   // tombstone the item
   MS:     "ms",       // milestone sub-record: action add | set | remove
+  VS:     "vs",       // per-key viewState sub-record: action add | set | remove
 };
+
+// ---- the desk (desk addendum §12.1) ----
+// The original proposal reserved a namespaced `viewState` on every item for
+// per-view layout, with corkboard positions as its named example. It never had
+// a writer, so it never needed merge rules. The desk is its first writer.
+//
+// Whole-object last-writer-wins would be WRONG here: placing the same entry on
+// two different projects' desks from two devices must not contest, because
+// they are not the same fact. So viewState gets per-key, per-field ops, and
+// the key namespaces the view: "desk:<projectId>".
+//
+// Materialised shape:
+//   item.viewState = { "desk:<projectId>": { pos, z, clip, removed, created } }
+// Missing object = never placed. Absence of every new field means "none",
+// everywhere, always — which is why this bump needs no migration.
+// The key helpers themselves live in js/desk.js, which imports nothing — the
+// same arrangement as nextOrder() in js/milestones.js. Re-exported here so a
+// caller that already has the store doesn't need a second import.
+export { DESK_KEY_PREFIX, deskKey, projectIdFromDeskKey } from "./desk.js";
 
 // `color` (August 2026) is a per-item override of the colour an item is drawn
 // in. Null means "use my type's colour", which is what every item did before
@@ -98,6 +126,16 @@ const DATE_SCALARS = new Set(["due", "remind"]);
 // The only fields a milestone `set` op may touch (addendum §2.1). `mid` and
 // `created` are write-once at add time and deliberately not settable.
 const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"]);
+
+// The only fields a viewState `set` op may touch (desk addendum §12.1).
+// `created` is write-once at add time, like a milestone's.
+//   pos      {x, y} — ALWAYS moves as a unit, so it is one field, not two.
+//            A card is never half-way between two dropped positions.
+//   z        integer; tap/drop sets desk-max + 1, ties break by entry id.
+//   clip     a clip's id, or null (Phase D2).
+//   removed  tombstone. UN-PLACING IS A TOMBSTONE, not a deletion: the record
+//            keeps its position, so restoring puts the card back where it was.
+const VS_FIELDS = new Set(["pos", "z", "clip", "removed"]);
 
 // Where this device's merge notes are kept between reloads. Per-device on
 // purpose, like every other localStorage key in Dash: a merge note is an
@@ -441,6 +479,81 @@ export class Store {
     for (const { mid, order } of pairs) this.setMilestoneField(id, mid, "order", order);
   }
 
+
+  // =====================================================
+  //  THE DESK  (desk addendum §12.1)
+  //  Everything here writes ONE op per call. A drag commits on drop, never
+  //  per frame — the view is responsible for calling these once, on release.
+  // =====================================================
+
+  // The live desk record for an entry on a project's desk, or null.
+  // "Live" means placed and not un-placed: a tombstoned record still exists
+  // (that is the whole point of never-delete) but the card is not on the desk.
+  deskRecord(entryId, projectId) {
+    const it = this.get(entryId);
+    if (!it || !it.viewState) return null;
+    const rec = it.viewState[deskKey(projectId)];
+    if (!rec || rec.removed) return null;
+    return rec;
+  }
+
+  // Including tombstoned ones — for restore, and for "has this ever been placed".
+  deskRecordRaw(entryId, projectId) {
+    const it = this.get(entryId);
+    return (it && it.viewState && it.viewState[deskKey(projectId)]) || null;
+  }
+
+  // Put a card on a desk. If it was un-placed before, this clears the tombstone
+  // rather than making a second record — the same entry on the same desk is one
+  // record forever, so its history stays in one place.
+  placeOnDesk(entryId, projectId, pos, z) {
+    const key = deskKey(projectId);
+    const ts = clockNow();
+    const existing = this.deskRecordRaw(entryId, projectId);
+    if (existing) {
+      this._setViewStateField(entryId, key, "pos", pos);
+      if (typeof z === "number") this._setViewStateField(entryId, key, "z", z);
+      if (existing.removed) this._setViewStateField(entryId, key, "removed", null);
+    } else {
+      this._applyOp({
+        op: OP.VS, itemId: entryId, key, action: "add",
+        value: { pos, z: typeof z === "number" ? z : 1, created: new Date(ts.wall).toISOString() },
+        ts,
+      }, true);
+    }
+    this._action("edit", { id: entryId, field: "desk" });
+    return key;
+  }
+
+  // Move (or raise, or clip). One op per field per drop.
+  setDeskField(entryId, projectId, field, value) {
+    if (!VS_FIELDS.has(field)) throw new Error(`setDeskField: '${field}' is not a desk field`);
+    this._setViewStateField(entryId, deskKey(projectId), field, value);
+    this._action("edit", { id: entryId, field: "desk" });
+  }
+
+  // Un-place = tombstone, never erasure (§13.2 #8). The position survives, so
+  // restoring puts the card back exactly where it was rather than somewhere new.
+  unplaceFromDesk(entryId, projectId) {
+    this._applyOp({
+      op: OP.VS, itemId: entryId, key: deskKey(projectId), action: "remove", ts: clockNow(),
+    }, true);
+    this._action("edit", { id: entryId, field: "desk" });
+  }
+
+  restoreToDesk(entryId, projectId) {
+    this._setViewStateField(entryId, deskKey(projectId), "removed", null);
+    this._action("edit", { id: entryId, field: "desk" });
+  }
+
+  // Shared by every writer above, and by restoreCollision. Kept private
+  // because the key format ("desk:<pid>") is this file's business.
+  _setViewStateField(entryId, key, field, value) {
+    this._applyOp({
+      op: OP.VS, itemId: entryId, key, action: "set", field, value, ts: clockNow(),
+    }, true);
+  }
+
   // =====================================================
   //  OP APPLICATION  (used by both local edits and log replay)
   //  local=true  -> also queue to pendingOps for flushing
@@ -507,6 +620,15 @@ export class Store {
         this._bumpModified(it, op.ts);
         break;
       }
+      case OP.VS: {
+        const it = this._ensure(op.itemId);
+        this._applyViewStateOp(it, op);
+        // Deliberately NOT _bumpModified: arranging a desk is not editing the
+        // entry (desk addendum §10 — "whether arranging counts as attention"
+        // was resolved *no* for this build). The op carries its own timestamp;
+        // nothing else is written.
+        break;
+      }
       default:
         // Forward compatibility (§13.2 #1, addendum §4.3): an op kind this
         // build doesn't know is IGNORED AND PRESERVED, never an error. The op
@@ -518,46 +640,53 @@ export class Store {
     return op;
   }
 
-  // ---- the milestone merge rules (addendum §4.2) ----
-  // The milestones COLLECTION merges like a set; each milestone's FIELDS merge
-  // like an item's scalar fields. Every op addresses a milestone by mid, so
-  // two devices editing different milestones of the same project can't collide
+  // ---- the shared sub-record merge engine ----
+  // Milestones (addendum §4.2) and desk placements (desk addendum §12.1) are
+  // the same shape of problem, so they are the same code. A COLLECTION of
+  // sub-records merges like a set; each sub-record's FIELDS merge like an
+  // item's scalar fields. Every op addresses a sub-record by a stable id, so
+  // two devices editing different sub-records of the same item cannot collide
   // at all — their ops touch different keys.
   //
   // LWW bookkeeping reuses the item's own _fieldTs map under namespaced keys
-  // ("ms:<mid>:date"), which means milestone merge needs no new machinery and
-  // survives a reload for free, because _fieldTs is already in the snapshot.
-  _applyMilestoneOp(it, op) {
-    if (!op.mid) return;                         // malformed; ignore rather than crash
-    if (!Array.isArray(it.milestones)) it.milestones = [];
-    const ms = this._ensureMilestone(it, op.mid);
+  // ("ms:<mid>:date", "vs:desk:<pid>:pos"), which means neither needs new
+  // machinery and both survive a reload for free, because _fieldTs is already
+  // in the snapshot. The key scheme is byte-identical to what Phase M1 wrote,
+  // so existing logs and snapshots keep merging exactly as they did.
+  //
+  // spec: { ns, idKey, fields, addFields, ensure(it, id), label(rec, op) }
+  _applySubRecordOp(it, op, spec) {
+    const id = op[spec.idKey];
+    if (!id) return;                             // malformed; ignore rather than crash
+    const rec = spec.ensure.call(this, it, id);
+    const key = (f) => `${spec.ns}:${id}:${f}`;
 
     if (op.action === "add") {
-      // Idempotent by mid. The value snapshot applies ON FIRST SIGHT ONLY;
+      // Idempotent by id. The value snapshot applies ON FIRST SIGHT ONLY;
       // later state comes from `set` ops. If a `set` got here first (log tails
-      // can arrive in any order, §4.2), that field already has a winning
-      // timestamp and the add just fills the remaining blanks.
-      const addKey = `ms:${op.mid}:__add`;
+      // arrive in any order), that field already has a winning timestamp and
+      // the add just fills the remaining blanks.
+      const addKey = key("__add");
       if (it._fieldTs[addKey]) return;           // already added — no-op
       it._fieldTs[addKey] = op.ts;
       const v = op.value || {};
-      for (const f of ["label", "date", "remind", "order"]) {
+      for (const f of spec.addFields) {
         if (v[f] === undefined) continue;
-        if (it._fieldTs[`ms:${op.mid}:${f}`]) continue;  // a set already won this field
-        ms[f] = v[f];
+        if (it._fieldTs[key(f)]) continue;       // a set already won this field
+        rec[f] = v[f];
       }
-      if (!ms.created) ms.created = v.created || new Date(op.ts.wall).toISOString();
+      if (!rec.created) rec.created = v.created || new Date(op.ts.wall).toISOString();
       return;
     }
 
     if (op.action === "set") {
-      if (!MS_FIELDS.has(op.field)) return;      // unknown milestone field: ignore + preserve
-      const key = `ms:${op.mid}:${op.field}`;
-      if (this._winsLWW(it, key, op.ts)) {
-        ms[op.field] = op.value;
-        it._fieldTs[key] = op.ts;
+      if (!spec.fields.has(op.field)) return;    // unknown field: ignore + preserve
+      const k = key(op.field);
+      if (this._winsLWW(it, k, op.ts)) {
+        rec[op.field] = op.value;
+        it._fieldTs[k] = op.ts;
       } else {
-        this._noteCollision(it, key, op, { mid: op.mid, label: `${ms.label || "milestone"} · ${op.field}` });
+        this._noteCollision(it, k, op, spec.label(rec, op));
       }
       return;
     }
@@ -566,16 +695,45 @@ export class Store {
       // A remove is just an LWW set of the tombstone, which is why
       // remove-vs-edit needs no special case: the edit still applies to the
       // tombstoned record underneath, and restoring is a later set to null.
-      const key = `ms:${op.mid}:removed`;
-      const stamp = new Date(op.ts.wall).toISOString();
-      if (this._winsLWW(it, key, op.ts)) {
-        ms.removed = stamp;
-        it._fieldTs[key] = op.ts;
+      const k = key("removed");
+      if (this._winsLWW(it, k, op.ts)) {
+        rec.removed = new Date(op.ts.wall).toISOString();
+        it._fieldTs[k] = op.ts;
       }
       return;
     }
 
-    console.warn("unknown milestone action (ignored, forward-compat):", op.action);
+    console.warn("unknown sub-record action (ignored, forward-compat):", op.action);
+  }
+
+  // ---- the milestone merge rules (addendum §4.2) ----
+  _applyMilestoneOp(it, op) {
+    if (!Array.isArray(it.milestones)) it.milestones = [];
+    this._applySubRecordOp(it, op, {
+      ns: "ms",
+      idKey: "mid",
+      fields: MS_FIELDS,
+      addFields: ["label", "date", "remind", "order"],
+      ensure: this._ensureMilestone,
+      label: (ms, o) => ({ mid: o.mid, label: `${ms.label || "milestone"} · ${o.field}` }),
+    });
+  }
+
+  // ---- the desk placement merge rules (desk addendum §12.1) ----
+  // Device 1 moves a card while device 2 clips it -> different fields, both
+  // win. Two devices move the SAME card on the SAME desk -> the same field
+  // contests and the loser goes to merge notes like any other collision.
+  // Two devices place the same entry on DIFFERENT projects' desks -> different
+  // keys entirely, so there is nothing to contest.
+  _applyViewStateOp(it, op) {
+    this._applySubRecordOp(it, op, {
+      ns: "vs",
+      idKey: "key",
+      fields: VS_FIELDS,
+      addFields: ["pos", "z", "clip"],
+      ensure: this._ensureViewState,
+      label: (rec, o) => ({ vsKey: o.key, label: `desk position · ${o.field}` }),
+    });
   }
 
   // A milestone we haven't seen yet gets a skeleton, so a `set` arriving
@@ -599,6 +757,22 @@ export class Store {
       it.milestones.sort((a, b) => (a.mid < b.mid ? -1 : a.mid > b.mid ? 1 : 0));
     }
     return ms;
+  }
+
+  // A viewState key we haven't seen yet gets a skeleton, so a `set` arriving
+  // before its `add` has somewhere to land. The keys are kept SORTED for the
+  // same reason milestones are stored sorted by mid: two devices that received
+  // the same ops in a different sequence must produce byte-identical
+  // snapshots, or the convergence test is only testing key insertion order.
+  _ensureViewState(it, key) {
+    if (!it.viewState || typeof it.viewState !== "object") it.viewState = {};
+    if (!it.viewState[key]) {
+      it.viewState[key] = { pos: null, z: null, clip: null, removed: null, created: null };
+      const sorted = {};
+      for (const k of Object.keys(it.viewState).sort()) sorted[k] = it.viewState[k];
+      it.viewState = sorted;
+    }
+    return it.viewState[key];
   }
 
   _ensure(id) {
@@ -640,7 +814,9 @@ export class Store {
     if (prevTs.device === op.ts.device) return;         // same device correcting itself
     const current = key.startsWith("ms:")
       ? (this._msFieldValue(it, meta.mid, op.field))
-      : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
+      : key.startsWith("vs:")
+        ? (((it.viewState || {})[meta.vsKey] || {})[op.field])
+        : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
     if (sameValue(current, op.value)) return;           // both wrote the same thing
 
     const noteKey = `${it.id}|${key}|${op.ts.wall}.${op.ts.count}.${op.ts.device}`;
@@ -652,6 +828,7 @@ export class Store {
       itemId: it.id,
       itemTitle: it.title || "Untitled",
       mid: meta.mid || null,
+      vsKey: meta.vsKey || null,
       field: op.field,
       what: meta.label || op.field,
       lostValue: op.value === undefined ? null : op.value,
@@ -695,6 +872,7 @@ export class Store {
     if (!c) return false;
     try {
       if (c.mid) this.setMilestoneField(c.itemId, c.mid, c.field, c.lostValue);
+      else if (c.vsKey) this._setViewStateField(c.itemId, c.vsKey, c.field, c.lostValue);
       else this.setField(c.itemId, c.field, c.lostValue);
     } catch (err) {
       console.warn("couldn't restore that merge note:", err);
@@ -837,7 +1015,14 @@ function applySetRemove(it, field, value) {
 // there already better information than the skeleton's?
 function fillCreateBlanks(it, skel) {
   for (const [k, v] of Object.entries(skel)) {
-    if (k === "id" || k === "_fieldTs" || k === "milestones") continue;  // never skeleton-supplied
+    // Never skeleton-supplied: these are SUB-RECORD collections, governed by
+    // their own ops with their own per-field timestamps. A create skeleton
+    // carries an empty one (emptyItem builds both), and log tails arrive in
+    // any order — so letting the skeleton assign here wipes real records that
+    // arrived first. That was the Phase M1 bug for `milestones`; `viewState`
+    // is the same bug, found by the D1 out-of-order replay test before it
+    // could reach anyone's data.
+    if (k === "id" || k === "_fieldTs" || k === "milestones" || k === "viewState") continue;
     if (k === "_deleted") { if (!it._deleted && v) it._deleted = true; continue; }
     if (k === "tags" || k === "links" || k === "attachments") {
       // Set fields: add-ops may already have landed, so merge, never replace.
