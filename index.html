@@ -29,17 +29,62 @@
           /* not fatal — app still works online; see console */
         });
       });
-      // When a new version of Dash takes over, reload once so we never run a
-      // mix of old and new code (which caused subtle bugs after updates).
+      // ---- taking on a new version without throwing away a tap ----
+      //
+      // When a new version of Dash takes over, we reload once so we never run
+      // a mix of old and new code (which caused subtle bugs after updates).
+      // That reload stays. What changed on August 15, 2026 is WHEN it is
+      // allowed to happen.
+      //
+      // The bug: sw.js calls skipWaiting() on install and clients.claim() on
+      // activate, both unconditional, so a newer worker seizes an already-open
+      // tab the moment it finishes installing. Installing means fetching the
+      // whole shell, which measured about two seconds after the page appeared
+      // — long after Dash is on screen and tappable. Tap Projects inside that
+      // window and the reload threw the navigation away and dropped you back
+      // on Home, which is Dash's fixed cold-start view. It read as the app
+      // refusing to go where you told it.
+      //
+      // The rule now: reload straight away only while nobody has touched the
+      // page yet, because then there is nothing to lose. Once there has been a
+      // real tap or keypress, the update waits for a quiet moment instead.
+      //
+      // Nothing is lost by waiting. The new worker is already active, so the
+      // very next time Dash is opened it serves the new code — deferring
+      // delays an update, it never skips one.
       let reloadedForUpdate = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
+      let updateWaiting = false;
+      let touched = false;
+
+      function reloadForUpdate() {
         if (reloadedForUpdate) return;
         reloadedForUpdate = true;
         window.location.reload();
+      }
+
+      // "Touched" means a deliberate act — a tap or a key. Deliberately not
+      // scroll or pointer movement: reading the Home sheet is not a state you
+      // can lose, and treating it as one would let a page that is merely open
+      // hold an update off forever. capture:true so it is seen even if a view
+      // stops the event, once:true because the first one settles the question.
+      const noteTouch = () => { touched = true; };
+      addEventListener("pointerdown", noteTouch, { capture: true, once: true });
+      addEventListener("keydown", noteTouch, { capture: true, once: true });
+
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!touched) { reloadForUpdate(); return; }  // untouched: nothing to throw away
+        updateWaiting = true;                         // busy: wait for a quiet moment
+      });
+
+      // The quiet moment. Hiding the tab covers everything that actually
+      // happens on a Mac and a phone — switching apps, locking the screen,
+      // moving to another tab — and by definition nobody is looking, so the
+      // reload costs nothing. If it never comes, the next open picks the new
+      // version up anyway.
+      document.addEventListener("visibilitychange", () => {
+        if (updateWaiting && document.visibilityState === "hidden") reloadForUpdate();
       });
     }
   </script>
 </body>
 </html>
-
-
