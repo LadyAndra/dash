@@ -568,6 +568,28 @@ Worth recording because of what caught it and what didn't: the jsdom render test
 - **Rename "Unplaced"** to something more on-brand. No replacement chosen.
 - **Double-click empty desk to make a post-it there.** This is D2 territory (`note` collection, §12.3) and should be designed with it.
 
+### 14.23 Post-deploy root-cause pass, steps 1–2 (14 August 2026)
+
+Against a root-cause review by Fable, which traced the whole post-deploy bug cluster — flicker with no trigger, drags needing a second click, drops snapping back, the view resetting to the corner — to the *environment* the desk's gesture code runs in rather than to the gesture code itself. Its ordering is being followed; this covers the first two steps.
+
+**Step 1 — the self-sync echo (`sync.js`).** `_lastSnapText` is the "have I already applied this snapshot?" marker, and **only the pull path was setting it**. So after every edit, `flush()` wrote a fresh `snapshot.json` and the next poll (8s folder / 10s Dropbox) downloaded the file *this same device had just written*, failed to recognise it, and did the full heavy reload — `loadSnapshot`, reset the own-log offset, replay the entire log, emit, rebuild the whole page. Every edit came back around as a ghost re-render seconds later, with no remote device involved. Recording what we wrote, on both backends, is the entire fix. Two lines.
+
+This is the single highest-value line in the desk work so far: the random rebuilds it caused are what killed drags mid-gesture, dropped scroll input, and made new entries appear in pieces.
+
+**Step 2 — the glance's scroll restore (`views/desk.js`).** `.desk-surface` transitions its transform over 380ms. `glanceOff()` cleared the transform and wrote the saved scroll position back *in the same tick* — but the surface was still visually tiny, so the viewport's scrollable area was a few hundred pixels and the browser clamped the write to roughly zero. The scroll listener then recorded that clamped value as the new saved position, and from then on **every** rebuild "restored" to the top-left corner. That is why the reset appeared after a glance and then again after the next Done: the glance corrupted the position, and Done was merely the next rebuild to reveal it.
+
+Two changes: the scroll guard is now an object shared with the glance, held for the whole gesture so nothing that happens while scaled is ever recorded; and the restore waits for the transform's `transitionend` (with a timeout fallback, because that event can be missed) before handing the position back. Under `prefers-reduced-motion` there is no transition, so it restores immediately — the JS and the CSS have to agree about that or the timer waits for an animation that was never going to run.
+
+**Step 2, second attempt (v35).** The first attempt tried to put the scroll position back *after* the zoom-out transition finished. Andra tested it: the saved position was no longer being corrupted (editing and pressing Done now held its place — the guard half worked), but letting go of the glance still landed in the corner. The bisect is clean: the failure was in the untested half, the timing.
+
+So the second attempt removes the timing rather than tuning it. **A scaled element contributes its scaled box to scrollable overflow**, so while the desk was small there was very little to scroll and *any* write was clamped — every restore was a race against that, and races are not fixable by moving them. The surface is now wrapped in a **sizer** that holds 4400 × 2900 and is never transformed, so the scrollable area is a constant. The glance is then purely a transform on the surface inside it, with the current scroll offset folded into the translate, and **the scroll position is never written at all**. Letting go removes the transform. Nothing to restore, no timing to get right, nothing left to race.
+
+The test changed shape with it, and is stronger for it: instead of "does it restore correctly" (undecidable without a layout engine) it asserts **the gesture writes to scroll zero times**, which jsdom can answer honestly.
+
+**Still to do, in Fable's order:** hold renders during an active drag (step 3, `app.js` + the desk), move `lastTap` out of the closure that dies with every rebuild (step 4), and — in its own session, deliberately not now — reconcile the desk in place instead of rebuilding it (step 5), which is the durable answer to full-page rebuilds.
+
+**The library question is closed for now.** Every symptom traced to the render/sync environment, not to gesture handling, and a library's listeners die with a destroyed element exactly the way hand-rolled ones do. `panzoom` is ruled out permanently — it wants to own the surface's transform, which collides with both the scroll-based pan and the glance. `interact.js` is the right shape but only earns its size if D2+ needs inertia, snapping, resize handles or multi-touch rotate. Until then the ~250 lines already written stay.
+
 ### 14.15 Confirmed, not new
 
 **Un-placing a card back to the tray is already D1 scope** (§13: "drag from drawer to desk, move, raise, un-place"), implemented as `vs set removed` with restore, per §12.1's never-delete rule.

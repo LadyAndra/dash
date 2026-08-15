@@ -36,6 +36,11 @@ ok("the project name is on it", page.querySelector('.pb-name').textContent === "
 ok("the facts line has cells", page.querySelectorAll('.pb-line > *').length >= 3);
 ok("the progress fraction is there", !!page.querySelector('.pb-f-count'));
 ok("three drawer handles", page.querySelectorAll('.desk-handle').length === 3);
+// REGRESSION (first deploy): the drawer body must stay inside the handle row.
+// Moved out, its `top: 100%` resolves against the whole page and it opens a
+// viewport height below the fold — indistinguishable from "drawers don't open".
+ok("the drawer hangs off the handle row, not the page",
+   page.querySelector('.desk-drawer').parentElement.classList.contains('desk-handles'));
 ok("the desk surface exists", !!page.querySelector('.desk-surface'));
 ok("the mat is drawn and inert", page.querySelectorAll('.desk-mat path').length > 20);
 ok("one placed card is on the desk", page.querySelectorAll('.dcard').length === 1);

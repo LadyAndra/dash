@@ -165,6 +165,41 @@ console.log("\n--- one archive pass, enforced ---");
   ok("a desk render walks the archive exactly once", scans === 1, `scanned ${scans} times`);
 }
 
+console.log("\n--- a stale remote snapshot must not eat local work ---");
+// The shape of the first-deploy data-loss bug: a poll sees a changed remote
+// snapshot written BEFORE a local edit, and loadSnapshot assigns straight over
+// the live item. This reproduces what sync.js now does around that call.
+{
+  const s = new Store();
+  const id = s.createItem({ title: "" });
+  const stale = JSON.parse(JSON.stringify(s.toSnapshot()));   // remote snapshot: title still ""
+  for (const v of ["B","Bo","Bow","Bower","Bowerhaus"]) s.setField(id, "title", v);
+  ok("typed locally", s.get(id).title === "Bowerhaus");
+
+  // what the OLD code did
+  const naive = new Store();
+  naive.replayLog(s.pendingOps.slice());
+  naive.loadSnapshot(JSON.parse(JSON.stringify(stale)));
+  ok("...and the old path lost it (this is the bug)", naive.get(id).title === "");
+
+  // what sync.js does now: snapshot as a base, then local work back on top
+  const fixed = new Store();
+  fixed.replayLog(s.pendingOps.slice());
+  const pending = s.pendingOps.slice();
+  fixed.loadSnapshot(JSON.parse(JSON.stringify(stale)));
+  for (const op of pending) fixed._applyOp(op, false);
+  ok("...and the fixed path keeps it", fixed.get(id).title === "Bowerhaus", JSON.stringify(fixed.get(id).title));
+  eq("...including a desk placement made in the same window",
+     (() => { const t = new Store(); t.replayLog(s.pendingOps.slice());
+              const pid2 = t.createItem({ title:"P2", type:"project" });
+              t.assignToProject(id, pid2);
+              t.placeOnDesk(id, pid2, { x: 12, y: 34 }, 1);
+              const p = t.pendingOps.slice();
+              t.loadSnapshot(JSON.parse(JSON.stringify(stale)));
+              for (const op of p) t._applyOp(op, false);
+              return t.deskRecord(id, pid2).pos; })(), { x: 12, y: 34 });
+}
+
 console.log("\n--- geometry ---");
 {
   eq("a stray position is clamped back onto the desk", desk.clampPos({x: 99999, y: -40}, 300, 150),

@@ -312,11 +312,29 @@ function milestonesShelf(store, project, ctx) {
 // ===================================================================
 function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   const view = el("div", { class: "desk-viewport" });
+  // THE SIZER. It is the thing that is 4400 x 2900, and it is never
+  // transformed — so the scrollable area is a constant, whatever the glance is
+  // doing to the surface inside it.
+  //
+  // This is the second attempt at the glance, and it is a different KIND of
+  // fix. The first tried to put the scroll position back after the zoom-out
+  // finished, which meant getting a piece of timing right against a CSS
+  // transition — and it still landed in the corner. A scaled element
+  // contributes its SCALED box to the scrollable overflow, so while the desk
+  // was small there was almost nothing to scroll and any write got clamped;
+  // every attempt to restore was a race against that.
+  //
+  // With a sizer, the glance never touches the scroll position at all. It is
+  // purely a transform, the current scroll offset is folded into that
+  // transform, and letting go just removes it. There is nothing to restore, so
+  // there is no timing to get right and nothing left to race.
+  const sizer = el("div", { class: "desk-sizer" });
   const deskEl = el("div", {
     class: "desk-surface",
     "aria-label": "Desk. Pointer only — the same entries are in the Peek drawers above, at full size.",
   });
-  view.appendChild(deskEl);
+  sizer.appendChild(deskEl);
+  view.appendChild(sizer);
 
   // the mat: decorative, inert, fixed footprint, centred (§14.12, §14.13)
   deskEl.appendChild(mat());
@@ -332,7 +350,18 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     ]));
   }
 
-  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn });
+  // Restoring is a WRITE to scrollLeft/Top, which fires a scroll event — and
+  // the listener below would happily record the half-restored value as the new
+  // truth. The guard is what keeps a restore from overwriting what it is
+  // restoring, which is how the view kept jumping to the corner after an edit.
+  //
+  // It is an object rather than a local so the glance can hold it too: while
+  // the desk is scaled down, its scrollable area is a few hundred pixels and
+  // the browser clamps any scroll to about zero. Recording THAT was how the
+  // glance silently corrupted the saved position (§14.23).
+  const guard = { hold: true };
+
+  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard });
 
   // The window IS the viewport: the desk takes whatever height is left under
   // the banner and the handles, rather than a guessed vh. Measured, because
@@ -343,11 +372,6 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     if (view.style.height !== h) view.style.height = h;   // idempotent: no needless reflow
   };
 
-  // Restoring is a WRITE to scrollLeft/Top, which fires a scroll event — and
-  // the listener below would happily record the half-restored value as the new
-  // truth. The flag is what keeps a restore from overwriting what it is
-  // restoring, which is how the view kept jumping to the corner after an edit.
-  let restoring = true;
   const restore = () => {
     fit();
     if (state.scrollX == null) {
@@ -356,14 +380,14 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     }
     view.scrollLeft = state.scrollX;
     view.scrollTop = state.scrollY;
-    requestAnimationFrame(() => { restoring = false; });
+    requestAnimationFrame(() => { guard.hold = false; });
   };
   requestAnimationFrame(restore);
   window.addEventListener("resize", fit);
   view._deskFit = fit;                     // so teardown can take it off again
 
   view.addEventListener("scroll", () => {
-    if (restoring) return;
+    if (guard.hold) return;
     state.scrollX = view.scrollLeft;
     state.scrollY = view.scrollTop;
   });
@@ -648,23 +672,37 @@ function wireDesk(store, project, ctx, data, state, dom) {
 
   // ---- glance: hold, and the whole desk fits (§14.3) ----
   let glance = null;
+  const guard = dom.guard;
   const glanceOn = () => {
     if (glance) return;
     const boxes = [...deskEl.querySelectorAll(".dcard")].map(n => ({
       x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight,
     }));
     const f = D.glanceFrame(D.contentBounds(boxes), view.clientWidth, view.clientHeight);
-    glance = { sl: view.scrollLeft, st: view.scrollTop };
+    // The scroll offset is folded INTO the transform rather than reset: the
+    // viewport is looking at surface coordinate (scrollLeft, scrollTop), so
+    // adding it back is what puts the content in the middle of what you can
+    // actually see. Nothing about the scroll position changes.
+    const tx = f.tx + view.scrollLeft;
+    const ty = f.ty + view.scrollTop;
+    glance = true;
     view.classList.add("is-glancing");
-    view.scrollLeft = 0; view.scrollTop = 0;
-    deskEl.style.transform = `translate(${f.tx.toFixed(1)}px, ${f.ty.toFixed(1)}px) scale(${f.k.toFixed(4)})`;
+    deskEl.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${f.k.toFixed(4)})`;
   };
+
+  // Letting go is now just: take the transform off. The scroll position was
+  // never moved, so there is nothing to put back. `is-glancing` (which turns
+  // off pointer events, so you can't grab a card that is still flying) comes
+  // off once the transform has finished animating — and if that timer is late
+  // or early it costs nothing but a few milliseconds of not being able to
+  // grab something.
   const glanceOff = () => {
     if (!glance) return;
-    deskEl.style.transform = "";
-    view.classList.remove("is-glancing");
-    view.scrollLeft = glance.sl; view.scrollTop = glance.st;   // exactly back
     glance = null;
+    deskEl.style.transform = "";
+    const ms = motionMs(GLANCE_MS);
+    if (ms <= 0) { view.classList.remove("is-glancing"); return; }
+    setTimeout(() => { if (!glance) view.classList.remove("is-glancing"); }, ms);
   };
   // Passed in, not looked up: wireDesk runs while the surface is still
   // detached from the page, so closest(".desk-page") was null and the banner's
@@ -707,11 +745,17 @@ function wireDesk(store, project, ctx, data, state, dom) {
 function isTyping(el2) {
   return el2 && /^(INPUT|TEXTAREA|SELECT)$/.test(el2.tagName);
 }
-function motionMs() {
+// Locked in D0 round 2/3, and the same numbers as --desk-drawer-ms and
+// --desk-glance-ms in app.css. Zero when the system asks for reduced motion —
+// the JS has to agree with the CSS about that, or a timer waits for an
+// animation that was never going to run.
+const DRAWER_MS = 380;
+const GLANCE_MS = 380;
+function motionMs(ms = DRAWER_MS) {
   try {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return 0;
   } catch { /* no matchMedia: assume motion is fine */ }
-  return 380;                                   // locked r2, matches --desk-drawer-ms
+  return ms;
 }
 
 // ===================================================================

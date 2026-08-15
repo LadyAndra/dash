@@ -2435,9 +2435,19 @@ button, input, textarea, select {
   z-index: 0;
   isolation: isolate;
 }
-.desk-surface {
+/* The sizer is what makes the viewport scrollable, and it is NEVER
+   transformed — so the scrollable area is a constant. A scaled element
+   contributes its scaled box to scrollable overflow, which is why the glance
+   used to shrink the scroll range out from under itself and any attempt to
+   restore a position got clamped to nothing. With the size held here, the
+   glance is purely a transform on the surface inside. */
+.desk-sizer {
   position: relative;
   width: var(--desk-w); height: var(--desk-h);
+}
+.desk-surface {
+  position: absolute;
+  inset: 0;
   transform-origin: 0 0;
   cursor: grab;                       /* empty desk drags the DESK, not a card */
   transition: transform var(--desk-glance-ms) ease;
