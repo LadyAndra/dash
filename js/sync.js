@@ -351,7 +351,12 @@ export class Sync {
           const f = await (await dataDir.getFileHandle(logName)).getFile();
           this.readOffsets[logName] = f.size;
           // periodically rewrite the merged snapshot (cheap at this scale — §2.3)
-          await writeJSONFile(dataDir, SNAPSHOT_NAME, this.store.toSnapshot());
+          const snapObj = this.store.toSnapshot();
+          await writeJSONFile(dataDir, SNAPSHOT_NAME, snapObj);
+          // Same self-sync echo as the Dropbox path above. pull() compares
+          // JSON.stringify() of the PARSED file, so the marker is the compact
+          // form of the same object — not the pretty-printed text on disk.
+          this._lastSnapText = JSON.stringify(snapObj);
         }
         await this._flushBlobsToFolder();
         this._setStatus("ok");
@@ -383,7 +388,18 @@ export class Sync {
       await this.dbx.upload(logPath, next, { mode: "overwrite" });
       this.readOffsets[`${LOG_PREFIX}${this.logSlug}${LOG_EXT}`] = next.length;
       // refresh merged snapshot (cheap at this scale — §2.3)
-      await this.dbx.upload("/data/snapshot.json", JSON.stringify(this.store.toSnapshot()), { mode: "overwrite" });
+      const snapText = JSON.stringify(this.store.toSnapshot());
+      await this.dbx.upload("/data/snapshot.json", snapText, { mode: "overwrite" });
+      // THE SELF-SYNC ECHO. _lastSnapText is the "have I already applied this
+      // snapshot?" marker, and only the PULL path was setting it — so the next
+      // poll downloaded the snapshot this very device had just written, saw
+      // text it didn't recognise, and did the full heavy reload: loadSnapshot,
+      // reset the own-log offset, replay the whole log, emit, rebuild the
+      // entire page. Every edit came back around as a ghost re-render eight to
+      // ten seconds later, which is the flicker with no trigger — and the
+      // random rebuild that killed drags mid-gesture and dropped scrolls.
+      // Recording what we wrote is the whole fix.
+      this._lastSnapText = snapText;
     }
     await this._flushBlobsToDropbox();
   }
