@@ -596,6 +596,34 @@ The test changed shape with it, and is stronger for it: instead of "does it rest
 
 **The library question is closed for now.** Every symptom traced to the render/sync environment, not to gesture handling, and a library's listeners die with a destroyed element exactly the way hand-rolled ones do. `panzoom` is ruled out permanently — it wants to own the surface's transform, which collides with both the scroll-based pan and the glance. `interact.js` is the right shape but only earns its size if D2+ needs inertia, snapping, resize handles or multi-touch rotate. Until then the ~250 lines already written stay.
 
+### 14.24 The typing flicker was one frame, not a rebuild (15 August 2026, v37)
+
+Step 5 was carrying this bug, and it turned out not to own it.
+
+The reasoning that pointed at step 5 was sound as far as it went: the editor saves on every keystroke, every save rebuilds the page, so typing rebuilt the desk once per character. What it skipped is that **a rebuild is not by itself visible**. Repainting the same pixels looks like nothing. Something had to make the rebuilt desk *differ* from the one it replaced, for one frame, before settling.
+
+That something was the scroll restore. A new scroll container starts at (0, 0), which on a 4400 × 2900 sheet is the empty corner, and `restore()` ran inside `requestAnimationFrame` — the **next** frame, not this one. So each rebuild painted a frame of the corner and then snapped back. One corner-flash per keystroke.
+
+The fix is a mount hook. `renderProjectPage` returns the page with `_deskMount` on it, and `views/project.js` calls it synchronously in the same task as the `appendChild`. Measuring and scrolling are valid there precisely *because* the element is in the document by then — which is why this could not simply have been hoisted earlier inside `desk.js`, where the desk is still detached and has no size. Nothing paints until the task ends, so the corner is never drawn. The rAF stays behind it as a fallback, made once-only by a `mounted` flag.
+
+**Step 5 is not cancelled, it is reclassified.** Reconciling by card id is still the better end state: it removes the per-keystroke rebuild cost rather than hiding it, and it is the natural ground for D2's clips and post-its. It is now a **performance** change to make on its own when the desk is busy enough to want it, not a bug fix. Doing it as a bug fix would have meant a medium-sized refactor of `views/desk.js` shipping with no way to tell whether it had worked, since the flash it was aimed at would have gone either way.
+
+**The general lesson, and it is the second time on this desk:** when a rebuild is blamed for something visible, ask what *differs* between the old paint and the new one. §14.23's glance bug had the same shape — the rebuild was real, but the thing that made it show was a scroll value being clamped. Rebuilds are the setting, not usually the cause.
+
+### 14.25 The desk is not text (15 August 2026, v38)
+
+The first click anywhere on the desk highlighted the banner and topbar, as though they had been swept with the mouse.
+
+Mousedown begins a text selection; that is the browser's default. The desk carries almost no text of its own, so the selection anchored to the nearest text it could reach, which is **above** the surface, and swept backwards to get there. "First click" is what named the cause: a freshly rendered page has its selection anchor at the start of the document, so the first press drew a selection from the top of the document to the cursor. After that the anchor sat inside the desk with nothing above it, and every later click looked clean.
+
+`user-select: none` on `.desk-viewport`, inherited by everything on the surface. `.dcard.is-expanded` already puts `user-select: text` back on itself (round 2, §14.21) and its `.dcard-drag` header already puts it back to none, so the read-and-copy body is untouched.
+
+**It had to be CSS, and the reason is a rule already in the file.** `preventDefault()` on pointerdown would cancel the selection, and `wireDesk` deliberately does not call it — preventDefault suppresses the browser's compatibility mouse events and takes double-click-to-expand with them. Marking the surface non-selectable removes the gesture at its source instead, so nothing is traded. **Any future "stop the browser doing X on the desk" should reach for a CSS property before it reaches for preventDefault**, for exactly this reason.
+
+Also fixed in passing: `.dcard` declared `user-select: none` unprefixed while the expanded-card rules beside it carried both spellings. Safari dropped the `-webkit-` prefix only recently, so cards were selectable on an older Safari. Both now carry both.
+
+No test. Pure layout behaviour, and per §14.23's lesson jsdom cannot see it — a test asserting the stylesheet contains a line would pass whether or not a browser honoured it, which reads as coverage without being any.
+
 ### 14.15 Confirmed, not new
 
 **Un-placing a card back to the tray is already D1 scope** (§13: "drag from drawer to desk, move, raise, un-place"), implemented as `vs set removed` with restore, per §12.1's never-delete rule.

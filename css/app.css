@@ -2434,6 +2434,24 @@ button, input, textarea, select {
      recently-touched card paints over the open drawer. */
   z-index: 0;
   isolation: isolate;
+  /* THE DESK IS NOT TEXT (v38). Pressing on the desk used to begin an ordinary
+     text selection, because that is what mousedown on selectable content does.
+     The surface has almost no text of its own, so the browser ran the selection
+     BACKWARDS to the nearest text it could find — the banner and the topbar —
+     and the first click on a fresh page lit up the whole top of the screen.
+     ("First" because the selection anchor starts at the top of the document;
+     once it has been moved into the desk there is nothing above it to sweep.)
+
+     This has to be CSS. The obvious fix is preventDefault() on pointerdown, and
+     the desk deliberately does not do that: it suppresses the browser's
+     compatibility mouse events and takes double-click-to-expand with them.
+     Making the surface non-selectable removes the gesture at the source instead
+     of cancelling it afterwards.
+
+     Cards inherit this, which is correct — dragging a card should not smear a
+     selection across it. An EXPANDED card puts `user-select: text` back on
+     itself, further down, because its body is meant to be read and copied. */
+  user-select: none; -webkit-user-select: none;
 }
 /* The sizer is what makes the viewport scrollable, and it is NEVER
    transformed — so the scrollable area is a constant. A scaled element
@@ -2492,7 +2510,10 @@ button, input, textarea, select {
   /* the wobble is a STATIC rotation derived from entry id + project id, so it
      is identical on every device and survives prefers-reduced-motion */
   transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(var(--rot, 0deg));
-  cursor: grab; touch-action: none; user-select: none;
+  /* -webkit- included deliberately: Safari only dropped the prefix recently,
+     and the expanded-card rules below have always carried both. An unprefixed
+     declaration on its own left the card selectable on older Safari. */
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
 }
 .dcard:hover { border-color: var(--text-faint); }
 .dcard.is-dragging { cursor: grabbing; }
