@@ -143,6 +143,28 @@ const VS_FIELDS = new Set(["pos", "z", "clip", "removed"]);
 const MERGE_NOTES_KEY = "dash.mergeNotes";
 const MERGE_NOTES_MAX = 60;
 
+// The TOMBSTONES for merge notes: every note key that has been dismissed,
+// cleared or restored on this device. Separate from the list above on purpose,
+// and this separation is the whole point.
+//
+// The list is "what is on screen right now"; a dismissal shortens it. The
+// tombstones are "what I have already dealt with", and nothing shortens them.
+// Without the second record, dismissing a note erased the only memory Dash had
+// of ever having seen it — so the next time sync re-read a log and replayed the
+// losing op, _noteCollision() found no trace of it and wrote the note out
+// again, indistinguishable from a brand-new collision. That is the "notes come
+// back after I dismiss them" bug (August 15, 2026).
+//
+// Per-device like the notes themselves: a note is an inbox for the person at
+// THIS device, so "I have dealt with it" is a fact about this device too.
+const MERGE_RESOLVED_KEY = "dash.mergeNotesResolved";
+// Deliberately much larger than MERGE_NOTES_MAX. A tombstone is one short
+// string, not a note with two values in it, so a thousand of them is tens of
+// kilobytes against a multi-megabyte localStorage budget — and a person would
+// have to resolve a thousand collisions on one device to reach it. The cap is
+// here so the key cannot grow without limit, not because the limit is near.
+const MERGE_RESOLVED_MAX = 1000;
+
 function emptyItem(id) {
   return {
     id,
@@ -177,6 +199,8 @@ export class Store {
     this._registryTs = {};        // LWW bookkeeping for registry edits
     this._collisions = loadMergeNotes();
     this._collisionKeys = new Set(this._collisions.map(c => c.key));
+    // Survives independently of the list above — see MERGE_RESOLVED_KEY.
+    this._resolvedKeys = loadResolvedKeys();
     this.formatNotice = null;     // set if a newer snapshot turns up (see loadSnapshot)
   }
 
@@ -819,8 +843,12 @@ export class Store {
         : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
     if (sameValue(current, op.value)) return;           // both wrote the same thing
 
+    // The key is derived entirely from the losing op, so replaying that same
+    // op again always produces the same key. That is what makes both of the
+    // checks below work across a reload and across a re-read of the logs.
     const noteKey = `${it.id}|${key}|${op.ts.wall}.${op.ts.count}.${op.ts.device}`;
-    if (this._collisionKeys.has(noteKey)) return;       // already recorded
+    if (this._resolvedKeys.has(noteKey)) return;        // dealt with once; never comes back
+    if (this._collisionKeys.has(noteKey)) return;       // already in the visible list
     this._collisionKeys.add(noteKey);
 
     this._collisions.unshift({
@@ -851,17 +879,42 @@ export class Store {
   // The merge-notes surface reads these (see js/merge-notes.js).
   collisions() { return this._collisions; }
 
+  // "That's fine" on one note. Tombstoned FIRST, so that even if the write of
+  // the shortened list fails (storage full), the note is still on record as
+  // handled and cannot come back.
   dismissCollision(key) {
+    this._markResolved([key]);
     this._collisions = this._collisions.filter(c => c.key !== key);
+    this._collisionKeys.delete(key);
     saveMergeNotes(this._collisions);
     this._emit();
   }
 
+  // "Clear the list" — the same promise, made about every note at once.
   clearCollisions() {
+    this._markResolved(this._collisions.map(c => c.key));
     this._collisions = [];
     this._collisionKeys.clear();
     saveMergeNotes(this._collisions);
     this._emit();
+  }
+
+  // Record note keys as handled, once, in one write. Insertion order is the
+  // order a Set iterates in, so trimming from the front drops the keys that
+  // have been resolved longest — the ones least likely to still be reachable
+  // by a replay.
+  _markResolved(keys) {
+    let added = false;
+    for (const k of keys) {
+      if (!k || this._resolvedKeys.has(k)) continue;
+      this._resolvedKeys.add(k);
+      added = true;
+    }
+    if (!added) return;
+    if (this._resolvedKeys.size > MERGE_RESOLVED_MAX) {
+      this._resolvedKeys = new Set([...this._resolvedKeys].slice(-MERGE_RESOLVED_MAX));
+    }
+    saveResolvedKeys(this._resolvedKeys);
   }
 
   // Put the value that lost back, as a fresh normal edit with a new timestamp
@@ -1075,6 +1128,21 @@ function loadMergeNotes() {
 function saveMergeNotes(list) {
   try { localStorage.setItem(MERGE_NOTES_KEY, JSON.stringify(list)); }
   catch { /* storage full or blocked; the notes just don't survive a reload */ }
+}
+
+// The tombstones (see MERGE_RESOLVED_KEY). Stored as a plain array of strings
+// so the key stays readable in devtools and needs no migration: a device that
+// has never dismissed anything simply has no key yet, which reads as "nothing
+// resolved so far" — exactly right.
+function loadResolvedKeys() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MERGE_RESOLVED_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.filter(k => typeof k === "string") : []);
+  } catch { return new Set(); }
+}
+function saveResolvedKeys(set) {
+  try { localStorage.setItem(MERGE_RESOLVED_KEY, JSON.stringify([...set])); }
+  catch { /* storage full or blocked; see saveMergeNotes */ }
 }
 
 function defaultRegistry() {
