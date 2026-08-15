@@ -39,7 +39,21 @@ export function openEditor(store, itemId, opts = {}) {
 
   store.touch(id);
 
-  const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) close(); } });
+  // Clicking the backdrop closes the editor. Dragging to SELECT TEXT must not.
+  //
+  // A `click` fires on the nearest common ancestor of where the pointer went
+  // down and where it came up. Start a selection drag inside the modal, let go
+  // a few pixels past its edge, and that ancestor is the scrim — so the browser
+  // reports "you clicked the backdrop" and the editor closed on you mid-select.
+  //
+  // The fix is to require BOTH ends of the gesture to be the scrim itself. A
+  // real backdrop click always is; a selection drag out of the modal never is.
+  let downOnScrim = false;
+  const scrim = el("div", {
+    class: "modal-scrim",
+    onpointerdown: (e) => { downOnScrim = e.target === scrim; },
+    onclick: (e) => { if (e.target === scrim && downOnScrim) close(); },
+  });
   const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Edit item" });
 
   // --- title ---

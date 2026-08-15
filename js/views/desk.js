@@ -84,7 +84,12 @@ export function renderProjectPage(store, project, ctx, actions) {
   // — off screen, looking exactly like "the drawers don't open". A layout bug,
   // which is why the jsdom render test sailed past it: jsdom has no layout.
   page.appendChild(drawer.handles);
-  page.appendChild(surface(store, project, ctx, data, state, drawer, glanceBtn));
+  const surf = surface(store, project, ctx, data, state, drawer, glanceBtn);
+  page.appendChild(surf);
+  // The page is still detached here, so the desk cannot size or scroll itself
+  // yet. Whoever attaches it calls this the instant it lands in the document —
+  // see the note on `restore` in surface() for why "the instant" matters.
+  page._deskMount = surf._deskMount;
   return page;
 }
 
@@ -380,7 +385,27 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     if (view.style.height !== h) view.style.height = h;   // idempotent: no needless reflow
   };
 
+  // THE FLICKER FIX (§14.24). This used to run inside requestAnimationFrame,
+  // and that one frame of delay WAS the flicker.
+  //
+  // Every store write rebuilds this page from scratch, and the editor saves on
+  // every keystroke, so typing a title rebuilt the desk once per character. A
+  // brand new scroll container starts at (0, 0), and restoring on the next
+  // animation frame meant the browser had already painted a frame of the desk's
+  // top-left corner before the restore landed. One corner-flash per keystroke.
+  //
+  // So it does not wait for a frame any more. `_deskMount` is called by whoever
+  // attaches the page, synchronously, in the same task as the appendChild —
+  // which is before the browser paints anything at all. The corner is never
+  // drawn, so there is nothing to flash. Measuring here is safe and correct
+  // precisely BECAUSE the element is already in the document by then.
+  //
+  // The rAF below stays as a safety net for any future caller that forgets to
+  // call _deskMount; `mounted` makes sure the work happens exactly once.
+  let mounted = false;
   const restore = () => {
+    if (mounted) return;
+    mounted = true;
     fit();
     if (state.scrollX == null) {
       state.scrollX = Math.max(0, Math.round((view.scrollWidth - view.clientWidth) / 2));
@@ -390,6 +415,7 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     view.scrollTop = state.scrollY;
     requestAnimationFrame(() => { guard.hold = false; });
   };
+  view._deskMount = restore;
   requestAnimationFrame(restore);
   window.addEventListener("resize", fit);
   view._deskFit = fit;                     // so teardown can take it off again

@@ -37,7 +37,13 @@ export const projectView = {
       return;
     }
 
-    container.appendChild(renderDetail(store, state, ctx));
+    // The detail page is the DESK, and the desk has to size and scroll itself
+    // the moment it lands in the document — synchronously, in this same task,
+    // before the browser gets a chance to paint. Doing it a frame later is what
+    // made typing flicker (see the note on `restore` in views/desk.js).
+    const detail = renderDetail(store, state, ctx);
+    container.appendChild(detail);
+    if (detail._deskMount) detail._deskMount();
   },
 };
 
@@ -151,7 +157,7 @@ function renderDetail(store, state, ctx) {
   const wrap = el("div", { class: "sheet-page sheet-page-desk" });
   const reload = () => ctx.rerender();
 
-  wrap.appendChild(renderProjectPage(store, project, ctx, {
+  const page = renderProjectPage(store, project, ctx, {
     onBack: () => { state.projectId = null; ctx.rerender(); },
     onEdit: () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }),
     onNew:  () => {
@@ -160,7 +166,11 @@ function renderDetail(store, state, ctx) {
       openEditor(store, newId, { onClose: reload, sync: ctx.sync });
     },
     onAdd:  () => openAssignPicker(store, project.id, reload),
-  }));
+  });
+  wrap.appendChild(page);
+  // pass the desk's mount hook up to render(), which is the thing holding the
+  // container and therefore the only place that knows when we are attached
+  wrap._deskMount = page._deskMount;
   return wrap;
 }
 
