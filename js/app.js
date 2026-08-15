@@ -124,12 +124,47 @@ loadSavedTheme();
 // the app up for a second or two and feel broken. Waiting for the next frame
 // collapses that burst into a single redraw, and for a single edit it's
 // imperceptible. Views that need an immediate redraw still call ctx.rerender().
+//
+// AND it can be HELD. A view that owns a live pointer gesture — the desk,
+// during a drag — sets the hold, and every render queued while it is set waits
+// until the pointer is released.
+//
+// Why this has to live here rather than in the view: the desk already refused
+// to write to the store between pointerdown and pointerup, but that only
+// governs the desk's OWN writes. A render can be triggered by anything —
+// a sync pull, a status change, an editor keystroke — and a render rebuilds
+// the page from scratch, which destroys the very card element the pointer
+// captured. The card stops moving, the drop lands on a node that no longer
+// exists, and the position write never happens. So the promise has to be
+// "nothing redraws during a gesture", not "the desk doesn't redraw itself".
+//
+// It is deliberately a counter rather than a flag, so overlapping holds can't
+// release each other early, and it is exported through the view ctx rather
+// than being reachable globally.
 let flushTimer = null;
 let renderQueued = false;
+let renderHolds = 0;
+let renderMissed = false;
+
 function scheduleRender() {
+  if (renderHolds > 0) { renderMissed = true; return; }
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+
+// Returns the release function. A caller that loses its pointer (the window
+// blurs mid-drag, say) must still call it, which is why every caller wires it
+// to pointerup/pointercancel rather than only to a successful drop.
+function holdRenders() {
+  renderHolds++;
+  let released = false;
+  return () => {
+    if (released) return;                 // safe to call twice
+    released = true;
+    renderHolds = Math.max(0, renderHolds - 1);
+    if (renderHolds === 0 && renderMissed) { renderMissed = false; scheduleRender(); }
+  };
 }
 store.subscribe(() => {
   scheduleRender();
@@ -508,6 +543,7 @@ function render() {
     },
     viewLocal: state.viewLocal,
     rerender: render,
+    holdRenders,
     sync,
   };
   view.render(result, ctx, viewHost);

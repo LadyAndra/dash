@@ -13,6 +13,7 @@ itself. `node` and the repo's own `js/` folder are the whole toolchain.
 | File | What it covers |
 |---|---|
 | `desk-d1.render.test.mjs` | Phase D1 rendering: the desk and the phone's Peek page both build, the drawers open one at a time, and place / clamp / un-place write what they claim. Needs jsdom (`npm install jsdom` in this folder) — the only thing in the repo that wants an install, and nothing ships depends on it. |
+| `desk-d1.gesture.test.mjs` | Steps 3–4: that no render happens while a pointer gesture is in progress, that a hold is never leaked (cancel, blur, doubled pointerdown, teardown), and that double-click survives the rebuild the first click causes. Needs jsdom. |
 | `desk-d1.viewstate.test.mjs` | The post-deploy pass: that a snapshot survives a JSON round-trip unchanged (which is what makes the self-sync marker work), and that a glance never overwrites the saved scroll position. Needs jsdom. |
 | `desk-d1.test.mjs` | Phase D1 of the Desk: the `"vs"` op's merge rules in every arrival order, two-device convergence, un-place/restore, collision reporting, the one-archive-pass rule, and the pure geometry (wobble, clamping, z-order, pile weight, glance framing). |
 

@@ -98,7 +98,15 @@ function deskState(ctx) {
   // render then centres the view on the middle of the surface, which is where
   // the mat's eye is. Zero would have meant the top-left corner of a
   // 4400 x 2900 sheet, which is a corner of an empty room.
-  if (!v.desk) v.desk = { drawer: null, scrollX: null, scrollY: null, expanded: null };
+  if (!v.desk) v.desk = {
+    drawer: null, scrollX: null, scrollY: null, expanded: null,
+    // The double-click memory. It used to be a local in wireDesk's closure —
+    // which dies with every rebuild, and the first click on a card that isn't
+    // already on top CAUSES a rebuild (it commits a raise). So the second
+    // click arrived at a desk with no memory of the first, and expanding by
+    // double-click only ever worked on a card that happened to be on top.
+    lastTapId: null, lastTapAt: 0,
+  };
   return v.desk;
 }
 
@@ -509,7 +517,7 @@ function wireDesk(store, project, ctx, data, state, dom) {
   const TAP_SLOP = 5;                        // movement still counted as a click
   const DBL_MS = 420;                        // how long a second click has to arrive
   let drag = null;
-  let lastTap = { id: null, t: 0 };
+  let release = null;                      // set while a gesture holds renders
 
   const nodeOf = (id) => deskEl.querySelector(`.dcard[data-id="${id}"]`);
   const placedById = new Map(data.placed.map(p => [p.id, p]));
@@ -543,6 +551,11 @@ function wireDesk(store, project, ctx, data, state, dom) {
       deskEl.classList.add("is-panning");
     }
     deskEl.setPointerCapture(e.pointerId);
+    // Nothing anywhere in the app may redraw until this gesture ends — not a
+    // sync pull, not an editor keystroke, not a status change. A redraw
+    // rebuilds the page and destroys the element the pointer just captured.
+    if (release) release();                // paranoia: never leak a hold
+    release = ctx.holdRenders ? ctx.holdRenders() : null;
     // NOTE: deliberately no preventDefault — it suppresses the browser's
     // compatibility mouse events and takes double-click with them.
   });
@@ -560,12 +573,27 @@ function wireDesk(store, project, ctx, data, state, dom) {
     if (over) drawer.handleEls.get("unplaced").classList.add("is-drop-target");
   });
 
+  // Every exit from a gesture releases the hold, including the ones that
+  // aren't a drop: the pointer being cancelled by the OS, or the window losing
+  // focus mid-drag. A leaked hold would freeze the whole app's rendering.
+  const endGesture = () => { if (release) { release(); release = null; } };
+  deskEl.addEventListener("pointercancel", () => {
+    if (drag && drag.node) drag.node.classList.remove("is-dragging");
+    drag = null;
+    deskEl.classList.remove("is-panning");
+    endGesture();
+  });
+  window.addEventListener("blur", endGesture);
+
   deskEl.addEventListener("pointerup", (e) => {
-    if (!drag) return;
+    if (!drag) { endGesture(); return; }
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
     const moved = Math.hypot(dx, dy) > TAP_SLOP;
     const kind = drag.kind, d = drag;
     drag = null;
+    // Released BEFORE the writes below, so the render they queue is the one
+    // that draws the finished drop — rather than being swallowed and replayed.
+    endGesture();
 
     if (kind === "pan") { deskEl.classList.remove("is-panning"); return; }
 
@@ -573,8 +601,9 @@ function wireDesk(store, project, ctx, data, state, dom) {
       const id = kind === "tap" ? d.id : d.p.id;
       if (kind === "card") d.node.classList.remove("is-dragging");
       const now = Date.now();
-      const second = lastTap.id === id && (now - lastTap.t) < DBL_MS;
-      lastTap = { id: second ? null : id, t: now };
+      const second = state.lastTapId === id && (now - state.lastTapAt) < DBL_MS;
+      state.lastTapId = second ? null : id;   // a third click starts over
+      state.lastTapAt = now;
       if (second) {                                        // double-click expands / collapses
         state.expanded = state.expanded === id ? null : id;
         ctx.rerender();
@@ -638,12 +667,15 @@ function wireDesk(store, project, ctx, data, state, dom) {
     const ghost = row.cloneNode(true);
     ghost.classList.add("desk-ghost");
     document.body.appendChild(ghost);
+    const releaseGhost = ctx.holdRenders ? ctx.holdRenders() : null;
     const move = (ev) => { ghost.style.left = (ev.clientX - 40) + "px"; ghost.style.top = (ev.clientY - 18) + "px"; };
     move(e);
     const up = (ev) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       ghost.remove();
+      if (releaseGhost) releaseGhost();
       const r = view.getBoundingClientRect();
       const inside = ev.clientX > r.left && ev.clientX < r.right && ev.clientY > r.top && ev.clientY < r.bottom;
       if (!inside) return;
@@ -658,6 +690,7 @@ function wireDesk(store, project, ctx, data, state, dom) {
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     e.preventDefault();
   });
 
@@ -737,6 +770,8 @@ function wireDesk(store, project, ctx, data, state, dom) {
     document.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", glanceOff);
     if (view._deskFit) window.removeEventListener("resize", view._deskFit);
+    window.removeEventListener("blur", endGesture);
+    endGesture();                          // a desk torn down mid-drag must not leak its hold
     obs.disconnect();
   });
   obs.observe(document.body, { childList: true, subtree: true });

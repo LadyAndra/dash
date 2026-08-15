@@ -586,7 +586,13 @@ So the second attempt removes the timing rather than tuning it. **A scaled eleme
 
 The test changed shape with it, and is stronger for it: instead of "does it restore correctly" (undecidable without a layout engine) it asserts **the gesture writes to scroll zero times**, which jsdom can answer honestly.
 
-**Still to do, in Fable's order:** hold renders during an active drag (step 3, `app.js` + the desk), move `lastTap` out of the closure that dies with every rebuild (step 4), and — in its own session, deliberately not now — reconcile the desk in place instead of rebuilding it (step 5), which is the durable answer to full-page rebuilds.
+**Step 3 — renders are held for the life of a gesture (`app.js` + the desk).** §8.34 and decision 52 both say the desk must not write to the store between pointerdown and pointerup, and it doesn't — but that only ever governed the desk's OWN writes. A render can be triggered by anything: a sync pull, a status change, a keystroke in the editor. A render rebuilds the page, and a rebuild destroys the element the pointer captured. So the promise had to be widened from "the desk doesn't redraw itself during a drag" to **"nothing redraws during a gesture"**.
+
+`scheduleRender()` now respects a hold, `holdRenders()` is handed to views through `ctx`, and the desk takes one on pointerdown and releases it on pointerup — and on pointercancel, on window blur, and on its own teardown, because a leaked hold would freeze the app's rendering entirely. It is a counter rather than a flag so overlapping holds can't release each other early, and any render missed while held runs once on release. The drawer-to-desk drag takes one too.
+
+**Step 4 — the double-click memory moved into desk state.** `lastTap` lived in `wireDesk`'s closure, which dies with every rebuild — and the first click on a card that isn't already on top *causes* a rebuild, because it commits a raise. So the second click arrived at a desk with no memory of the first, and **expanding by double-click could only ever work on a card that happened to be on top already.** It now lives in `viewLocal` beside `expanded`, where a rebuild can't reach it.
+
+**Still to do:** step 5 — reconcile the desk in place instead of rebuilding it — deliberately in its own session. It is the durable answer to full-page rebuilds, and steps 1–4 have calmed the environment enough to make it safe to attempt.
 
 **The library question is closed for now.** Every symptom traced to the render/sync environment, not to gesture handling, and a library's listeners die with a destroyed element exactly the way hand-rolled ones do. `panzoom` is ruled out permanently — it wants to own the surface's transform, which collides with both the scroll-based pan and the glance. `interact.js` is the right shape but only earns its size if D2+ needs inertia, snapping, resize handles or multi-touch rotate. Until then the ~250 lines already written stay.
 
