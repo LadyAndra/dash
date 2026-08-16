@@ -120,12 +120,12 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     "data-mid": m.mid,
   });
 
-  const toggle = el("button", {
-    class: "ms-tick" + (done ? " on" : ""),
+  const doneToggle = el("button", {
+    class: "ms-done-toggle" + (done ? " is-done" : ""),
     type: "button",
     "aria-pressed": String(done),
     "aria-label": `${done ? "Mark not done" : "Mark done"}: ${m.label || "untitled milestone"}`,
-    text: done ? "✓" : "",
+    text: done ? "✓ Done" : "Mark done",
     onclick: () => store.setMilestoneField(project.id, m.mid, "done", done ? null : new Date().toISOString()),
   });
 
@@ -214,12 +214,12 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
 
   row.append(
     handle,
-    toggle,
     el("div", { class: "ms-main" }, [
       labelInput,
       el("div", { class: "ms-dates" }, [
         dueField,
         remindField,
+        doneToggle,
         overdue ? el("span", { class: "mk mk-ember ms-overdue", text: `Overdue · ${formatDay(m.date)}` }) : null,
       ]),
       disclose,
@@ -231,36 +231,53 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
   return row;
 }
 
-// A small instrument readout over a native date input. The native control stays
-// focusable, keyboard-accessible and responsible for the picker on every OS.
+// A quiet Dash readout that opens the platform's native date picker. The
+// native input stays in the DOM for the actual selection, but it no longer has
+// to be physically stretched over the readout (which was unreliable on iOS).
 function dateField({ label, value, fkey, ariaLabel, onChange }) {
-  const readout = el("span", {
-    class: "ms-date-readout" + (value ? "" : " is-empty"),
-    "aria-hidden": "true",
-    text: instrumentDate(value),
-  });
   const input = el("input", {
     type: "date",
-    class: "ms-date",
+    class: "ms-date-native",
     value: value || "",
     "aria-label": ariaLabel,
     "data-fkey": fkey,
+    tabindex: "-1",
+  });
+
+  const trigger = el("button", {
+    class: "ms-date-trigger" + (value ? "" : " is-empty"),
+    type: "button",
+    "aria-label": `${ariaLabel}${value ? `, ${instrumentDate(value)}` : ", no date set"}`,
+    text: instrumentDate(value),
   });
 
   const refreshReadout = () => {
     const v = input.value || "";
-    readout.textContent = instrumentDate(v);
-    readout.classList.toggle("is-empty", !v);
+    trigger.textContent = instrumentDate(v);
+    trigger.classList.toggle("is-empty", !v);
+    trigger.setAttribute("aria-label", `${ariaLabel}${v ? `, ${instrumentDate(v)}` : ", no date set"}`);
   };
+
+  const openPicker = () => {
+    // showPicker() is the cleanest path when the browser exposes it. The click
+    // fallback remains inside the user's click gesture for Safari/iOS variants.
+    if (typeof input.showPicker === "function") {
+      try { input.showPicker(); return; } catch { /* use the direct-click fallback */ }
+    }
+    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+    input.click();
+  };
+
+  trigger.addEventListener("click", openPicker);
   input.addEventListener("input", refreshReadout);
   input.addEventListener("change", () => {
     refreshReadout();
     onChange(input.value || "");
   });
 
-  return el("label", { class: "ms-date-field" }, [
+  return el("div", { class: "ms-date-field" }, [
     el("span", { class: "mk", text: label }),
-    el("span", { class: "ms-date-shell" }, [readout, input]),
+    el("span", { class: "ms-date-shell" }, [trigger, input]),
   ]);
 }
 

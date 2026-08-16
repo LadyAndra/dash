@@ -23,3 +23,14 @@ No saved-data format changed. No migration. No Store/Sync change. Dates are stil
 ## Scope boundary
 
 This is the milestone editor as the pilot for the form language. It does not yet replace the date fields in the full entry editor. That should be rolled out only after the milestone version has been used on desktop and iPhone and the visual direction is confirmed in practice.
+
+
+## Round 2 — after desktop + iPhone use
+
+The first live pass confirmed the readout direction but exposed three problems in actual use. The done checkbox still read as foreign checklist UI, the invisible native date input laid over the readout did not reliably open the picker, and the global ember focus ring made ordinary active fields look like errors.
+
+Round 2 removes the checkbox metaphor entirely. Completion is now an explicit `MARK DONE` / `✓ DONE` text-state in the milestone metadata line, using the same quiet mono language as dates and labels. The visible date readout is now a real button; it opens a tiny native date input with `showPicker()` when available and a direct user-click fallback otherwise. The native input still owns the date selection and the stored value remains unchanged.
+
+Milestone form focus/active styling is now neutral ink: stronger underline, text emphasis, or a quiet wash depending on the control. Ember remains reserved for actual overdue/error-like status, not ordinary editing focus.
+
+No data shape, Store method, sync behavior, or milestone semantics changed. The cache version moves to `dash-v45` because the runtime CSS and milestone editor changed again.

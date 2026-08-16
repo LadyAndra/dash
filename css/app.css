@@ -3054,3 +3054,190 @@ button, input, textarea, select {
   color: var(--ground-ink);
   background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
 }
+
+/* ============================================================
+   MILESTONE FORM LANGUAGE — ROUND 2  (16 August 2026)
+   ------------------------------------------------------------
+   The first archival-instrument pass proved the typography, but two browser
+   assumptions were wrong in practice: an invisible date input stretched over
+   the readout was unreliable on iOS, and the global ember focus ring made an
+   ordinary active field look like an error. This round separates the visible
+   trigger from the native picker and moves completion out of checkbox language.
+   ============================================================ */
+
+/* The milestone is a record, not a checklist row. Completion is now an explicit
+   text state inside the metadata line, so the title can own the left edge. */
+.ms-row {
+  gap: var(--space-3);
+}
+.ms-main {
+  flex: 1 1 auto;
+}
+.ms-done-toggle {
+  align-self: flex-end;
+  min-height: var(--control-min);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ms-done-toggle:hover {
+  color: var(--text-primary);
+  border-bottom-color: var(--border-strong);
+}
+.ms-done-toggle.is-done { color: var(--text-primary); }
+.ms-done-toggle:focus,
+.ms-done-toggle:focus-visible {
+  outline: none;
+  box-shadow: none;
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+
+/* The date readout itself is now the control the user activates. The real date
+   input stays tiny and invisible solely so the OS can own the picker. */
+.ms-date-shell {
+  position: relative;
+  min-width: calc(var(--space-6) + var(--space-6) + var(--space-6));
+  min-height: var(--control-min);
+  border: none;
+}
+.ms-date-trigger {
+  width: 100%;
+  min-height: var(--control-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 var(--space-1);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ms-date-trigger.is-empty { color: var(--text-muted); }
+.ms-date-trigger:hover { border-bottom-color: var(--border-strong); }
+.ms-date-trigger:focus,
+.ms-date-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+.ms-date-native {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  min-width: 1px;
+  min-height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0.001;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+/* Active editing is neutral ink, never ember. The underline is the state. */
+.ms-label:focus,
+.ms-label:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--text-primary);
+  border-bottom-color: var(--text-primary);
+  border-radius: 0;
+}
+.ms-move:focus,
+.ms-move:focus-visible,
+.ms-entries-toggle:focus,
+.ms-entries-toggle:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.ms-move:focus,
+.ms-move:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-sunken);
+}
+.ms-entries-toggle:focus,
+.ms-entries-toggle:focus-visible {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.28em;
+}
+
+/* Project-colour surfaces use the same neutral active state in their measured
+   ink. No ember/red focus treatment appears in the milestone form. */
+.desk-drawer .ms-date-trigger,
+.peek-page .ms-date-trigger {
+  color: var(--ground-ink);
+  border-bottom-color: color-mix(in srgb, var(--ground-ink) 44%, transparent);
+}
+.desk-drawer .ms-date-trigger.is-empty,
+.peek-page .ms-date-trigger.is-empty,
+.desk-drawer .ms-done-toggle,
+.peek-page .ms-done-toggle {
+  color: color-mix(in srgb, var(--ground-ink) 72%, transparent);
+}
+.desk-drawer .ms-date-trigger:hover,
+.peek-page .ms-date-trigger:hover,
+.desk-drawer .ms-date-trigger:focus,
+.peek-page .ms-date-trigger:focus,
+.desk-drawer .ms-date-trigger:focus-visible,
+.peek-page .ms-date-trigger:focus-visible,
+.desk-drawer .ms-done-toggle:hover,
+.peek-page .ms-done-toggle:hover,
+.desk-drawer .ms-done-toggle:focus,
+.peek-page .ms-done-toggle:focus,
+.desk-drawer .ms-done-toggle:focus-visible,
+.peek-page .ms-done-toggle:focus-visible,
+.desk-drawer .ms-done-toggle.is-done,
+.peek-page .ms-done-toggle.is-done {
+  color: var(--ground-ink);
+  border-bottom-color: var(--ground-ink);
+}
+.desk-drawer .ms-label:focus,
+.peek-page .ms-label:focus,
+.desk-drawer .ms-label:focus-visible,
+.peek-page .ms-label:focus-visible {
+  box-shadow: inset 0 -1px 0 var(--ground-ink);
+  border-bottom-color: var(--ground-ink);
+}
+.desk-drawer .ms-move:focus,
+.peek-page .ms-move:focus,
+.desk-drawer .ms-move:focus-visible,
+.peek-page .ms-move:focus-visible {
+  color: var(--ground-ink);
+  background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
+}
+.desk-drawer .ms-entries-toggle:focus,
+.peek-page .ms-entries-toggle:focus,
+.desk-drawer .ms-entries-toggle:focus-visible,
+.peek-page .ms-entries-toggle:focus-visible {
+  color: var(--ground-ink);
+}
+
+@media (max-width: 820px) {
+  /* With the checkbox gone, the milestone content owns the full row. Utility
+     arrows remain on their own quiet line underneath. */
+  .ms-main { flex: 1 1 100%; flex-basis: 100%; }
+  .ms-dates { align-items: flex-end; }
+  .ms-done-toggle { margin-left: 0; }
+}
