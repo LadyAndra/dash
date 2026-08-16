@@ -2829,8 +2829,17 @@ button, input, textarea, select {
   user-select: text; -webkit-user-select: text;
 }
 .dnote-text::placeholder { color: var(--text-muted); opacity: 0.8; }
-.dnote-text:focus { outline: none; }
-.dnote:focus-within { box-shadow: var(--focus-ring); }
+/* A post-it being written on is active, not in error. The global focus ring is
+   intentionally ember elsewhere, but around a scrap it read as a red warning
+   — and because both the textarea and its parent received it, it drew as the
+   double outline this component should never need. Keep one clear keyboard/
+   editing state instead, in the desk's ordinary ink. */
+.dnote-text:focus,
+.dnote-text:focus-visible { outline: none; box-shadow: none; border-radius: 0; }
+.dnote:focus-within { border-color: var(--text-primary); }
+.dnote:focus-within .dnote-drag {
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
 
 /* ---------- the little right-click menu ---------- */
 .desk-menu {

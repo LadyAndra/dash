@@ -826,6 +826,119 @@ console.log("\n--- Step 5 round 1: the Desk shell survives ordinary project rend
   host.innerHTML = "";
 }
 
+
+console.log("\n--- Step 5 round 2: cards, clips and post-its keep identity by id ---");
+{
+  const host = document.getElementById('host');
+  host.innerHTML = "";
+  const store = new Store();
+  const pid = store.createItem({ title: "Keyed Desk", type: "project" });
+  const ids = ["alpha", "beta", "gamma"].map(t => store.createItem({ title: t }));
+  for (const id of ids) store.assignToProject(id, pid);
+  ids.forEach((id, i) => store.placeOnDesk(id, pid, { x: 180 + i * 300, y: 160 + i * 150 }, i + 1));
+  const nid = store.addNote(pid, { text: "keep me", pos: { x: 900, y: 600 } });
+
+  const viewLocal = { projectId: pid };
+  let ctx;
+  const render = () => {
+    projectView.render({}, ctx, host);
+    const deskEl = host.querySelector('.desk-surface');
+    if (deskEl) deskEl.setPointerCapture = () => {};
+    for (const c of host.querySelectorAll('.dcard, .dnote, .dclip-mark')) {
+      Object.defineProperty(c, 'offsetWidth', { get: () => 300, configurable: true });
+      Object.defineProperty(c, 'offsetHeight', { get: () => 160, configurable: true });
+    }
+    return host.querySelector('.desk-page');
+  };
+  ctx = {
+    store, viewLocal, selection: { active: false }, onOpen(){}, sync: null,
+    holdRenders: makeHost().holdRenders,
+    rerender: () => render(),
+  };
+
+  let page = render();
+  const cardA = page.querySelector(`.dcard[data-id="${ids[0]}"]`);
+  const cardB = page.querySelector(`.dcard[data-id="${ids[1]}"]`);
+  const cardC = page.querySelector(`.dcard[data-id="${ids[2]}"]`);
+  const note = page.querySelector(`.dnote[data-nid="${nid}"]`);
+  const ta = note.querySelector('.dnote-text');
+
+  // A post-it being edited is the strongest identity contract in this round:
+  // an unrelated write must not replace either the scrap or its live textarea.
+  ta.focus();
+  ta.value = "draft in progress";
+  ta.setSelectionRange(5, 5);
+  ta.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  store.setField(ids[1], 'status', 'done');
+  page = render();
+
+  ok("an unrelated status write keeps every existing card node",
+     page.querySelector(`.dcard[data-id="${ids[0]}"]`) === cardA &&
+     page.querySelector(`.dcard[data-id="${ids[1]}"]`) === cardB &&
+     page.querySelector(`.dcard[data-id="${ids[2]}"]`) === cardC);
+  ok("...and keeps the post-it outer node", page.querySelector(`.dnote[data-nid="${nid}"]`) === note);
+  ok("...and the exact same textarea", page.querySelector(`.dnote[data-nid="${nid}"] .dnote-text`) === ta);
+  ok("...so focus and the in-progress draft survive without reconstruction",
+     document.activeElement === ta && ta.value === "draft in progress" && ta.selectionStart === 5,
+     JSON.stringify({ active: document.activeElement === ta, value: ta.value, sel: ta.selectionStart }));
+
+  // The same card nodes move from loose cards into a clip. Only the clip mark is
+  // new, because the clip itself is new.
+  const cid = store.addClip(pid);
+  store.setDeskField(ids[0], pid, 'clip', cid);
+  store.setDeskField(ids[1], pid, 'clip', cid);
+  render();
+  const mark = page.querySelector(`.dclip-mark[data-cid="${cid}"]`);
+  ok("a loose card becoming clipped keeps its node",
+     page.querySelector(`.dcard[data-id="${ids[0]}"]`) === cardA && cardA.dataset.clip === cid);
+  ok("its clip sibling keeps its node too",
+     page.querySelector(`.dcard[data-id="${ids[1]}"]`) === cardB && cardB.dataset.clip === cid);
+  ok("the new clip gets one mark", !!mark);
+
+  // Refreshing content updates the retained node rather than swapping it.
+  store.setField(ids[2], 'title', 'gamma updated');
+  render();
+  ok("a card content edit updates inside the retained outer node",
+     page.querySelector(`.dcard[data-id="${ids[2]}"]`) === cardC &&
+     cardC.querySelector('.dcard-title').textContent === 'gamma updated');
+  ok("an unrelated card edit keeps the clip mark node", page.querySelector(`.dclip-mark[data-cid="${cid}"]`) === mark);
+
+  // Free → attached is a re-dress of the same post-it, not a replacement.
+  store.setNoteField(pid, nid, 'clip', cid);
+  store.setNoteField(pid, nid, 'offset', { dx: 24, dy: 180 });
+  render();
+  ok("a free post-it becoming attached keeps its outer node",
+     page.querySelector(`.dnote[data-nid="${nid}"]`) === note && note.dataset.clip === cid);
+  ok("...and keeps its textarea too", note.querySelector('.dnote-text') === ta);
+
+  viewLocal.desk.clipOpen = cid;
+  render();
+  ok("opening a clip re-dresses the same mark", page.querySelector(`.dclip-mark[data-cid="${cid}"]`) === mark && mark.classList.contains('is-open'));
+  ok("...and the same member card nodes", page.querySelector(`.dcard[data-id="${ids[0]}"]`) === cardA && page.querySelector(`.dcard[data-id="${ids[1]}"]`) === cardB);
+
+  // And back out again: membership changes must not be treated as identity.
+  store.setDeskField(ids[0], pid, 'clip', null);
+  store.setDeskField(ids[1], pid, 'clip', null);
+  store.setNoteField(pid, nid, 'pos', { x: 940, y: 620 });
+  store.setNoteField(pid, nid, 'offset', null);
+  store.setNoteField(pid, nid, 'clip', null);
+  store.removeClip(pid, cid);
+  viewLocal.desk.clipOpen = null;
+  render();
+  ok("unclipping keeps the cards themselves", page.querySelector(`.dcard[data-id="${ids[0]}"]`) === cardA && !cardA.hasAttribute('data-clip'));
+  ok("detaching keeps the post-it itself", page.querySelector(`.dnote[data-nid="${nid}"]`) === note && !note.hasAttribute('data-clip'));
+  ok("removing the clip removes only its mark", !mark.isConnected && !page.querySelector(`.dclip-mark[data-cid="${cid}"]`));
+
+  store.removeNote(pid, nid);
+  render();
+  ok("removing a post-it removes that keyed node", !note.isConnected && !page.querySelector(`.dnote[data-nid="${nid}"]`));
+
+  // Destroy this controller before the phone test changes the platform gate.
+  viewLocal.projectId = null;
+  render();
+  host.innerHTML = "";
+}
+
 console.log("\n--- the phone still gets no desk, and no clip button ---");
 {
   dom.window.matchMedia = (q) => ({ matches: false, addEventListener(){}, removeEventListener(){} });
