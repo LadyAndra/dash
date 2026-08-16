@@ -2,7 +2,7 @@
 ### A design & decisions addendum
 
 **Date:** 10 August 2026
-**Status:** Brainstorm complete; **Fable 5 architecture pass completed later the same day** (marked "confirmed 10 Aug — architecture pass" throughout; the technical result is §12–§13). Remaining product calls were put to Andra as one batch and answered 10 Aug. Next step: Opus implementation per `docs/changes-2026-08-10-desk.md`, Phase D0 (mockup) first.
+**Status:** Architecture and product decisions complete. **D0, D1 and D2 are built; the August 16 in-place reconciliation/performance closeout is recorded in §14.27.** D3 wonder symbols and D4 highlights remain future product phases. Earlier implementation notes below are retained as dated decision history, not current instructions.
 **Companion docs:** `dash-architecture-proposal.md`, `dash-current-state.md`, `dash-milestones-calendar-addendum.md`
 
 ---
@@ -592,7 +592,7 @@ The test changed shape with it, and is stronger for it: instead of "does it rest
 
 **Step 4 — the double-click memory moved into desk state.** `lastTap` lived in `wireDesk`'s closure, which dies with every rebuild — and the first click on a card that isn't already on top *causes* a rebuild, because it commits a raise. So the second click arrived at a desk with no memory of the first, and **expanding by double-click could only ever work on a card that happened to be on top already.** It now lives in `viewLocal` beside `expanded`, where a rebuild can't reach it.
 
-**Still to do:** step 5 — reconcile the desk in place instead of rebuilding it — deliberately in its own session. It is the durable answer to full-page rebuilds, and steps 1–4 have calmed the environment enough to make it safe to attempt.
+**Step 5 — completed 16 August 2026.** The desk now reconciles in place instead of rebuilding its DOM subtree on every store write. The full landed shape — persistent shell, keyed Desk objects and pile-weight caching — is recorded in §14.27.
 
 **The library question is closed for now.** Every symptom traced to the render/sync environment, not to gesture handling, and a library's listeners die with a destroyed element exactly the way hand-rolled ones do. `panzoom` is ruled out permanently — it wants to own the surface's transform, which collides with both the scroll-based pan and the glance. `interact.js` is the right shape but only earns its size if D2+ needs inertia, snapping, resize handles or multi-touch rotate. Until then the ~250 lines already written stay.
 
@@ -606,7 +606,7 @@ That something was the scroll restore. A new scroll container starts at (0, 0), 
 
 The fix is a mount hook. `renderProjectPage` returns the page with `_deskMount` on it, and `views/project.js` calls it synchronously in the same task as the `appendChild`. Measuring and scrolling are valid there precisely *because* the element is in the document by then — which is why this could not simply have been hoisted earlier inside `desk.js`, where the desk is still detached and has no size. Nothing paints until the task ends, so the corner is never drawn. The rAF stays behind it as a fallback, made once-only by a `mounted` flag.
 
-**Step 5 is not cancelled, it is reclassified.** Reconciling by card id is still the better end state: it removes the per-keystroke rebuild cost rather than hiding it, and it is the natural ground for D2's clips and post-its. It is now a **performance** change to make on its own when the desk is busy enough to want it, not a bug fix. Doing it as a bug fix would have meant a medium-sized refactor of `views/desk.js` shipping with no way to tell whether it had worked, since the flash it was aimed at would have gone either way.
+**Historical note:** at this point Step 5 was deliberately reclassified as a later performance change rather than the fix for this particular flash. It has since landed, on 16 August 2026, after D2 gave the persistent-object work a concrete reason to exist. See §14.27. The diagnosis in this section still matters: the typing flash itself was the one-frame scroll restore, not proof that every rebuild is visibly broken.
 
 **The general lesson, and it is the second time on this desk:** when a rebuild is blamed for something visible, ask what *differs* between the old paint and the new one. §14.23's glance bug had the same shape — the rebuild was real, but the thing that made it show was a scroll value being clamped. Rebuilds are the setting, not usually the cause.
 
@@ -712,8 +712,29 @@ Unchanged and confirmed: **post-it tint stays at 18%**; **stack peek (7px/6px) a
 
 - **A hand-written script face for post-it text.** Wanted eventually, explicitly later.
 - **A custom cursor** in place of the default arrow/hand. Andra's own idea, noted for a later phase.
-- **Step 5 — reconciling the desk in place** rather than rebuilding it. Still the better end state, still a performance change rather than a bug fix (§14.24).
+
+### 14.27 Step 5 landed — in-place reconciliation (16 August 2026)
+
+The structural work deferred in §14.23–§14.24 is now complete. It landed in deliberately small rounds rather than as one rewrite, and **did not change the stored data model**: `formatVersion` remains 3; Store and Sync semantics are unchanged.
+
+**Persistent Desk ownership and shell.** `views/project.js` now keeps one Desk controller alive while the same project is selected. An ordinary store write calls `refresh()` instead of clearing the project container. Changing projects or returning to the picker destroys that controller. The page, banner, Peek handles, drawer body/inner, viewport, `.desk-sizer`, surface and mat therefore keep their DOM identity across ordinary refreshes. The mat's ~50 SVG paths are built once per real Desk lifetime rather than regenerated on every write.
+
+**One interaction wiring, current data.** Gestures are wired once per controller lifetime, but no longer close over the first render's lookup maps. A mutable runtime object is replaced on every refresh (`data`, project/context/actions and the placed/clip/note lookups), so a long-lived pointer handler always reads current state. The controller owns its window/document listeners, observers, timers and animation-frame work and releases them explicitly on `destroy()`. The existing render hold remains: a live pointer gesture still owns the Desk until release.
+
+**Peek no longer re-opens itself.** The drawer's state transition and its content refresh are separate operations now. Editing a status or milestone while Filed/Milestones is already open updates that shelf without replacing the drawer or replaying its slide-open transition. A pending delayed clear from a close is cancelled if the drawer is reopened before it fires.
+
+**Cards, clips and post-its reconcile by stable id.** The second round keeps card nodes by entry id, clip marks by `cid`, and post-its by `nid`. Adding/removing/updating one object no longer requires replacing all of its neighbours. A post-it keeps the same textarea through unrelated writes, so focus/cursor/draft state no longer has to survive routine DOM destruction. The active post-it treatment was also quieted: editing is not an ember/error-looking double outline.
+
+**Pile weights are cached, still derived.** `D.weights()` remains the source of truth and piles remain unstored. The controller caches only the latest derived result plus a signature of the **loose card ids and x/y positions**. It recomputes the O(n²) weights when loose geometry or loose membership actually changes (move/place/unplace/clip/unclip), and reuses them for content-only writes such as title/status changes or z-order raises. The cache dies with the controller and is never synced or written to Store.
+
+**Drop-target polish.** A post-it can still attach to a clip using the same hit/drop logic, but hovering it over the clip no longer draws the square `.is-drop-target` box around the clip mark. The real keyboard `:focus-visible` treatment remains.
+
+**Regression coverage.** The Desk tests now cover persistent shell identity, an open Filed drawer surviving a store write without a second opening transition, fast close/reopen, listener/controller lifetime, current-runtime gesture lookups, keyed card/clip/post-it identity and pile-weight invalidation. Two CI-only compatibility fixes also landed while those tests were made authoritative: animation-frame cancellation goes through `window` in jsdom, and the phone/Peek page does not expose a desktop Desk mount hook. Neither changed the live Desk's product behaviour.
+
+**What is still future product work:** D3 wonder symbols and D4 highlights. The reconciliation work is no longer an open prerequisite for either. No gesture library was added; the hand-rolled Desk interaction model remains the right fit.
+
+See `docs/changes-2026-08-16-desk-reconciliation.md` for the short dated change record.
 
 ---
 
-*End of addendum. Next action: hand this document, alongside `dash-architecture-proposal.md`, `dash-current-state.md`, and `dash-milestones-calendar-addendum.md`, to the implementing model via `docs/changes-2026-08-10-desk.md` with the instruction: "Build Phase D0 only." Update `dash-current-state.md` as each phase lands.*
+*End of addendum. The Desk is built through D2 plus the reconciliation/performance closeout above. If product work resumes, D3 wonder symbols are the next planned Desk phase; D4 highlights follow. Read the current code and `dash-current-state.md` before treating any older dated note as active scope.*
