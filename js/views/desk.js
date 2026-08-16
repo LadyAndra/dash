@@ -137,7 +137,10 @@ export function createProjectPageController(store, project, ctx, actions) {
   // Compatibility with the existing direct renderer tests/callers. Project view
   // owns the controller itself; older direct callers still receive the page.
   page._deskController = controller;
-  page._deskMount = () => controller.mount();
+  // The legacy mount hook belongs only to a real Desk. Peek-only pages never
+  // had anything to mount, and the existing phone contract deliberately
+  // exposes no hook there. projectView owns controller.mount() directly.
+  if (hasDesk) page._deskMount = () => controller.mount();
   page._deskRefresh = (nextProject, nextCtx, nextActions) => controller.refresh(nextProject, nextCtx, nextActions);
   page._deskDestroy = () => controller.destroy();
 
