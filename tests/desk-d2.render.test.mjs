@@ -483,6 +483,248 @@ console.log("\n--- Escape closes the topmost surface, one per press ---");
      h.viewLocal.desk.clipOpen === null && h.viewLocal.desk.expanded === null);
 }
 
+// ===================================================================
+// The August 2026 round. Every block below is a bug that was found by using
+// the thing, and each one is written so that it fails against the build that
+// had the bug — which is the only way to know a test is worth its lines.
+// ===================================================================
+console.log("\n--- a post-it you have not typed into yet is not thrown away ---");
+{
+  // THE BUG: a brand-new post-it is empty by definition, and "empty when it
+  // loses the cursor" was read as "throw it away". Pressing on bare desk to
+  // nudge the view — the pointer simply moving — took the cursor away before
+  // the first keystroke, so the scrap was tombstoned while renders were held
+  // for the gesture. It stayed on screen looking alive; the words then went
+  // into a dead record and vanished at the next repaint.
+  const h = harness();
+  const deskEl = h.page.querySelector('.desk-surface');
+  const view = h.page.querySelector('.desk-viewport');
+  view.getBoundingClientRect = () => ({ left: 0, top: 100, right: 1440, bottom: 900, width: 1440, height: 800 });
+
+  deskEl.dispatchEvent(pointer('pointerdown', 900, 500));
+  deskEl.dispatchEvent(pointer('pointerup', 900, 500));
+  deskEl.dispatchEvent(pointer('pointerdown', 900, 500));
+  deskEl.dispatchEvent(pointer('pointerup', 900, 500));
+  ok("double-clicking bare desk still makes a post-it", h.store.notes(h.pid).length === 1);
+  const nid = h.store.notes(h.pid)[0].nid;
+  h.redraw();
+
+  // the pointer moves: a press on bare desk starts a pan, and the browser
+  // takes the cursor out of the brand-new textarea on the way
+  const ta = h.page.querySelector('.dnote-text');
+  h.page.querySelector('.desk-surface').dispatchEvent(pointer('pointerdown', 200, 700));
+  ta.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
+  ok("the pointer moving away before the first keystroke does NOT throw it away",
+     h.store.notes(h.pid).length === 1);
+  h.page.querySelector('.desk-surface').dispatchEvent(pointer('pointermove', 260, 760));
+  h.page.querySelector('.desk-surface').dispatchEvent(pointer('pointerup', 260, 760));
+  ok("...and it is still there once the gesture ends", h.store.notes(h.pid).length === 1);
+
+  // ...and now the words land where they should
+  h.redraw();
+  const ta2 = h.page.querySelector('.dnote-text');
+  ta2.value = "the thing I nearly lost";
+  ta2.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  ta2.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
+  ok("the words typed afterwards are kept", h.store.notes(h.pid)[0].text === "the thing I nearly lost");
+
+  // the delivered rule survives: you can still throw one away by emptying it
+  h.redraw();
+  const ta3 = h.page.querySelector('.dnote-text');
+  ta3.value = "";
+  ta3.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  ta3.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
+  ok("emptying one that HAD words still throws it away", h.store.notes(h.pid).length === 0);
+  ok("...and it is a tombstone, not an erasure",
+     h.store.deskObjects(h.pid).notes.filter(x => x.nid === nid).length === 1);
+}
+
+console.log("\n--- ...but a blank one you never wrote on is one keystroke away ---");
+{
+  const h = harness();
+  const nid = h.store.addNote(h.pid, { pos: { x: 60, y: 60 } });
+  h.redraw();
+  const ta = h.page.querySelector('.dnote-text');
+  const esc = Object.assign(new dom.window.Event('keydown', { bubbles: true, cancelable: true }),
+                            { key: 'Escape', stopPropagation() {} });
+  ta.dispatchEvent(esc);
+  ok("Escape throws away a blank scrap you never wrote on", h.store.notes(h.pid).length === 0);
+
+  // ...and does NOT throw away one with words in it
+  const h2 = harness((store, pid) => { store.addNote(pid, { text: "keep me", pos: { x: 60, y: 60 } }); });
+  const ta2 = h2.page.querySelector('.dnote-text');
+  ta2.blur = () => {};
+  ta2.dispatchEvent(Object.assign(new dom.window.Event('keydown', { bubbles: true, cancelable: true }),
+                                  { key: 'Escape', stopPropagation() {} }));
+  ok("...and leaves one that has words alone", h2.store.notes(h2.pid).length === 1);
+}
+
+console.log("\n--- words typed into a scrap that was already thrown away still win ---");
+{
+  const h = harness((store, pid) => { store.addNote(pid, { text: "x", pos: { x: 60, y: 60 } }); });
+  const nid = h.store.notes(h.pid)[0].nid;
+  const ta = h.page.querySelector('.dnote-text');
+  h.store.removeNote(h.pid, nid);                       // gone, by any route
+  ta.value = "no, I meant this";
+  ta.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  ta.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
+  ok("the note comes back rather than swallowing the words",
+     h.store.notes(h.pid).length === 1 && h.store.notes(h.pid)[0].text === "no, I meant this");
+}
+
+console.log("\n--- the stack is pinned from the RIGHT ---");
+{
+  const h = harness((store, pid, ids) => {
+    const cid = store.addClip(pid);
+    for (const id of ids) store.setDeskField(id, pid, "clip", cid);
+  });
+  const members = [...h.page.querySelectorAll('.dcard[data-clip]')];
+  ok("every sheet in a closed stack is positioned by its right edge",
+     members.length === 3 && members.every(m => m.style.right && m.style.left === "auto"),
+     members.map(m => `${m.style.left}/${m.style.right}`).join(" "));
+  ok("...stepping by one peek each, so the clip grips them all at one point",
+     new Set(members.map(m => parseFloat(m.style.right))).size === 3);
+  const mark = h.page.querySelector('.dclip-mark');
+  ok("the mark is on the right too, hanging off the paper",
+     !!mark.style.right && parseFloat(mark.style.right)
+       < Math.min(...members.map(m => parseFloat(m.style.right))));
+}
+
+console.log("\n--- an expanded card sits above its siblings in an open clip ---");
+{
+  const h = harness((store, pid, ids) => {
+    const cid = store.addClip(pid);
+    for (const id of ids) store.setDeskField(id, pid, "clip", cid);
+  });
+  const cid = h.store.clips(h.pid)[0].cid;
+  h.viewLocal.desk.clipOpen = cid;
+  h.viewLocal.desk.expanded = h.ids[1];
+  h.redraw();
+  const cards = [...h.page.querySelectorAll('.dcard[data-clip]')];
+  const mine = cards.find(c => c.dataset.id === h.ids[1]);
+  const others = cards.filter(c => c !== mine);
+  ok("the expanded member is expanded", mine.classList.contains('is-expanded'));
+  ok("...and outranks every sibling, which all share the clip's own z",
+     others.every(o => parseInt(mine.style.zIndex, 10) > parseInt(o.style.zIndex, 10)),
+     cards.map(c => c.style.zIndex).join(","));
+  ok("...and the clip's mark and post-its too",
+     parseInt(mine.style.zIndex, 10) > parseInt(h.page.querySelector('.dclip-mark').style.zIndex, 10));
+  ok("...at the one band named for it", parseInt(mine.style.zIndex, 10) === 9000);
+}
+
+console.log("\n--- the open grid is laid out from measured cards, on mount ---");
+{
+  const h = harness((store, pid, ids) => {
+    const cid = store.addClip(pid);
+    for (const id of ids) store.setDeskField(id, pid, "clip", cid);
+  });
+  h.viewLocal.desk.clipOpen = h.store.clips(h.pid)[0].cid;
+  // jsdom has no layout, so the harness's stand-in boxes ARE the measurement:
+  // 300px wide, which is exactly the pitch the old fixed grid used — i.e. the
+  // arrangement that overlapped. The mount pass has to widen it.
+  h.redraw();
+  h.page._deskMount && h.page._deskMount();
+  const cards = [...h.page.querySelectorAll('.dcard[data-clip]')]
+    .map(c => ({ x: parseFloat(c.style.left), y: parseFloat(c.style.top) }));
+  let overlap = 0;
+  for (let i = 0; i < cards.length; i++)
+    for (let j = i + 1; j < cards.length; j++)
+      if (Math.abs(cards[i].x - cards[j].x) < 300 && Math.abs(cards[i].y - cards[j].y) < 160) overlap++;
+  ok("no member of an open clip overlaps another", overlap === 0, JSON.stringify(cards));
+  ok("...and they are placed by their left edge, not the stack's right one",
+     cards.every(c => isFinite(c.x)));
+}
+
+console.log("\n--- a post-it dropped on a clip stays where it was dropped ---");
+{
+  const h = harness((store, pid, ids) => {
+    const cid = store.addClip(pid);
+    store.setDeskField(ids[0], pid, "clip", cid);
+    store.setDeskField(ids[1], pid, "clip", cid);
+    store.addNote(pid, { text: "why these two", pos: { x: 900, y: 700 } });
+  });
+  const cid = h.store.clips(h.pid)[0].cid;
+  const view = h.page.querySelector('.desk-viewport');
+  view.getBoundingClientRect = () => ({ left: 0, top: 0, right: 1440, bottom: 900, width: 1440, height: 900 });
+  const deskEl = h.page.querySelector('.desk-surface');
+  const note = h.page.querySelector('.dnote');
+  const mark = h.page.querySelector('.dclip-mark');
+  mark.getBoundingClientRect = () => ({ left: 400, top: 300, right: 452, bottom: 352, width: 52, height: 52 });
+
+  note.querySelector('.dnote-drag').dispatchEvent(pointer('pointerdown', 100, 100));
+  deskEl.dispatchEvent(pointer('pointermove', 420, 320));
+  deskEl.dispatchEvent(pointer('pointerup', 420, 320));
+  const rec = h.store.notes(h.pid)[0];
+  ok("dropping it on a clip attaches it", rec.clip === cid);
+  ok("...and records where it landed as an offset", rec.offset && isFinite(rec.offset.dx));
+  const expected = { x: 900 + 320, y: 700 + 220 };
+  const anchor = h.store.deskRecord(h.ids[1], h.pid).pos;   // the topmost member
+  ok("...measured from the clip's own anchor, so it rides the stack",
+     rec.offset.dx === expected.x - anchor.x && rec.offset.dy === expected.y - anchor.y,
+     JSON.stringify({ offset: rec.offset, anchor, expected }));
+  ok("...and `pos` is left alone, because it only means 'while it is free'",
+     rec.pos.x === 900 && rec.pos.y === 700);
+
+  // and back off again
+  h.redraw();
+  const note2 = h.page.querySelector('.dnote');
+  h.page.querySelector('.desk-surface').dispatchEvent(
+    (note2.querySelector('.dnote-drag').dispatchEvent(pointer('pointerdown', 420, 320)),
+     pointer('pointermove', 1100, 800)));
+  h.page.querySelector('.desk-surface').dispatchEvent(pointer('pointerup', 1100, 800));
+  const off = h.store.notes(h.pid)[0];
+  ok("dragging it back to open desk detaches it", off.clip === null);
+  ok("...and drops the offset, picking up a real position", off.offset === null && !!off.pos);
+}
+
+console.log("\n--- unclipping hands its post-its a real position ---");
+{
+  const h = harness((store, pid, ids) => {
+    const cid = store.addClip(pid);
+    store.setDeskField(ids[0], pid, "clip", cid);
+    store.setDeskField(ids[1], pid, "clip", cid);
+    store.addNote(pid, { text: "why", clip: cid, offset: { dx: 40, dy: 200 } });
+  });
+  const before = { x: parseFloat(h.page.querySelector('.dnote').style.left),
+                   y: parseFloat(h.page.querySelector('.dnote').style.top) };
+  const clip = h.store.clips(h.pid)[0];
+  const mark = h.page.querySelector('.dclip-mark');
+  mark.dispatchEvent(Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }),
+                                   { clientX: 100, clientY: 100, preventDefault() {} }));
+  document.querySelector('.desk-menu-item').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  const note = h.store.notes(h.pid)[0];
+  ok("the clip is gone", h.store.clips(h.pid).length === 0);
+  ok("...its post-it is free rather than orphaned at the origin", note.clip === null && !!note.pos);
+  ok("...and it did not move when the clip did",
+     note.pos.x === before.x && note.pos.y === before.y,
+     JSON.stringify({ pos: note.pos, before }));
+  ok("...with its offset dropped, because there is nothing to offset from",
+     note.offset === null);
+}
+
+console.log("\n--- a selection started in an expanded card stays inside it ---");
+{
+  const h = harness();
+  h.viewLocal.desk.expanded = h.ids[0];
+  h.redraw();
+  const card = h.page.querySelector('.dcard.is-expanded');
+  const outside = h.page.querySelector('.pb-name');
+  const sel = dom.window.getSelection();
+  // A BACKWARD selection: the drag started in the card and swept UP into the
+  // banner, which is what actually happens — the banner is earlier in the
+  // document, so the browser runs the selection backwards to reach it.
+  // setBaseAndExtent is the only way to say that; a plain Range is always
+  // ordered and would just collapse.
+  sel.setBaseAndExtent(card.querySelector('.dcard-title').firstChild, 0, outside.firstChild, 1);
+  ok("the selection really did escape the card to begin with",
+     !sel.isCollapsed && !card.contains(sel.focusNode));
+  document.dispatchEvent(new dom.window.Event('selectionchange'));
+  const a = sel.anchorNode, f = sel.focusNode;
+  ok("the selection is pulled back inside the card",
+     (!a || card.contains(a)) && (!f || card.contains(f)),
+     `anchor in card: ${a && card.contains(a)}, focus in card: ${f && card.contains(f)}`);
+}
+
 console.log("\n--- the phone still gets no desk, and no clip button ---");
 {
   dom.window.matchMedia = (q) => ({ matches: false, addEventListener(){}, removeEventListener(){} });

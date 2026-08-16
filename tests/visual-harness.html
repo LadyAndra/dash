@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- Scratch visual harness. Not deployed, not linked from anywhere: it exists
+     so a person (or a headless browser) can LOOK at the desk, which is the only
+     way geometry is ever checked in this repo (§14.20). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>desk visual harness</title>
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/app.css">
+<style>
+  body{margin:0}
+  /* mirrors index.html's real chrome closely enough for the desk to be sized
+     the way it is in the app: a column that owns the window, with the view
+     host scrolling inside it */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+</style>
+</head>
+<body>
+<div id="app"><div class="main"><div class="viewport"><div id="view-host"></div></div></div></div>
+<script type="module">
+import { Store, PROJECT_LINK } from "../js/store.js";
+import { renderProjectPage } from "../js/views/desk.js";
+
+const store = new Store();
+const pid = store.createItem({ title: "Bestie — the whole thing", type: "project" });
+store.setField(pid, "color", "#3d5a6c");
+
+const titles = [
+  "Short one",
+  "A middling sort of title that wraps a bit",
+  "The very longest title in the project, long enough to reach the maximum card width and then some more",
+  "Another",
+  "Fourth card here with a fair amount of title",
+  "Fifth",
+];
+const ids = titles.map((t, i) => {
+  const id = store.createItem({ title: t, type: i % 2 ? "note" : "task" });
+  store.setField(id, "body", "Some body copy for the snippet, long enough to run to two lines and be clamped like every other card on this desk.");
+  store.assignToProject(id, pid);
+  return id;
+});
+ids.forEach((id, i) => store.placeOnDesk(id, pid, { x: 1900 + (i % 3) * 480, y: 1150 + Math.floor(i / 3) * 300 }, i + 1));
+
+// a clip of three, with a post-it attached at its own offset
+const cid = store.addClip(pid);
+for (const id of ids.slice(0, 3)) store.setDeskField(id, pid, "clip", cid);
+store.addNote(pid, { text: "why these three belong together", clip: cid, offset: { dx: -60, dy: 250 } });
+store.addNote(pid, { text: "a free-floating note", pos: { x: 2500, y: 1000 } });
+
+const viewLocal = {};
+const ctx = {
+  store, viewLocal, selection: { active: false }, onOpen(){}, sync: null,
+  holdRenders: () => () => {}, rerender: draw,
+};
+function draw() {
+  const host = document.getElementById("view-host");
+  host.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "sheet-page sheet-page-desk";
+  const page = renderProjectPage(store, store.get(pid), ctx,
+    { onBack(){}, onEdit(){}, onNew(){}, onAdd(){} });
+  wrap.appendChild(page);
+  host.appendChild(wrap);
+  if (page._deskMount) page._deskMount();
+}
+window.__desk = { store, pid, cid, ids, viewLocal, draw };
+draw();
+</script>
+</body>
+</html>

@@ -666,4 +666,54 @@ Built to §5.4, §5.6, §12.2 and §12.3 exactly as written; nothing in the data
 
 ---
 
+## 14.26 D2 round 2 — Andra's reactions, and one data-model change (16 August 2026)
+
+Andra used the first D2 build and answered. This section records what she locked and the **one field the data model gained**, which is the only part of §12 this round touches. Delivered with `docs/changes-2026-08-16-desk-d2-fixes.md`.
+
+### 14.26.1 Decision 54 — a post-it attached to a clip carries its own `offset`
+
+**This supersedes the "an attached post-it hangs off the mark" call in §14.25's D2 notes, and extends §12.3's `note` collection.** Everywhere else on this desk, *placement is the decision* — §5.5 says so for symbols in as many words. An attached post-it was the single exception: it ignored position entirely, drew at the clip's derived bounds, and sat on top of the paperclip. Andra asked for it to stay where she drops it.
+
+The answer mirrors the symbol pattern rather than overloading `pos`, for the same reason §12.7 gives for not using `links` labels for position — one field must not mean two things:
+
+- **`note.offset`** — `{dx, dy}` from the clip's derived anchor point. Used **only** when `clip` is set.
+- **`pos`** keeps its existing meaning, used **only** when the post-it is free (`clip` is null).
+- Dropping onto a clip records the drop point as `offset`; dragging an attached note *within the clip's bounds* updates `offset` exactly as an ordinary drag updates `pos`; detaching drops `offset` and picks up a real `pos` from the drop point. The attach/detach mirror symbols already use (§14.9, §14.18).
+- **No `formatVersion` bump and no migration.** Absence means "none", everywhere, always (§9): a note written by the first D2 build has no `offset` and gets one default placement — below the stack, clear of the mark — until the first time it is dragged.
+
+Two small consequences, both decided rather than inherited:
+
+1. **"Within the clip's bounds" means the bounds**, not just the paper. A note dropped on bare desk *between* an open clip's cards stays attached; only leaving the clip's box detaches it. Refusing that would have been a rule to remember rather than a thing that works — the same reasoning §14.25's notes give for accepting a drop on an open clip.
+2. **Unclipping hands each attached post-it a real `pos`** (at the spot it is already sitting) and clears its `clip`. Cards are not repositioned by an unclip and never will be — they have stored positions of their own — but a note's `offset` was only ever meaningful against the clip that just stopped existing. This is a *deliberate* write in one explicit action, and it does not weaken the "a dangling reference is read, never repaired" rule (§12.3): a note whose clip vanished some other way is still quietly treated as free, and still never written to.
+
+### 14.26.2 Decision 55 — the clip pins the stack from the RIGHT
+
+The clip mark moves to the right side of the stack and the members align on their **right** edges. Andra is right-handed and wants it to read as pinned from her own hand's side; this replaces the earlier "your call on which corner".
+
+**It turned out to be more than a preference, and that is the part worth keeping.** A card sizes itself to its own title between `CARD_MIN_W` and `CARD_MAX_W` (§14.7), so aligning *left* edges left the right edges ragged by up to 150px — the clip gripped the widest sheet and nothing but air on the narrow ones. The right edge is the only edge that can be the same for every member. So `stackSlot()` and `markSlot()` return a **`right`** coordinate rather than an `x`, and the view writes CSS `right` with `left: auto`, letting the browser do the subtraction. Nothing about the *stored* position changes: a clip still owns no geometry, and dragging one is still one ordinary `pos` op per member.
+
+### 14.26.3 Decision 56 — no button chrome on the banner's top row
+
+Broader than the D2 feature and flagged as such: the outlined-button look comes off the **whole** top row, not just the new clip button. Words, hover wash, focus ring and every accessibility floor stay; only the resting border and fill go. `.pb-acts .btn` — a CSS-only change with no behaviour impact.
+
+- **Clip icon at rest:** no outline, no box, the glyph alone in the quietest ink the banner already writes in (62% of `--ground-ink`, one step stronger than the facts line's 58% so a control's graphic still clears 3:1). One line, expected to be tuned by eye.
+- **Clip icon active:** a solid block of the banner's ink with the glyph knocked out in the project's own colour. Read that way because a glyph filled with the banner's colour *on* the banner would be invisible; it is the one place a box is wanted, since a mode has to be unmistakable against a row that now carries none.
+
+Unchanged and confirmed: **post-it tint stays at 18%**; **stack peek (7px/6px) and clip lean (±7°) stay**. Grid column count is no longer a constant — see below — but three across remains what a normal window shows.
+
+### 14.26.4 Round-2 bugs, and the two rules they earn
+
+- **A post-it lost its typed words if the pointer moved first.** "Emptying a post-it throws it away" (§14.25's D2 notes) had been implemented as "it is empty when it loses the cursor, so throw it away" — and a brand-new post-it is empty *by definition*, from the instant it is made. Anything that took the cursor away before the first keystroke tombstoned it, and on this desk the commonest is pressing on bare desk to pan, i.e. the pointer simply moving. Renders are held for the life of that gesture (§14.23 step 3), so the scrap stayed on screen looking alive while the words went into a record that was already dead. **The rule is the sentence it was always meant to be: you cannot empty something that was never filled.** The `isConnected` guard is still right and stays — it tells a rebuild's blur from a real one — it just could never tell *emptied* from *never filled*. Escape now discards a blank never-typed scrap, so an accidental double-click still costs one keystroke.
+- **The open grid overlapped, because it was calculated rather than measured.** A fixed 300px column pitch against cards that reach 410px guaranteed it. Pitch and column count now come from the members' real boxes, measured from the `_deskMount` hook — the same synchronous, pre-paint hook §14.24 introduced. **General rule for this desk: anything that depends on how big something turned out to be is laid out at mount from real boxes, and the arithmetic stays in the DOM-free `js/desk.js` with the view handing it the numbers.** (§14.20 stands: jsdom still cannot see any of it, which is what `tests/visual-harness.html` is now for.)
+- **An expanded card could be half-covered by a grid sibling.** Every member of a clip carries the *clip's* z, so DOM order alone decided. An expanded card now sits in its own band (`Z_EXPANDED`), contained by the viewport's stacking context so it can never reach the banner or an open drawer (§14.18).
+- **Cursor and selection inside an expanded card — and both were old lessons repeating.** The grab cursor survived over selectable body text because `.dcard.is-clipped { cursor: grab }` sits *later* in the sheet at equal specificity; the clip icon's quiet ink was lost because `.on-ground .btn` sits *earlier* at higher specificity. §14.19's round-5 bug was the same shape. **In this stylesheet, a rule meant to be an exception has to out-specify what it is excepting, not merely follow it.** Separately, `user-select: text` on the expanded card reopened §14.25's door by the side entrance — drag up out of the card and the selection sweeps into the banner, because that is the nearest selectable text. `user-select: contain` is Firefox-only, so the range is clamped on `selectionchange`. **This is the one place on this desk where JS is the right answer and CSS is not**, which is the exception §14.25's "reach for CSS before preventDefault" rule was always going to have.
+
+### 14.26.5 Still not in scope
+
+- **A hand-written script face for post-it text.** Wanted eventually, explicitly later.
+- **A custom cursor** in place of the default arrow/hand. Andra's own idea, noted for a later phase.
+- **Step 5 — reconciling the desk in place** rather than rebuilding it. Still the better end state, still a performance change rather than a bug fix (§14.24).
+
+---
+
 *End of addendum. Next action: hand this document, alongside `dash-architecture-proposal.md`, `dash-current-state.md`, and `dash-milestones-calendar-addendum.md`, to the implementing model via `docs/changes-2026-08-10-desk.md` with the instruction: "Build Phase D0 only." Update `dash-current-state.md` as each phase lands.*

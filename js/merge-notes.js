@@ -116,6 +116,7 @@ const FIELD_NAMES = {
   // and read the same way for both.
   pos: "where it sits", z: "which is on top",
   clip: "which clip it's in", text: "the words on it",
+  offset: "where it sits on the clip",
 };
 
 function describe(n) {

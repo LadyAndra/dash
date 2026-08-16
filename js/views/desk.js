@@ -140,11 +140,15 @@ function deskState(ctx) {
     // The post-it editor's deferred-commit bookkeeping — the same three
     // pieces the milestone editor and the Home capture box already use:
     // drafts survive a rebuild mid-word, and focus + cursor come back after.
-    noteDrafts: {}, noteFocus: null, noteSel: null,
+    // `noteTyped` is the fourth: "this scrap has been written on at least
+    // once", which is what tells being EMPTIED apart from never having been
+    // filled. See the note by hadWords() in postIt().
+    noteDrafts: {}, noteFocus: null, noteSel: null, noteTyped: {},
   };
   // Older sessions in the same view may have built the object above before D2
   // existed, so the new keys are filled in rather than assumed.
   if (!v.desk.noteDrafts) v.desk.noteDrafts = {};
+  if (!v.desk.noteTyped) v.desk.noteTyped = {};
   if (v.desk.clipping === undefined) v.desk.clipping = null;
   if (v.desk.clipOpen === undefined) v.desk.clipOpen = null;
   return v.desk;
@@ -461,6 +465,14 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   }
   units.sort((a, b) => (a.z - b.z) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
+  // THE ANCHOR POINT each clip's attached post-its are measured from. It is
+  // the clip's derived anchor while closed, and its open grid's origin while
+  // open — one map, written here and rewritten by the measured relayout below,
+  // so the render and the drop logic can never disagree about what an
+  // `offset` is an offset FROM.
+  const anchors = new Map();
+  const openUnits = [];
+
   for (const u of units) {
     if (u.kind === "card") {
       deskEl.appendChild(card(store, project, ctx, u.p, w.get(u.p.id) || 0, state, u.p.pos, null));
@@ -468,27 +480,76 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     }
     const c = u.c;
     const open = state.clipOpen === c.cid;
-    // The members. Closed, they draw as a tight sheaf at their own angles;
-    // open, they lie flat in a reading grid. Either way their STORED positions
-    // are untouched — which is what makes unclipping need no repositioning.
+    // A PROVISIONAL open grid, from nominal box sizes. Nothing paints between
+    // here and the measured pass in relayoutOpen() — that runs synchronously
+    // the moment the page lands in the document, the same hook the flicker fix
+    // uses (§14.24) — so this is never seen. It exists so that every element
+    // has a real position before anything measures it.
+    const grid = open
+      ? D.openGrid(c.anchor, c.members.map(() => ({ w: D.CARD_MAX_W, h: 180 })))
+      : null;
+    // The members. Closed, they draw as a tight sheaf pinned at the RIGHT and
+    // at their own angles; open, they lie flat in a reading grid. Either way
+    // their STORED positions are untouched — which is what makes unclipping
+    // need no repositioning.
     c.members.forEach((p, i) => {
-      const pos = open ? D.gridPos(c.anchor, i) : D.stackPos(c.anchor, i);
-      deskEl.appendChild(card(store, project, ctx, p, 0, state, pos, { clip: c, open, index: i }));
+      const at = open ? grid.at[i] : D.stackSlot(c.anchor, i);
+      deskEl.appendChild(card(store, project, ctx, p, 0, state, at, { clip: c, open, index: i }));
     });
-    deskEl.appendChild(clipMark(c, open));
-    // An attached post-it hangs off the mark, so it rides the stack with no
-    // code of its own — the anchor it is given is derived from the same
-    // members the stack is (§12.5).
+    const anchor = open ? grid.origin : c.anchor;
+    anchors.set(c.cid, anchor);
+    deskEl.appendChild(clipMark(c, open,
+      open ? { x: grid.origin.x, y: grid.origin.y + D.MARK_DY }
+           : D.markSlot(c.anchor, c.members.length)));
+    // An attached post-it sits where it was DROPPED, at its own offset from
+    // the anchor above — so it rides the stack for free (the anchor is derived
+    // from the same members the stack is) while still being a placement Andra
+    // made rather than a spot the code chose (§12.3, August 2026).
     for (const n of c.notes) {
       deskEl.appendChild(postIt(store, project, ctx, state, n,
-        D.noteAnchor(c.anchor, c.members.length, open), c.cid, u.z));
+        D.noteAt(anchor, n.offset), c.cid, u.z));
     }
+    if (open) openUnits.push(c);
   }
 
   // Free-floating post-its: their own position, their own business (§5.6).
   for (const n of data.freeNotes) {
     deskEl.appendChild(postIt(store, project, ctx, state, n, n.pos || { x: D.ORIGIN, y: D.ORIGIN }, null, null));
   }
+
+  // THE MEASURED RELAYOUT (August 2026 fix).
+  //
+  // A card sizes itself on its own title and snippet, between CARD_MIN_W and
+  // CARD_MAX_W — so a grid built on a fixed column pitch overlapped every card
+  // wider than that pitch and showed only part of it. There is no way around
+  // measuring: the width is the browser's answer, not ours.
+  //
+  // It runs from the mount hook, in the same task as the appendChild and
+  // before the browser paints, which is exactly why the provisional layout
+  // above is never visible. Measuring is valid there precisely BECAUSE the
+  // element is in the document by then — it cannot be hoisted into the render,
+  // where the desk is still detached and has no size at all.
+  const relayoutOpen = () => {
+    if (openUnits.length === 0) return;
+    for (const c of openUnits) {
+      const nodes = c.members.map(m => deskEl.querySelector(`.dcard[data-id="${cssId(m.id)}"]`));
+      // An expanded member is deliberately left OUT of the pitch: it is
+      // temporarily 460px wide and would push every column apart for as long
+      // as it was open. It overlaps its neighbours instead, and rides above
+      // them — which is what expanding a card in a grid should look like.
+      const sizes = nodes.map(n => (n && !n.classList.contains("is-expanded"))
+        ? { w: n.offsetWidth, h: n.offsetHeight } : null);
+      const g = D.openGrid(c.anchor, sizes, { room: view.clientWidth || undefined });
+      nodes.forEach((n, i) => { if (n) placeAt(n, g.at[i]); });
+      anchors.set(c.cid, g.origin);
+      const mark = deskEl.querySelector(`.dclip-mark[data-cid="${cssId(c.cid)}"]`);
+      if (mark) placeAt(mark, { x: g.origin.x, y: g.origin.y + D.MARK_DY });
+      for (const n of c.notes) {
+        const nd = deskEl.querySelector(`.dnote[data-nid="${cssId(n.nid)}"]`);
+        if (nd) placeAt(nd, D.noteAt(g.origin, n.offset));
+      }
+    }
+  };
 
   if (data.placed.length === 0 && data.notes.length === 0) {
     deskEl.appendChild(el("p", { class: "desk-empty hint" }, [
@@ -523,7 +584,7 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     state.noteSel = null;
   });
 
-  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard, clipHint });
+  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard, clipHint, anchors });
   restoreNoteFocus(deskEl, state);
 
   // The window IS the viewport: the desk takes whatever height is left under
@@ -533,6 +594,9 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     const top = view.getBoundingClientRect().top;
     const h = Math.max(320, Math.round(window.innerHeight - top)) + "px";
     if (view.style.height !== h) view.style.height = h;   // idempotent: no needless reflow
+    // How many columns an open clip gets depends on how wide the window is, so
+    // a resize has to re-ask. Cheap, and only does anything if a clip is open.
+    relayoutOpen();
   };
 
   // THE FLICKER FIX (§14.24). This used to run inside requestAnimationFrame,
@@ -556,7 +620,7 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   const restore = () => {
     if (mounted) return;
     mounted = true;
-    fit();
+    fit();                                 // fit() runs relayoutOpen() for us
     if (state.scrollX == null) {
       state.scrollX = Math.max(0, Math.round((view.scrollWidth - view.clientWidth) / 2));
       state.scrollY = Math.max(0, Math.round((view.scrollHeight - view.clientHeight) / 2));
@@ -596,6 +660,34 @@ function mat() {
   return svg;
 }
 
+// ===================================================================
+//  PLACING SOMETHING ON THE SURFACE
+// ===================================================================
+// Everything on the desk is absolutely positioned, and now in one of two
+// conventions: `{ x, y }` pins the LEFT edge, `{ right, y }` pins the RIGHT
+// one. The second exists because a clip's stack aligns on its right edge
+// (the clip pins it from there) and a card's width is its own business — so
+// the browser has to do the subtraction, not us, or the alignment would only
+// be right for cards that happened to be CARD_MAX_W wide.
+//
+// `right` is an x coordinate of the right edge in the desk's own space; CSS
+// wants a distance from the surface's right edge, hence DESK_W minus it.
+function placeAt(node, at) {
+  if (!at) return;
+  if (typeof at.right === "number" && isFinite(at.right)) {
+    node.style.left = "auto";
+    node.style.right = Math.round(D.DESK_W - at.right) + "px";
+  } else {
+    node.style.right = "auto";
+    node.style.left = Math.round(at.x) + "px";
+  }
+  node.style.top = Math.round(at.y) + "px";
+}
+
+// ULIDs are alphanumeric, so this only ever has work to do if an id from
+// somewhere else ever isn't — cheap insurance on a selector built from data.
+function cssId(v) { return String(v).replace(/["\\]/g, "\\$&"); }
+
 // `at` is where this card DRAWS, which is not always where it is stored: a
 // clipped card draws in its clip's stack or grid while keeping its own
 // position untouched underneath. `inClip` is null for a loose card, or
@@ -627,9 +719,12 @@ function card(store, project, ctx, p, weight, state, at, inClip) {
     "aria-label": `${it.title || "Untitled"}${overdue ? ", overdue" : ""}${spoken}`,
     // A clipped card takes its CLIP's height, so the whole sheaf stays
     // together in the stacking order; DOM order then decides which sheet is
-    // on top within it.
-    style: `left:${at.x}px; top:${at.y}px; z-index:${10 + (clipped ? inClip.clip.z : p.z)};`,
+    // on top within it. An EXPANDED card leaves that argument entirely and
+    // sits in its own band, so it can never be half-covered by a neighbour it
+    // happens to share a z with — which is precisely what open-grid members do.
+    style: `z-index:${expanded ? D.Z_EXPANDED : 10 + (clipped ? inClip.clip.z : p.z)};`,
   });
+  placeAt(node, at);
   // the wobble: derived, static, never stored (§12.1). Off while expanded, and
   // off while the clip is open — an open clip is for reading, and reading is
   // the one time the handmade angle gets in the way (the same treatment an
@@ -691,8 +786,7 @@ function card(store, project, ctx, p, weight, state, at, inClip) {
 // It carries no text and never will: "wordless" is enforced by the data shape
 // (a clip record has nowhere to put a word), and the "why" behind a grouping
 // belongs on a post-it, which is a different object (§5.6).
-function clipMark(c, open) {
-  const pos = D.markPos(c.anchor, c.members.length, open);
+function clipMark(c, open, at) {
   const n = c.members.length;
   const node = el("div", {
     class: "dclip-mark" + (open ? " is-open" : ""),
@@ -703,9 +797,10 @@ function clipMark(c, open) {
       + `Double-click to ${open ? "close it" : "open it"}; right-click to unclip.`,
     title: open ? "Double-click to close · right-click to unclip"
                 : "Drag to move the whole clip · double-click to open · right-click to unclip",
-    style: `left:${pos.x}px; top:${pos.y}px; z-index:${10 + c.z + 1};`,
+    style: `z-index:${10 + c.z + 1};`,
     html: CLIP_MARK_SVG,
   });
+  placeAt(node, at);
   // The tilt is applied HERE, not in the artwork — see the note in js/icons.js.
   node.style.setProperty("--rot", (open ? 0 : c.rot).toFixed(3) + "deg");
   return node;
@@ -728,6 +823,7 @@ function clipMark(c, open) {
 // anchor when attached. `attachedTo` is the cid or null.
 function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
   const drafts = state.noteDrafts;
+  const typed = state.noteTyped;
   const nid = rec.nid;
   const fkey = `note:${nid}`;
 
@@ -735,9 +831,9 @@ function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
     class: "dnote" + (attachedTo ? " is-attached" : ""),
     "data-nid": nid,
     "data-clip": attachedTo || null,
-    style: `left:${at.x}px; top:${at.y}px;`
-      + (clipZ != null ? ` z-index:${10 + clipZ + 2};` : ""),
+    style: clipZ != null ? `z-index:${10 + clipZ + 2};` : "",
   });
+  placeAt(node, at);
 
   // The grip is the only draggable part, because the rest of the post-it is a
   // text field and both gestures want the same pixels — the same two-surfaces
@@ -761,24 +857,61 @@ function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
 
   ta.addEventListener("input", () => {
     drafts[nid] = ta.value;                       // survives an unexpected rebuild
+    typed[nid] = true;                            // ...and so does "I started this"
     state.noteSel = [ta.selectionStart, ta.selectionEnd];
   });
+
+  // HAD IT ANYTHING TO LOSE? — the fix for "my words vanished" (August 2026).
+  //
+  // "Emptying a post-it throws it away" was implemented as "it is empty when
+  // it loses the cursor, so throw it away", and those are not the same
+  // sentence: a post-it you have never typed into is empty BY DEFINITION, from
+  // the instant it is made. So anything that took the cursor away before the
+  // first keystroke — and on this desk the commonest is pressing on bare desk
+  // to nudge the view, i.e. the pointer simply moving — quietly tombstoned it.
+  // Renders are held for the life of that gesture, so the scrap stayed on
+  // screen looking alive; the words then went into a record that was already
+  // dead, and disappeared at the next repaint.
+  //
+  // The isConnected guard below is still right and stays: it tells a blur
+  // caused by a REBUILD from a blur caused by the person leaving. What it
+  // could never tell is a post-it that was emptied from one that was never
+  // filled. You cannot empty something that was never filled — so that is now
+  // the actual test, and `typed` (view-local, like the drafts beside it) is
+  // how a rebuild mid-word doesn't forget the answer.
+  const hadWords = () => (rec.text || "").trim() !== "" || !!typed[nid];
+  const isLive = () => store.notes(project.id).some(n => n.nid === nid);
 
   const commit = () => {
     const v = ta.value;
     delete drafts[nid];
-    if (v !== (rec.text || "")) store.setNoteField(project.id, nid, "text", v);
-    // EMPTYING A POST-IT THROWS IT AWAY. It's the natural gesture — a blank
-    // scrap is rubbish, not a note — and it means an accidental double-click
-    // on the desk costs one keystroke to undo rather than a menu.
-    //
-    // The isConnected guard is what makes this safe: a rebuild removes the
-    // textarea and Chrome fires blur on the way out, and a brand-new post-it
-    // is empty by definition. Without the guard, a sync landing in the second
-    // between creating one and typing in it would delete it out from under
-    // her. A blur from a rebuild arrives with the node already detached; a
-    // blur from actually clicking away does not.
-    if (v.trim() === "" && ta.isConnected) store.removeNote(project.id, nid);
+    if (v !== (rec.text || "")) {
+      // BELT AND BRACES for the same class of loss. If this scrap has been
+      // thrown away by any route while words were being typed into it, the
+      // words win: never-delete means the record is still there to un-tombstone
+      // (§12.3), and silently writing into a dead one would be exactly the bug
+      // above wearing a different coat.
+      if (v.trim() !== "" && !isLive()) store.setNoteField(project.id, nid, "removed", null);
+      store.setNoteField(project.id, nid, "text", v);
+    }
+    if (v.trim() === "" && ta.isConnected && hadWords()) {
+      delete typed[nid];
+      store.removeNote(project.id, nid);
+    }
+  };
+
+  // A blank scrap you never wrote on is thrown away by ESCAPE, which is what
+  // clicking away used to do by accident. An accidental double-click still
+  // costs exactly one keystroke to undo; it just no longer costs a real note
+  // the same keystroke by mistake. (Right-click → "Throw this away" and
+  // emptying one that had words both still work.)
+  const discardIfBlank = () => {
+    if (ta.value.trim() !== "" || hadWords()) return false;
+    delete drafts[nid];
+    delete typed[nid];
+    store.removeNote(project.id, nid);
+    ctx.rerender();
+    return true;
   };
 
   ta.addEventListener("blur", commit);
@@ -788,7 +921,7 @@ function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); ta.blur(); }
     // Escape here would otherwise bubble to the desk's own handler and start
     // closing surfaces out from under a half-typed note.
-    if (e.key === "Escape") { e.stopPropagation(); ta.blur(); }
+    if (e.key === "Escape") { e.stopPropagation(); if (!discardIfBlank()) ta.blur(); }
   });
 
   node.appendChild(ta);
@@ -1110,15 +1243,34 @@ function wireDesk(store, project, ctx, data, state, dom) {
       if (!moved) { d.node.style.removeProperty("--dx"); d.node.style.removeProperty("--dy"); return; }
       // THE DROP DECIDES (§5.5 language, §5.6 object). Landing on a clip
       // attaches; landing on open desk detaches and gives it a real position.
-      const onto = clipAtPoint(e, d.node);
+      //
+      // WHERE it landed is now recorded either way — that is the August 2026
+      // change. An attached post-it used to be drawn at a spot the code chose
+      // (hanging off the mark, on top of it), which made it the one thing on
+      // this desk where putting it somewhere wasn't the decision. It carries an
+      // `offset` from its clip's anchor now, exactly as a wonder symbol carries
+      // one from its host card, and `pos` goes back to meaning only "where it
+      // sits while it is free".
+      const base = basePosOf(d.node, { pos: d.rec.pos || { x: 0, y: 0 } });
+      const pos = D.clampPos({ x: base.x + dx, y: base.y + dy }, D.NOTE_W, D.NOTE_H);
+      // Staying inside the clip you are already on counts as staying on it,
+      // even over bare desk between its cards — "drag it around within the
+      // clip's bounds" has to mean the bounds, not just the paper.
+      const onto = clipAtPoint(e, d.node)
+        || (d.from && withinClipBounds(e, d.from) ? d.from : null);
       if (onto) {
+        const anchor = anchorOf(onto);
         if (onto !== d.from) store.setNoteField(project.id, d.rec.nid, "clip", onto);
+        store.setNoteField(project.id, d.rec.nid, "offset", D.noteOffset(anchor, pos));
         ctx.rerender();
         return;
       }
-      const base = basePosOf(d.node, { pos: d.rec.pos || { x: 0, y: 0 } });
-      const pos = D.clampPos({ x: base.x + dx, y: base.y + dy }, D.NOTE_W, D.NOTE_H);
-      if (d.from) store.setNoteField(project.id, d.rec.nid, "clip", null);
+      if (d.from) {
+        // Coming off a clip drops the offset and picks up a real position from
+        // the drop point — the attach/detach mirror symbols already use.
+        store.setNoteField(project.id, d.rec.nid, "clip", null);
+        store.setNoteField(project.id, d.rec.nid, "offset", null);
+      }
       store.setNoteField(project.id, d.rec.nid, "pos", pos);
       ctx.rerender();
       return;
@@ -1184,12 +1336,48 @@ function wireDesk(store, project, ctx, data, state, dom) {
 
   // Where a node is currently DRAWING, in desk coordinates. Read off the
   // element because that is the one place the answer is true for every case —
-  // a loose card (its stored pos), a member of an open clip (a derived grid
-  // slot), an attached post-it (a derived anchor).
+  // a loose card (its stored pos), a member of an open clip (a measured grid
+  // slot), an attached post-it (its own offset from the clip).
+  //
+  // `style.left` is "auto" for anything pinned by its RIGHT edge (a member of
+  // a closed stack), so offsetLeft/offsetTop is the second question: it is the
+  // browser's own answer and is true whichever way the element was positioned.
   function basePosOf(node, fallback) {
     const x = parseFloat(node.style.left), y = parseFloat(node.style.top);
     if (isFinite(x) && isFinite(y)) return { x, y };
+    if (isFinite(node.offsetLeft) && isFinite(node.offsetTop)) {
+      return { x: node.offsetLeft, y: node.offsetTop };
+    }
     return { x: (fallback.pos || fallback).x || 0, y: (fallback.pos || fallback).y || 0 };
+  }
+
+  // The point a clip's post-it offsets are measured from. surface() keeps this
+  // map and the measured relayout rewrites it, so there is exactly one answer
+  // and the drop logic never has to recompute a layout it can just read.
+  function anchorOf(cid) {
+    const a = dom.anchors && dom.anchors.get(cid);
+    if (a) return a;
+    const c = clipByCid.get(cid);
+    return (c && c.anchor) || { x: 0, y: 0 };
+  }
+
+  // The whole clip's box on screen — every member, plus the mark. Used for one
+  // question only: is a post-it still on the clip it was already on?
+  function withinClipBounds(e, cid, pad = 24) {
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    const nodes = [
+      ...deskEl.querySelectorAll(`.dcard[data-clip="${cssId(cid)}"]`),
+      ...deskEl.querySelectorAll(`.dclip-mark[data-cid="${cssId(cid)}"]`),
+    ];
+    for (const n of nodes) {
+      const q = n.getBoundingClientRect();
+      if (!q || (!q.width && !q.height)) continue;
+      l = Math.min(l, q.left); t = Math.min(t, q.top);
+      r = Math.max(r, q.right); b = Math.max(b, q.bottom);
+    }
+    if (!isFinite(l)) return false;
+    return e.clientX >= l - pad && e.clientX <= r + pad
+        && e.clientY >= t - pad && e.clientY <= b + pad;
   }
 
   // Which clip, if any, is under the pointer. Rect maths rather than
@@ -1219,7 +1407,12 @@ function wireDesk(store, project, ctx, data, state, dom) {
     let z = data.maxZ;
     const out = [];
     for (const m of clip.members) out.push({ id: m.id, z: ++z });
-    for (const nd of clipNodes(clip.cid)) nd.style.zIndex = String(10 + z + 1);
+    // An expanded member keeps its own band — raising the sheaf must not pull
+    // the card being read back down among its neighbours.
+    for (const nd of clipNodes(clip.cid)) {
+      if (nd.classList.contains("is-expanded")) continue;
+      nd.style.zIndex = String(10 + z + 1);
+    }
     return out;
   }
   // One z op per member, in member order, so their relative arrangement inside
@@ -1282,9 +1475,28 @@ function wireDesk(store, project, ctx, data, state, dom) {
         label: "Unclip",
         run: () => {
           // Both floors, in one batch: the clip record is tombstoned and every
-          // member's membership is cleared. Nobody is repositioned — they are
+          // member's membership is cleared. No CARD is repositioned — they are
           // already sitting wherever the last cluster drag left them (§12.2).
           for (const m of clip.members) store.setDeskField(m.id, project.id, "clip", null);
+          // A post-it is the one thing that does need a position handed to it,
+          // because its offset was only ever meaningful against the clip that
+          // is now gone. This is the same detach it would get by being dragged
+          // off — offset out, a real pos in, taken from where it is sitting at
+          // this moment, so nothing appears to move when the clip does.
+          const anchor = anchorOf(clip.cid);
+          // `clip` is cleared here for the same reason it is on every member
+          // card: this one action ends the relationship, and a note left
+          // pointing at a tombstoned clip is exactly the drift the "membership
+          // lives on the thing that belongs" rule exists to prevent. (A note
+          // whose clip vanished some OTHER way — a device that hasn't received
+          // the clip yet — is still just quietly treated as free by deskData,
+          // and still never repaired by a write. That rule is unchanged.)
+          for (const nt of clip.notes) {
+            store.setNoteField(project.id, nt.nid, "pos",
+              D.clampPos(D.noteAt(anchor, nt.offset), D.NOTE_W, D.NOTE_H));
+            store.setNoteField(project.id, nt.nid, "offset", null);
+            store.setNoteField(project.id, nt.nid, "clip", null);
+          }
           store.removeClip(project.id, clip.cid);
           if (state.clipOpen === clip.cid) state.clipOpen = null;
           ctx.rerender();
@@ -1298,6 +1510,7 @@ function wireDesk(store, project, ctx, data, state, dom) {
       label: "Throw this away",
       run: () => {
         delete state.noteDrafts[rec.nid];
+        delete state.noteTyped[rec.nid];
         store.removeNote(project.id, rec.nid);
         ctx.rerender();
       },
@@ -1447,6 +1660,46 @@ function wireDesk(store, project, ctx, data, state, dom) {
     });
     for (const ev of ["pointerup", "pointercancel", "blur"]) glanceBtn.addEventListener(ev, endGlanceHold);
   }
+  // ---- a selection that starts in an expanded card stays in it ----
+  //
+  // The desk is not text (§14.25): `user-select: none` on the viewport is what
+  // stops a press on bare desk sweeping a selection backwards into the banner.
+  // An expanded card puts `user-select: text` back on itself, because its body
+  // is meant to be read and copied — and that reopened the same door by the
+  // side entrance. Drag upward out of the card and the browser, finding no
+  // selectable text between there and the top of the page, extends the
+  // selection to the nearest text it CAN reach, which is the banner above.
+  //
+  // There is no CSS for this that Chrome and Safari both honour today
+  // (`user-select: contain` is Firefox-only), so the range is clamped as it
+  // moves. Setting the selection fires this again; the second pass sees both
+  // ends inside the card and does nothing, so it cannot loop.
+  const onSelectionChange = () => {
+    if (!state.expanded) return;
+    const card2 = deskEl.querySelector(".dcard.is-expanded");
+    if (!card2 || !card2.isConnected) return;
+    let sel;
+    try { sel = document.getSelection(); } catch { return; }
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const aIn = !!(sel.anchorNode && card2.contains(sel.anchorNode));
+    const fIn = !!(sel.focusNode && card2.contains(sel.focusNode));
+    // Wholly inside, or nothing to do with us. This one line is also what
+    // keeps a post-it's own text selection out of here: a post-it is never
+    // inside a card, so neither end is ever in one.
+    if (aIn === fIn) return;
+    try {
+      const inside = document.createRange();
+      inside.selectNodeContents(card2);
+      const r = sel.getRangeAt(0).cloneRange();
+      const R = window.Range;
+      if (r.compareBoundaryPoints(R.START_TO_START, inside) < 0) r.setStart(inside.startContainer, inside.startOffset);
+      if (r.compareBoundaryPoints(R.END_TO_END, inside) > 0) r.setEnd(inside.endContainer, inside.endOffset);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } catch { /* a range the browser won't let us rebuild: leave it alone */ }
+  };
+  document.addEventListener("selectionchange", onSelectionChange);
+
   const onKeyDown = (e) => {
     if (e.key === "Escape") {
       // TOPMOST SURFACE ONLY, ONE PER PRESS. The D2 additions slot into the
@@ -1476,6 +1729,7 @@ function wireDesk(store, project, ctx, data, state, dom) {
     document.removeEventListener("pointerdown", onDocDown, true);
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("keyup", onKeyUp);
+    document.removeEventListener("selectionchange", onSelectionChange);
     window.removeEventListener("blur", glanceOff);
     window.removeEventListener("pointerup", endGlanceHold);      // a desk torn
     window.removeEventListener("pointercancel", endGlanceHold);  // down mid-hold

@@ -17,7 +17,13 @@ itself. `node` and the repo's own `js/` folder are the whole toolchain.
 | `desk-d1.viewstate.test.mjs` | The post-deploy pass: that a snapshot survives a JSON round-trip unchanged (which is what makes the self-sync marker work), and that a glance never overwrites the saved scroll position. Needs jsdom. |
 | `desk-d1.test.mjs` | Phase D1 of the Desk: the `"vs"` op's merge rules in every arrival order, two-device convergence, un-place/restore, collision reporting, the one-archive-pass rule, and the pure geometry (wobble, clamping, z-order, pile weight, glance framing). |
 | `desk-d2.test.mjs` | Phase D2: the `"dk"` op (clips and post-its) through the same shared merge helper — every arrival order, two devices clipping different cards offline, add-idempotence, remove-vs-edit, a late `create` that must not wipe a project's clips, and an unknown collection (D3's `sym`) landing safely. Also the derived clip geometry, and the post-it tint measured against `js/theme.js`'s own `contrast()` across every possible project colour in both themes. Needs nothing installed. |
-| `desk-d2.render.test.mjs` | Phase D2 interaction: select-to-clip writes one clip and one membership op each and nothing before that; a closed clip drags as one object with relative offsets preserved; open/close writes nothing at all; both unclip gestures; the post-it's deferred commit, its draft surviving a rebuild, and drop-decides-attachment. Needs jsdom. |
+| `desk-d2.render.test.mjs` | Phase D2 interaction: select-to-clip writes one clip and one membership op each and nothing before that; a closed clip drags as one object with relative offsets preserved; open/close writes nothing at all; both unclip gestures; the post-it's deferred commit, its draft surviving a rebuild, and drop-decides-attachment. Then the August 16 round: that a post-it you have not typed into yet survives the pointer moving away, that words typed into one that was already thrown away bring it back, the right-pinned stack, an expanded card outranking its grid siblings, the measured open grid, and a selection that cannot escape an expanded card. Needs jsdom. |
+
+`visual-harness.html` is not a test. It is a page that draws a real desk — a
+clip, a post-it, cards at every width — from the real `js/` and `css/`, so that
+the things a headless test can never see can be LOOKED at (§14.20: "headless
+tests can check structure and data, never geometry"). Serve the repo folder
+(`python3 -m http.server`) and open it; module imports need http, not `file:`.
 
 Why these exist: merge bugs are invisible until they've quietly eaten
 something, and the desk's whole promise is that two devices arranging the same

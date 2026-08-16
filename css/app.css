@@ -2269,6 +2269,32 @@ button, input, textarea, select {
 .pb-acts { flex: none; display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 .banner-glance { padding: 0; min-width: var(--control-min); font-size: var(--text-lg); line-height: 1; letter-spacing: 0; }
 
+/* NO BUTTON CHROME ON THE TOP ROW (August 2026).
+   Five outlined boxes in a row was the loudest thing on the page, on the one
+   band that is supposed to be the project's identity. The words stay, the
+   targets stay, the hover and focus states stay — the boxes go, and the row
+   reads as a line of actions rather than a toolbar.
+
+   Nothing here weakens the accessibility floor: every button keeps its full
+   --control-min height and its --tap-min touch target from .btn, the label is
+   still ink on the measured ground, and :focus-visible still draws the full
+   two-ring indicator that .on-ground .btn defines further up. Only the resting
+   border and fill are removed, so hover is the affordance instead of an
+   outline that is on all the time. */
+.pb-acts .btn,
+.pb-acts .btn-primary {
+  background: transparent;
+  border-color: transparent;
+  padding-inline: var(--space-3);
+}
+.pb-acts .btn:hover,
+.pb-acts .btn-primary:hover {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-primary)) 14%, transparent);
+  border-color: transparent;
+}
+/* the primary keeps its weight — that is what makes it the primary now */
+.pb-acts .btn-primary { font-weight: 600; }
+
 /* ONE thin line for stage · progress · entries · next, in cells divided by the
    same hairline the drawer handles use. Weight carries the hierarchy: the
    stage and what's next come forward, the counts fall back (§14.19). */
@@ -2557,7 +2583,10 @@ button, input, textarea, select {
   border-color: var(--text-faint);
   box-shadow: var(--shadow-2);
   cursor: default;
-  z-index: 60;
+  /* The z-index is set inline from js/desk.js's Z_EXPANDED — it has to beat
+     the members of a clip it may be inside, and those carry their clip's own
+     number, which this sheet cannot know. Nothing here, on purpose: two
+     sources for one number is how a card ends up half-covered. */
 }
 .dcard.is-expanded .dcard-body { display: none; }
 .dcard.is-expanded .dcard-full { display: block; }
@@ -2604,6 +2633,15 @@ button, input, textarea, select {
   border-radius: var(--radius) var(--radius) 0 0;
 }
 .dcard.is-expanded.is-dragging .dcard-drag { cursor: grabbing; }
+/* THE CURSOR HAS TO SAY WHICH SURFACE YOU ARE ON. The header is a handle, so
+   it grabs; the body is text, so it is an I-beam — not the desk's grab and not
+   a plain arrow, both of which said "you can't select this" over the one part
+   of the desk where you can. */
+.dcard.is-expanded .dcard-full,
+.dcard.is-expanded .dcard-full p { cursor: text; }
+.dcard.is-expanded .dcard-acts,
+.dcard.is-expanded .dcard-foot { cursor: default; }
+.dcard.is-expanded .dcard-acts .btn { cursor: pointer; }
 .dcard-grip { color: var(--text-faint); letter-spacing: 0.1em; }
 .dcard-link { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -2619,19 +2657,41 @@ button, input, textarea, select {
 /* ---------- the banner button ---------- */
 /* An icon button, sized like the ✧ beside it: the same --control-min floor, so
    it keeps a real target and a real accessible name without a word on it. */
-.banner-clip {
+/* `.pb-acts .banner-clip` rather than `.banner-clip`, and it matters:
+   `.on-ground .btn` further up this sheet sets the colour of every control on
+   a coloured ground, and at one class more specific it wins every tie no
+   matter how far down here we write. Two classes, later in the file, is what
+   it takes to be heard — the same lesson §14.19's banner rules learned. */
+.pb-acts .banner-clip {
   padding: 0;
   min-width: var(--control-min);
   display: inline-flex; align-items: center; justify-content: center;
+  /* AT REST: no outline, no box, just the glyph, in the quietest ink this
+     banner already writes in — the same fall-back the facts line uses for the
+     things you glance at rather than read (§14.19), one step stronger so the
+     mark itself still clears the 3:1 floor a control's graphic needs.
+     Expected to be tuned by eye; this is the one line to change. */
+  --desk-clip-quiet: color-mix(in srgb, var(--ground-ink, var(--text-primary)) 62%, transparent);
+  color: var(--desk-clip-quiet);
+  background: transparent;
+  border-color: transparent;
+}
+/* hover brings it up to full ink — the affordance, in place of an outline */
+.pb-acts .banner-clip:hover {
   color: var(--ground-ink, var(--text-primary));
+  background: transparent; border-color: transparent;
 }
 .banner-clip svg { width: var(--desk-clip-icon); height: auto; display: block; }
-/* Pressed reads as inked-in rather than merely outlined, because this button
-   puts the desk into a mode and a mode has to be obvious. */
-.banner-clip.is-on {
+/* ON: the glyph flips to a bold fill in the project's own banner colour,
+   knocked out of a solid block of the banner's ink. It is the one place a box
+   is wanted — a mode has to be unmistakable, and against a row that now
+   carries no chrome at all, this reads from across the room. */
+.pb-acts .banner-clip.is-on,
+.pb-acts .banner-clip.is-on:hover {
   background: var(--ground-ink, var(--text-primary));
   color: var(--ground-bg, var(--surface));
   border-color: var(--ground-ink, var(--text-primary));
+  border-radius: var(--radius);
 }
 
 /* The line that says what to do while picking. Over the viewport, not on the
@@ -2663,13 +2723,20 @@ button, input, textarea, select {
 /* Closed, a member is part of one object, so it doesn't offer its own grab
    cursor or its own hover edge — the stack does. The pile-weight shadows are
    off too: a clip is already a stack, and weight is for accidental piles. */
-.dcard.is-clipped { cursor: grab; }
-.dcard.is-clipped:hover { border-color: var(--border-strong); }
-.dcard.is-clipped.is-dragging { cursor: grabbing; }
+/* :not(.is-expanded) ON EVERY ONE OF THESE, and it is not cosmetic.
+   These rules come LATER in the sheet than .dcard.is-expanded and carry the
+   same specificity, so a plain `.dcard.is-clipped { cursor: grab }` won every
+   tie — which is why an expanded card inside an open clip kept the desk's grab
+   cursor over body text that is meant to be selected and copied. A member of a
+   clip that is currently expanded is being READ, and reading is the one time
+   none of the stack's own affordances apply. */
+.dcard.is-clipped:not(.is-expanded) { cursor: grab; }
+.dcard.is-clipped:not(.is-expanded):hover { border-color: var(--border-strong); }
+.dcard.is-clipped.is-dragging:not(.is-expanded) { cursor: grabbing; }
 /* Open, each member is a card again: its own hover, its own drag, its own
    double-click to expand. */
-.dcard.is-clip-open { cursor: grab; }
-.dcard.is-clip-open:hover { border-color: var(--text-faint); }
+.dcard.is-clip-open:not(.is-expanded) { cursor: grab; }
+.dcard.is-clip-open:not(.is-expanded):hover { border-color: var(--text-faint); }
 
 /* ---------- the paperclip mark ---------- */
 .dclip-mark {
@@ -2703,7 +2770,7 @@ button, input, textarea, select {
   position: absolute;
   width: var(--desk-note-w);
   min-height: var(--desk-note-min-h);
-  z-index: 55;                    /* above cards, below an expanded card (60) */
+  z-index: 55;                    /* above cards; an expanded card is above it */
   display: flex; flex-direction: column;
   /* THE PAPER. A light tint of the project's own colour over ordinary raised
      stock — the same --ground-bg mechanism the clip mark uses, so a post-it

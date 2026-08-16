@@ -167,13 +167,25 @@ const DK_COLLS = {
   // card's own desk record, so a card is in at most one clip per desk and
   // nothing can drift out of step (§12.2).
   clip: { array: "clips", idKey: "cid", fields: new Set(["removed"]), addFields: [] },
-  // A post-it. `pos` is used when it is free-floating; when `clip` names a
-  // clip, it renders at that clip's derived bounds and `pos` is ignored — the
-  // same field either way, which is what makes attaching one op (§5.6).
+  // A post-it. Two placements, one for each life it can have, and never both:
+  //
+  //   pos     {x, y} on the desk — used only while `clip` is null.
+  //   offset  {dx, dy} from its clip's derived anchor — used only while it is
+  //           attached. ADDED August 2026: an attached note used to ignore
+  //           position entirely and render at a spot the code chose, which
+  //           made it the one object on this desk where dropping it somewhere
+  //           wasn't the decision. It now mirrors the wonder-symbol pattern
+  //           (§12.3) rather than overloading `pos`, so neither field ever has
+  //           to mean two things: attaching writes `offset`, detaching drops
+  //           it and picks up a real `pos`.
+  //
+  // Absence still means "none", everywhere, always (§9) — a note written by an
+  // older build simply has no `offset` and gets the default placement once,
+  // until the first time it is dragged. No migration, no formatVersion bump.
   note: {
     array: "notes", idKey: "nid",
-    fields: new Set(["text", "pos", "clip", "removed"]),
-    addFields: ["text", "pos", "clip"],
+    fields: new Set(["text", "pos", "clip", "offset", "removed"]),
+    addFields: ["text", "pos", "clip", "offset"],
   },
 };
 
@@ -663,6 +675,7 @@ export class Store {
       text: partial.text || "",
       pos: partial.pos || null,
       clip: partial.clip || null,
+      offset: partial.offset || null,
     });
     return nid;
   }

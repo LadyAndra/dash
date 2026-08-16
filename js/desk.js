@@ -33,7 +33,13 @@
 // `"dk"` op and materialised on the PROJECT item (§12.3):
 //
 //   project.deskObjects = { clips: [ { cid, created, removed } ],
-//                           notes: [ { nid, text, pos, clip, created, removed } ] }
+//                           notes: [ { nid, text, pos, clip, offset, created, removed } ] }
+//
+// A post-it has two placements and never both at once: `pos` while it is free
+// on the desk, `offset` {dx, dy} from its clip's anchor while it is attached.
+// `offset` was added in August 2026 — before it, an attached note ignored
+// position entirely and drew wherever the code put it, which made it the one
+// object here where dropping it somewhere wasn't the decision.
 //
 // Everything about a clip's geometry is derived here, at render time, from its
 // members' positions — a clip stores no position and no member list (§12.2).
@@ -80,6 +86,14 @@ export const WEIGHT_RADIUS = 170;    // how close counts as "the same pile" for 
 export const WEIGHT_MAX = 3;         // most hairline sheets drawn under one card
 export const GLANCE_PAD = 60;        // breathing room around the content when glancing
 
+// An EXPANDED card is the thing you are reading, so it sits above everything
+// else on the surface — its own neighbours, the members of the clip it may be
+// inside, the mark, and any post-it. A band of its own rather than "max + 1",
+// because there is only ever one and it should not have to win an argument.
+// Contained by .desk-viewport's stacking context, so it can never reach the
+// banner or an open drawer (§14.18).
+export const Z_EXPANDED = 9000;
+
 // ===================================================================
 //  D2 CONSTANTS — first pass, expect Andra to tune these live
 // ===================================================================
@@ -90,14 +104,18 @@ export const GLANCE_PAD = 60;        // breathing room around the content when g
 // THE CLOSED STACK. A clip is "rigid" where a pile is "fluid" (§5.4), so its
 // members draw much tighter than a dropped pile ever lands — just enough that
 // the paper edges peek out at their own angles underneath. Bigger numbers =
-// looser sheaf.
-export const STACK_DX = 7;           // per-member step to the right, in the stack
+// looser sheaf. Unchanged from the first D2 delivery: Andra didn't weigh in.
+export const STACK_DX = 7;           // per-member step, in the stack
 export const STACK_DY = 6;           // ...and down
+// A clipped card sizes itself between CARD_MIN_W and CARD_MAX_W like any
+// other, so its LEFT edge says nothing about where the stack's right edge is.
+// This is the width the stack reckons its right edge from — see stackSlot().
+export const STACK_W = CARD_MAX_W;
 
-// THE PAPERCLIP MARK. Sits in a corner of the stack, overlapping the top card.
-// Offsets are relative to the TOP card's corner, so negative values hang the
-// clip off the edge of the paper the way a real one does.
-export const MARK_DX = -18;
+// THE PAPERCLIP MARK. Sits on the stack's RIGHT corner and overlaps the top
+// card. `MARK_RX` is how far its right edge hangs PAST the paper's right edge,
+// the way a real clip does; `MARK_DY` is how far above the paper's top it sits.
+export const MARK_RX = 18;
 export const MARK_DY = -22;
 export const MARK_SIZE = 52;         // must match --desk-clip-mark in css/app.css
 
@@ -108,17 +126,27 @@ export const MARK_SIZE = 52;         // must match --desk-clip-mark in css/app.c
 export const CLIP_ROT_MAX_DEG = 7;
 
 // THE OPEN GRID. Double-clicking the mark lays the members out to be read.
-export const OPEN_COLS = 3;
-export const OPEN_DX = 300;          // column pitch — a little over CARD_MIN_W
-export const OPEN_DY = 210;          // row pitch
+//
+// The column pitch is NOT a constant any more, and that was a real bug: cards
+// size themselves between CARD_MIN_W and CARD_MAX_W, so a fixed 300px pitch
+// guaranteed that any member wider than 300px overlapped its neighbour and
+// showed only part of itself. The pitch is now the widest member's MEASURED
+// box plus a gap, and the column count is whatever that pitch actually fits —
+// so every member is fully visible whatever it contains and however many
+// there are. See openGrid() below; the view measures, this file does the sums.
+export const OPEN_GAP_X = 24;        // clear air between columns
+export const OPEN_GAP_Y = 24;        // ...and between rows
+export const OPEN_COLS_MAX = 3;      // the delivered look, when there is room
 export const OPEN_INSET_Y = 44;      // grid starts below the mark, not under it
 
 // POST-ITS.
 export const NOTE_W = 220;           // must match --desk-note-w in css/app.css
 export const NOTE_H = 140;           // used only for clamping on drop
-// An attached post-it hangs off the stack, below the paperclip mark.
-export const NOTE_ATTACH_DX = -14;
-export const NOTE_ATTACH_DY = 40;
+// Where an attached post-it sits when it has never been placed by hand — i.e.
+// a note attached before `offset` existed. Below the stack and clear of the
+// mark, which now lives on the right; anything dropped since carries its own
+// offset and is never moved again.
+export const NOTE_OFFSET_DEFAULT = { dx: 0, dy: 176 };
 // The paper tint: this percentage of the project's banner colour mixed into
 // the ordinary raised surface. VERIFIED, not eyeballed — tests/desk-d2.test.mjs
 // walks the whole RGB cube against js/theme.js's own contrast() and demands
@@ -250,33 +278,100 @@ export function clipAnchor(members) {
   return { x: top.pos.x, y: top.pos.y };
 }
 
-// Where member i draws while the clip is CLOSED: a tight sheaf, in member
-// order, so the last one is the top card and the mark sits on its corner.
-export function stackPos(anchor, i, dx = STACK_DX, dy = STACK_DY) {
-  return { x: anchor.x + i * dx, y: anchor.y + i * dy };
-}
-
-// ...and while it is OPEN: a plain reading grid starting under the mark.
-export function gridPos(anchor, i, cols = OPEN_COLS, dx = OPEN_DX, dy = OPEN_DY, inset = OPEN_INSET_Y) {
-  return {
-    x: anchor.x + (i % cols) * dx,
-    y: anchor.y + inset + Math.floor(i / cols) * dy,
-  };
+// Where member i draws while the clip is CLOSED.
+//
+// THE STACK IS RIGHT-ALIGNED, and reckoned from its RIGHT edge rather than its
+// left — because the clip pins it from the right, and a right-hander wants the
+// clip on their own side. That is not a cosmetic difference: a card's width is
+// its own business (CARD_MIN_W…CARD_MAX_W, sized to its title), so aligning
+// LEFT edges left the right edges ragged by up to 150px and the clip gripping
+// nothing but air on the narrow sheets. Aligning the RIGHT edges means the
+// clip grips every sheet at the same point whatever each one contains.
+//
+// So this returns `right` — an x coordinate of the card's RIGHT edge, in the
+// desk's own space — and the view turns it into a CSS `right` against the
+// desk's width. Nothing about the STORED position changes: a clip still owns
+// no geometry, and dragging one is still one ordinary pos op per member.
+export function stackSlot(anchor, i, dx = STACK_DX, dy = STACK_DY, cardW = STACK_W) {
+  return { right: anchor.x + cardW + i * dx, y: anchor.y + i * dy };
 }
 
 // The mark's own corner, derived from the TOP card (so it always overlaps the
-// sheet you can actually see) — closed only; an open clip parks it at the
-// anchor, above its grid.
-export function markPos(anchor, count, open = false) {
-  const top = open ? anchor : stackPos(anchor, Math.max(0, count - 1));
-  return { x: top.x + MARK_DX, y: top.y + MARK_DY };
+// sheet you can actually see) — closed only; an open clip parks it above the
+// grid's own origin, which openGrid() reports.
+export function markSlot(anchor, count, cardW = STACK_W) {
+  const top = stackSlot(anchor, Math.max(0, count - 1), STACK_DX, STACK_DY, cardW);
+  return { right: top.right + MARK_RX, y: top.y + MARK_DY };
 }
 
-// Where an attached post-it hangs. Follows the mark, so it rides the stack for
-// free — "moves with the stack when it's dragged" needs no code of its own.
-export function noteAnchor(anchor, count, open = false) {
-  const m = markPos(anchor, count, open);
-  return { x: m.x + NOTE_ATTACH_DX, y: m.y + NOTE_ATTACH_DY };
+// THE OPEN GRID — laid out from what the cards MEASURE, not from a constant.
+//
+// `sizes` is one { w, h } per member, read off the real elements after they
+// are in the document (jsdom has no layout, so this file is given the numbers
+// rather than reading them — the same split every other pure helper here uses).
+// `room` is how much width the grid may spend, normally the viewport's.
+//
+// Column count falls out of the arithmetic instead of being a fixed 3: the
+// pitch is the widest member plus a gap, and the count is however many of
+// those fit, capped at the delivered three. Two consequences worth knowing:
+// a clip of wide cards on a narrow window opens two across rather than three
+// and overlapping, and a clip of twelve opens as three columns of four rather
+// than a row that walks off the desk.
+//
+// The origin is pulled back onto the desk if the grid would otherwise hang off
+// the right or bottom edge — the same "clamp in the model" rule §14.2 fixed
+// for cards, applied to a layout that is derived rather than stored.
+export function openGrid(anchor, sizes, opts = {}) {
+  const n = Math.max(0, sizes ? sizes.length : 0);
+  const gapX = num2(opts.gapX, OPEN_GAP_X), gapY = num2(opts.gapY, OPEN_GAP_Y);
+  const inset = num2(opts.inset, OPEN_INSET_Y);
+  const deskW = num2(opts.deskW, DESK_W), deskH = num2(opts.deskH, DESK_H);
+  let w = CARD_MIN_W, h = 140;
+  for (const s of sizes || []) {
+    if (s && isFinite(s.w) && s.w > w) w = s.w;
+    if (s && isFinite(s.h) && s.h > h) h = s.h;
+  }
+  const pitchX = Math.round(w + gapX), pitchY = Math.round(h + gapY);
+  const room = num2(opts.room, deskW);
+  const fits = Math.max(1, Math.floor((room + gapX) / pitchX));
+  const cols = Math.max(1, Math.min(n || 1, OPEN_COLS_MAX, fits));
+  const rows = Math.ceil((n || 1) / cols);
+  const gw = cols * pitchX - gapX;
+  const gh = inset + rows * pitchY - gapY;
+  const origin = {
+    x: Math.round(Math.max(0, Math.min(anchor.x, Math.max(0, deskW - ORIGIN - gw)))),
+    y: Math.round(Math.max(0, Math.min(anchor.y, Math.max(0, deskH - ORIGIN - gh)))),
+  };
+  const at = [];
+  for (let i = 0; i < n; i++) {
+    at.push({
+      x: origin.x + (i % cols) * pitchX,
+      y: origin.y + inset + Math.floor(i / cols) * pitchY,
+    });
+  }
+  return { cols, rows, pitchX, pitchY, origin, at, w: gw, h: gh };
+}
+function num2(v, dflt) { return typeof v === "number" && isFinite(v) ? v : dflt; }
+
+// WHERE AN ATTACHED POST-IT SITS (§12.3, revised August 2026).
+//
+// It used to be derived from the mark, which meant every attached note landed
+// in the same place and sat on top of the clip icon — "placement is the
+// decision" everywhere else on this desk, and nowhere here. A note now carries
+// its own `offset` {dx, dy} from the clip's anchor point, written when it is
+// dropped, exactly as a wonder symbol carries one from its host card.
+//
+// `pos` keeps its old meaning and is used only while the note is free.
+// A note attached before `offset` existed has none, and gets the default —
+// once, until the first time it is dragged.
+export function noteAt(anchor, offset) {
+  const o = offset && isFinite(offset.dx) && isFinite(offset.dy) ? offset : NOTE_OFFSET_DEFAULT;
+  return { x: Math.round(anchor.x + o.dx), y: Math.round(anchor.y + o.dy) };
+}
+// The inverse, used on drop: where the note landed, as an offset from the
+// anchor it landed on.
+export function noteOffset(anchor, pos) {
+  return { dx: Math.round(pos.x - anchor.x), dy: Math.round(pos.y - anchor.y) };
 }
 
 // THE GLANCE (§14.3, §14.18) — fit the CONTENT, not the desk's own bounds, and

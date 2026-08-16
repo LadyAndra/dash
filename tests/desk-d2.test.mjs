@@ -345,15 +345,21 @@ console.log("\n--- clip geometry: derived, never stored ---");
   const c = dataOf(s, pid).clips[0];
 
   eq("the anchor is the TOPMOST member's position", c.anchor, c.members[2].pos);
-  eq("the closed stack steps by one offset per sheet", desk.stackPos(c.anchor, 2),
-     { x: c.anchor.x + 2 * desk.STACK_DX, y: c.anchor.y + 2 * desk.STACK_DY });
-  ok("the mark sits on the TOP card, not the bottom one",
-     desk.markPos(c.anchor, 3).x === c.anchor.x + 2 * desk.STACK_DX + desk.MARK_DX);
-  const g = desk.gridPos(c.anchor, desk.OPEN_COLS);      // first slot of row two
-  ok("the open grid wraps at the column count",
-     g.x === c.anchor.x && g.y > desk.gridPos(c.anchor, 0).y);
-  ok("an attached post-it hangs off the mark, so it rides the stack",
-     desk.noteAnchor(c.anchor, 3).y > desk.markPos(c.anchor, 3).y);
+  // THE STACK IS PINNED FROM THE RIGHT (August 2026). Slots report the card's
+  // RIGHT edge, because that is the edge the clip grips and the only one that
+  // is the same for every member whatever each card's width turns out to be.
+  eq("the closed stack steps by one offset per sheet, from the right",
+     desk.stackSlot(c.anchor, 2),
+     { right: c.anchor.x + desk.STACK_W + 2 * desk.STACK_DX, y: c.anchor.y + 2 * desk.STACK_DY });
+  ok("every sheet in the stack is reckoned from a right edge, never a left one",
+     [0, 1, 2].every(i => typeof desk.stackSlot(c.anchor, i).right === "number"
+                       && desk.stackSlot(c.anchor, i).x === undefined));
+  const mk = desk.markSlot(c.anchor, 3);
+  ok("the mark sits on the TOP card's right corner, not the bottom one",
+     mk.right === c.anchor.x + desk.STACK_W + 2 * desk.STACK_DX + desk.MARK_RX);
+  ok("...and it hangs off the paper's right edge, the way a real one does",
+     desk.MARK_RX > 0 && mk.right > desk.stackSlot(c.anchor, 2).right);
+  ok("...and above the top of it", mk.y < desk.stackSlot(c.anchor, 2).y);
 
   // The whole point of a derived anchor: move every member by the same delta
   // and the clip has already moved, with nothing to keep in step.
@@ -361,6 +367,78 @@ console.log("\n--- clip geometry: derived, never stored ---");
   const c2 = dataOf(s, pid).clips[0];
   eq("dragging every member moves the clip by exactly that delta",
      c2.anchor, { x: c.anchor.x + 200, y: c.anchor.y - 40 });
+}
+
+// ===================================================================
+console.log("\n--- the open grid is laid out from measured cards ---");
+{
+  const anchor = { x: 400, y: 300 };
+  const wide = (n, w, h = 180) => Array.from({ length: n }, () => ({ w, h }));
+
+  // THE BUG THIS REPLACES: a fixed 300px column pitch against cards that size
+  // themselves up to CARD_MAX_W. Anything wider than the pitch overlapped its
+  // neighbour and showed only part of itself.
+  const g = desk.openGrid(anchor, wide(6, desk.CARD_MAX_W), { room: 4000 });
+  const overlaps = [];
+  for (let i = 0; i < g.at.length; i++) {
+    for (let j = i + 1; j < g.at.length; j++) {
+      const a = g.at[i], b = g.at[j];
+      if (Math.abs(a.x - b.x) < desk.CARD_MAX_W && Math.abs(a.y - b.y) < 180) overlaps.push([i, j]);
+    }
+  }
+  ok("no two members of an open clip can overlap, at the widest card there is",
+     overlaps.length === 0, JSON.stringify(overlaps));
+  ok("...because the column pitch is the widest MEASURED card plus a gap",
+     g.pitchX === desk.CARD_MAX_W + desk.OPEN_GAP_X);
+  ok("...and the row pitch is the tallest one plus a gap", g.pitchY === 180 + desk.OPEN_GAP_Y);
+
+  // the column count is derived, not the constant 3 it used to be
+  ok("wide cards in a narrow window drop to fewer columns",
+     desk.openGrid(anchor, wide(6, 410), { room: 900 }).cols === 2);
+  ok("...to one, if that is all that fits",
+     desk.openGrid(anchor, wide(6, 410), { room: 500 }).cols === 1);
+  ok("narrow cards with room to spare still open three across, as delivered",
+     desk.openGrid(anchor, wide(6, 260), { room: 4000 }).cols === desk.OPEN_COLS_MAX);
+  ok("...and never more than three, however much room there is",
+     desk.openGrid(anchor, wide(20, 260), { room: 40000 }).cols === desk.OPEN_COLS_MAX);
+  ok("a clip of two opens two across, not two-of-three",
+     desk.openGrid(anchor, wide(2, 260), { room: 4000 }).cols === 2);
+  ok("twelve members wrap into rows rather than walking off the desk",
+     desk.openGrid(anchor, wide(12, 300), { room: 4000 }).rows === 4);
+
+  // an expanded member is left out of the pitch (it is temporarily 460 wide)
+  const mixed = [{ w: 300, h: 160 }, null, { w: 280, h: 150 }];
+  const gm = desk.openGrid(anchor, mixed, { room: 4000 });
+  ok("a member with no measurement still gets a slot", gm.at.length === 3);
+  ok("...but contributes nothing to the pitch", gm.pitchX === 300 + desk.OPEN_GAP_X);
+
+  // clamped in the layout, the same rule §14.2 fixed for stored positions
+  const corner = desk.openGrid({ x: desk.DESK_W - 100, y: desk.DESK_H - 100 }, wide(6, 400), { room: 4000 });
+  const last = corner.at[corner.at.length - 1];
+  ok("an open grid near the edge is pulled back onto the desk",
+     last.x + 400 <= desk.DESK_W && last.y <= desk.DESK_H);
+  ok("...and never off the top-left instead", corner.origin.x >= 0 && corner.origin.y >= 0);
+}
+
+// ===================================================================
+console.log("\n--- an attached post-it sits where it was dropped ---");
+{
+  const anchor = { x: 500, y: 400 };
+  eq("an offset is measured from the clip's anchor",
+     desk.noteOffset(anchor, { x: 560, y: 470 }), { dx: 60, dy: 70 });
+  eq("...and drawing it again puts it back in exactly that spot",
+     desk.noteAt(anchor, { dx: 60, dy: 70 }), { x: 560, y: 470 });
+  eq("a note attached before offsets existed gets the default, once",
+     desk.noteAt(anchor, null),
+     { x: anchor.x + desk.NOTE_OFFSET_DEFAULT.dx, y: anchor.y + desk.NOTE_OFFSET_DEFAULT.dy });
+  eq("...and so does one carrying nonsense", desk.noteAt(anchor, { dx: NaN, dy: 3 }),
+     { x: anchor.x + desk.NOTE_OFFSET_DEFAULT.dx, y: anchor.y + desk.NOTE_OFFSET_DEFAULT.dy });
+  // the whole point: the default no longer parks it on top of the mark
+  ok("the default sits clear of the mark rather than on it",
+     desk.NOTE_OFFSET_DEFAULT.dy > Math.abs(desk.MARK_DY) + desk.MARK_SIZE);
+  // round-trip through a move, which is all "drag it around inside the clip" is
+  const moved = desk.noteAt(anchor, desk.noteOffset(anchor, { x: 612, y: 388 }));
+  eq("dropping, then redrawing, is lossless", moved, { x: 612, y: 388 });
 }
 {
   // A clip must hit the desk's edge AS ONE OBJECT. Clamping each member
@@ -461,6 +539,10 @@ console.log("\n--- the constants the CSS and the JS both hold ---");
   const px = (name) => Number((appcss.match(new RegExp(`${name}:\\s*(\\d+)px`)) || [])[1]);
   ok("--desk-clip-mark matches MARK_SIZE", px("--desk-clip-mark") === desk.MARK_SIZE);
   ok("--desk-note-w matches NOTE_W", px("--desk-note-w") === desk.NOTE_W);
+  // The stack reckons its right edge from this width, and the CSS is what
+  // actually caps a card at it. If they drift, the clip stops gripping the
+  // paper — so they are checked, not just commented.
+  ok("--desk-card-max matches STACK_W", px("--desk-card-max") === desk.STACK_W);
 }
 
 console.log("\n--- the service worker knows about the new file ---");
