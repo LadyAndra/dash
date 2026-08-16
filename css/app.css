@@ -2778,10 +2778,6 @@ button, input, textarea, select {
 .dclip-mark svg { width: 100%; height: auto; display: block; }
 .dclip-mark.is-dragging { cursor: grabbing; }
 .dclip-mark:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius); }
-.dclip-mark.is-drop-target {
-  box-shadow: 0 0 0 2px var(--text-primary);
-  border-radius: var(--radius);
-}
 /* Open, the clip is parked above its grid rather than gripping anything. */
 .dclip-mark.is-open { opacity: 0.85; }
 

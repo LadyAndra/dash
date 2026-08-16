@@ -402,7 +402,7 @@ console.log("\n--- the drop decides whether a post-it is attached ---");
   note.querySelector('.dnote-drag').dispatchEvent(pointer('pointerdown', 100, 100));
   ok("the grip is", h.host.holds === 1);
   deskEl.dispatchEvent(pointer('pointermove', 720, 430));
-  ok("...and the clip it would land on lights up", mark.classList.contains('is-drop-target'));
+  ok("...and the clip is marked as the attachment target", mark.classList.contains('is-drop-target'));
   deskEl.dispatchEvent(pointer('pointerup', 720, 430));
   ok("dropping it on a clip attaches it", h.store.notes(h.pid)[0].clip === cid);
   ok("...in one field, keeping its old position underneath",
@@ -768,6 +768,7 @@ console.log("\n--- Step 5 round 1: the Desk shell survives ordinary project rend
   const surface = page.querySelector('.desk-surface');
   const mat = page.querySelector('.desk-mat');
   const opens = page._deskController._drawer.transitionCount;
+  const weightRunsBeforeStatus = page._deskController._surface.weightRuns;
 
   store.setField(ids[0], 'status', 'done');
   page = render();
@@ -784,6 +785,24 @@ console.log("\n--- Step 5 round 1: the Desk shell survives ordinary project rend
   ok("refreshing an already-open shelf did not run its opening transition again",
      page._deskController._drawer.transitionCount === opens,
      `${opens} -> ${page._deskController._drawer.transitionCount}`);
+
+  // Pile weights depend only on loose membership + x/y, not card content or z.
+  // The status write above therefore must NOT have paid the O(n²) scan again.
+  const weightRunsAfterStatus = page._deskController._surface.weightRuns;
+  ok("a status-only refresh does not recompute pile weights",
+     weightRunsAfterStatus === weightRunsBeforeStatus,
+     `${weightRunsBeforeStatus} -> ${weightRunsAfterStatus}`);
+
+  // Move beta inside the pile radius: geometry really changed, so one new scan
+  // is required and both nearby cards receive the new derived weight.
+  store.placeOnDesk(ids[1], pid, { x: 260, y: 220 }, 20);
+  render();
+  ok("moving a loose card invalidates the pile-weight cache exactly once",
+     page._deskController._surface.weightRuns === weightRunsAfterStatus + 1,
+     `${weightRunsAfterStatus} -> ${page._deskController._surface.weightRuns}`);
+  ok("the invalidated cache updates the visible pile weights",
+     page.querySelector(`.dcard[data-id="${ids[0]}"]`).dataset.w === "1" &&
+     page.querySelector(`.dcard[data-id="${ids[1]}"]`).dataset.w === "1");
 
   // The close timer must belong to this one persistent drawer. Reopening before
   // it fires cancels it; otherwise the old timer empties the newly-opened shelf.
@@ -950,5 +969,6 @@ console.log("\n--- the phone still gets no desk, and no clip button ---");
 }
 
 await sleep(20);
+
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);
 process.exit(fail ? 1 : 0);

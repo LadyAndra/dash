@@ -99,6 +99,7 @@ export function createProjectPageController(store, project, ctx, actions) {
     el: page,
     projectId: project.id,
     _drawer: drawer,
+    _surface: surf,
     mount() {
       if (destroyed) return;
       if (drawer) drawer.mount();
@@ -561,6 +562,13 @@ function surface(runtime, state, drawer, glanceBtn) {
     // finer-grained dirty-region work remains a later pass.
     cards: new Map(), clipMarks: new Map(), notes: new Map(),
   };
+  // Pile weight is derived only from LOOSE-card membership + x/y geometry. A
+  // title/status edit, z raise, drawer edit, note change, etc. must not pay the
+  // O(n²) distance scan again. Keep an ephemeral geometry snapshot beside the
+  // derived Map; it dies with this Desk controller and is never stored/synced.
+  let pileGeometry = new Map();
+  let pileWeights = new Map();
+  let pileWeightRuns = 0;
   let openUnits = [];
   let mounted = false;
   let mountFrame = null;
@@ -621,11 +629,27 @@ function surface(runtime, state, drawer, glanceBtn) {
     relayoutOpen();
   }
 
+  function weightsFor(loose) {
+    let changed = pileGeometry.size !== loose.length;
+    if (!changed) {
+      for (const p of loose) {
+        const prev = pileGeometry.get(p.id);
+        if (!prev || prev.x !== p.pos.x || prev.y !== p.pos.y) { changed = true; break; }
+      }
+    }
+    if (changed) {
+      pileWeights = D.weights(loose);
+      pileGeometry = new Map(loose.map(p => [p.id, { x: p.pos.x, y: p.pos.y }]));
+      pileWeightRuns++;
+    }
+    return pileWeights;
+  }
+
   function refresh() {
     if (destroyed) return;
     const { store, project, ctx, data } = runtime;
 
-    const w = D.weights(data.loose);
+    const w = weightsFor(data.loose);
     const units = [];
     for (const p of data.loose) units.push({ z: p.z, id: p.id, kind: "card", p });
     for (const c of data.clips) {
@@ -789,7 +813,12 @@ function surface(runtime, state, drawer, glanceBtn) {
 
   view._deskMount = mount;
   view._deskFit = fit;
-  return { el: view, refresh, mount, destroy };
+  return {
+    el: view, refresh, mount, destroy,
+    // Private diagnostic used by the headless regression test: lets the suite
+    // prove content-only refreshes did not pay the O(n²) scan again.
+    get weightRuns() { return pileWeightRuns; },
+  };
 }
 
 function mat() {
