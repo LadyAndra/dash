@@ -48,6 +48,22 @@ import { projectView } from "./views/project.js";
 
 const VIEWS = [homeView, listView, boardView, projectView];
 
+// Phone mode is intentionally capture-first for now. Project/Desk is a large
+// workspace feature and is deliberately not offered on a phone while its
+// mobile information architecture is unresolved. Use the SHORT side rather
+// than viewport width so rotating an iPhone cannot accidentally turn Project
+// back on; iPad-sized coarse-pointer devices remain eligible.
+const PHONE_SHORT_SIDE_MAX = 600;
+function isPhoneUI() {
+  try {
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
+    return coarse && shortSide <= PHONE_SHORT_SIDE_MAX;
+  } catch {
+    return false;
+  }
+}
+
 // The Home tab shows this paw print instead of its text label — the word
 // "Home" was getting lost among the other tabs on narrow mobile screens, and
 // the paw doubles as a nod to Dash (the dog the app and Andra's queen-Victoria
@@ -451,10 +467,20 @@ function applyCatalogChrome(view) {
 // ===================================================
 //  RENDER
 // ===================================================
-function activeView() { return VIEWS.find(v => v.name === state.viewName) || listView; }
+function activeView() {
+  const requested = VIEWS.find(v => v.name === state.viewName) || listView;
+  if (requested.name === "project" && isPhoneUI()) {
+    state.viewName = "home";
+    return homeView;
+  }
+  return requested;
+}
 
 function setView(name) {
-  state.viewName = name;
+  // Even if a stale button, history path or future caller asks for Project on
+  // a phone, keep the phone in its capture/list workflow rather than exposing
+  // the unfinished narrow Project page. No project data is removed.
+  state.viewName = (name === "project" && isPhoneUI()) ? "home" : name;
   state.viewLocal = {};
   // Changing view drops any selection: the entries you'd picked probably
   // aren't even on screen any more, and acting on invisible items is exactly

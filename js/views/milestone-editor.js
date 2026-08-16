@@ -231,65 +231,24 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
   return row;
 }
 
-// A quiet Dash readout that opens the platform's native date picker. The
-// native input stays in the DOM for the actual selection, but it no longer has
-// to be physically stretched over the readout (which was unreliable on iOS).
+// One date control, everywhere: the real native input is both the visible
+// control and the picker trigger. That keeps desktop and iPhone on the same
+// interaction contract now, and gives the future Calendar one component
+// boundary to replace later instead of several page/device-specific systems.
 function dateField({ label, value, fkey, ariaLabel, onChange }) {
   const input = el("input", {
     type: "date",
-    class: "ms-date-native",
+    class: "ms-date dash-date",
     value: value || "",
     "aria-label": ariaLabel,
     "data-fkey": fkey,
-    tabindex: "-1",
-  });
-
-  const trigger = el("button", {
-    class: "ms-date-trigger" + (value ? "" : " is-empty"),
-    type: "button",
-    "aria-label": `${ariaLabel}${value ? `, ${instrumentDate(value)}` : ", no date set"}`,
-    text: instrumentDate(value),
-  });
-
-  const refreshReadout = () => {
-    const v = input.value || "";
-    trigger.textContent = instrumentDate(v);
-    trigger.classList.toggle("is-empty", !v);
-    trigger.setAttribute("aria-label", `${ariaLabel}${v ? `, ${instrumentDate(v)}` : ", no date set"}`);
-  };
-
-  const openPicker = () => {
-    // showPicker() is the cleanest path when the browser exposes it. The click
-    // fallback remains inside the user's click gesture for Safari/iOS variants.
-    if (typeof input.showPicker === "function") {
-      try { input.showPicker(); return; } catch { /* use the direct-click fallback */ }
-    }
-    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
-    input.click();
-  };
-
-  trigger.addEventListener("click", openPicker);
-  input.addEventListener("input", refreshReadout);
-  input.addEventListener("change", () => {
-    refreshReadout();
-    onChange(input.value || "");
+    onchange: (e) => onChange(e.target.value || ""),
   });
 
   return el("div", { class: "ms-date-field" }, [
     el("span", { class: "mk", text: label }),
-    el("span", { class: "ms-date-shell" }, [trigger, input]),
+    input,
   ]);
-}
-
-function instrumentDate(value) {
-  if (!value) return "—";
-  const parts = String(value).slice(0, 10).split("-");
-  if (parts.length !== 3) return value;
-  const [year, month, day] = parts;
-  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const mon = months[Number(month) - 1];
-  if (!mon || !day || !year) return value;
-  return `${String(Number(day)).padStart(2, "0")} ${mon} ${year}`;
 }
 
 // ===================================================================

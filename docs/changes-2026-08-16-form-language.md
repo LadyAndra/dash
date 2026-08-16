@@ -1,36 +1,43 @@
-# 16 August 2026 — milestone form language
+# 16 August 2026 — form system v1: native dates + phone scope
 
-This is a visual/interaction refinement of the existing milestone editor. It does not change the milestone data shape, Store methods, sync, or the meaning of any field.
+This note supersedes the two earlier date-readout experiments from the same day. Those experiments were useful visually, but real desktop and iPhone use showed that hiding or indirectly invoking the native date input made date selection less dependable.
 
-## What changed
+## Final decision for now
 
-- Milestone-name inputs no longer sit in permanent four-sided boxes. They keep the same full touch target but rest as text over a single hairline.
-- Due and Remind dates now display as compact Dash readouts (`14 AUG 2026`) instead of leaving the browser's native date field visible all the time.
-- The real native `<input type="date">` is still present over the readout and still supplies the iOS/macOS/browser date picker. Storage remains the existing `YYYY-MM-DD` value; there is no new parsing or timezone conversion.
-- Empty dates read as a quiet dash rather than a large blank field.
-- Secondary milestone copy moves from the faintest ink to the ordinary secondary-ink level so it does not read as disabled.
-- The done control and reorder/remove controls keep their 44px touch areas, but their resting visual marks are smaller/quieter. Interaction size and visual size are deliberately separate.
-- Project-colour drawers and the phone Peek page use the same hierarchy, redrawn from `--ground-ink`; no literal colour was introduced.
+Dash uses **one visible native `<input type="date">` pattern everywhere** until the full Calendar feature is designed. The browser / operating system owns date selection. Dash owns the surrounding hierarchy, spacing, typography and focus treatment.
 
-## Why
+This is deliberately an interim system, not the final visual design of Calendar. When the custom Calendar is eventually built, it should replace this one shared date-control seam rather than introduce different date interactions per page or device.
 
-The milestone editor had become one of the places where native browser controls overpowered Dash's own visual language, especially on iPhone. The new direction is an **archival instrument** rather than a retro gadget: information first, sparse chrome, precise mono dates, serif content, and the operating system used only where it is genuinely better — the date picker itself.
+## Entry editor
 
-## Safety / data
+- The existing Due and Remind fields remain real native date controls; no custom date parser or picker was added.
+- Scheduling is now visually grouped as one metadata section so the date fields do not disappear among Title, Type, Status and Notes.
+- On phone, Due and Remind take full rows rather than reading like two anonymous boxes in a dense form.
+- Title is treated as the primary field; Type and Status read as structured metadata beneath it.
+- Ordinary editing focus uses neutral ink/border emphasis rather than ember. Ember stays meaningful for overdue/attention states.
 
-No saved-data format changed. No migration. No Store/Sync change. Dates are still written through `setMilestoneField()` exactly as before. The service-worker cache version was bumped because `css/app.css` and `js/views/milestone-editor.js` changed.
+## Milestones
 
-## Scope boundary
+- Due and Remind are back to visible native date inputs. The custom `14 AUG 2026` trigger/readout and hidden picker input are removed.
+- The explicit `MARK DONE` / `✓ DONE` treatment from round 2 remains; the orphaned checkbox metaphor stays retired.
+- Milestone title/date/action hierarchy uses the same neutral focus language as the entry editor.
 
-This is the milestone editor as the pilot for the form language. It does not yet replace the date fields in the full entry editor. That should be rolled out only after the milestone version has been used on desktop and iPhone and the visual direction is confirmed in practice.
+## Phone Project scope
 
+For now, phone-sized coarse-pointer devices do not expose the Project view. The Project tab is hidden and any attempt to route into Project returns to Home.
 
-## Round 2 — after desktop + iPhone use
+This does **not** remove, migrate, or alter project data. Desktop Projects and Desk continue exactly as before. The temporary product decision is simply that the phone should be a dependable capture/edit surface instead of squeezing the still-growing Project workspace into a narrow screen.
 
-The first live pass confirmed the readout direction but exposed three problems in actual use. The done checkbox still read as foreign checklist UI, the invisible native date input laid over the readout did not reliably open the picker, and the global ember focus ring made ordinary active fields look like errors.
+## Data / compatibility
 
-Round 2 removes the checkbox metaphor entirely. Completion is now an explicit `MARK DONE` / `✓ DONE` text-state in the milestone metadata line, using the same quiet mono language as dates and labels. The visible date readout is now a real button; it opens a tiny native date input with `showPicker()` when available and a direct user-click fallback otherwise. The native input still owns the date selection and the stored value remains unchanged.
+- No Store or Sync change.
+- No saved-data migration.
+- Entry date storage is unchanged.
+- Milestone date storage is unchanged.
+- No Desk code or Desk behavior changed.
+- No new runtime file was added.
+- `sw.js` moves to `dash-v46` because `css/app.css`, `js/app.js`, and `js/views/milestone-editor.js` changed.
 
-Milestone form focus/active styling is now neutral ink: stronger underline, text emphasis, or a quiet wash depending on the control. Ember remains reserved for actual overdue/error-like status, not ordinary editing focus.
+## What this sets up
 
-No data shape, Store method, sync behavior, or milestone semantics changed. The cache version moves to `dash-v45` because the runtime CSS and milestone editor changed again.
+The next Calendar work can begin from a single predictable rule: **a date field means one thing everywhere**. The eventual custom Calendar may replace the picker/display layer, but it should keep that shared contract rather than create separate systems for Home, the editor, milestones, desktop and phone.

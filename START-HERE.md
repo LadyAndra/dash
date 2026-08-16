@@ -96,6 +96,14 @@ Dash's actual policy is **unregister, don't delete.** When a feature stops being
 
 ---
 
+### Phone scope right now
+
+On phone-sized coarse-pointer devices, **Project / Desk is intentionally unavailable for now**. The Project tab is hidden, and an attempt to enter the Project view returns to Home. This is a presentation/navigation decision only: project data is not deleted or changed, and Projects remain available on desktop and larger devices.
+
+The phone is being treated as the fast capture/edit surface while Dash's future Calendar and mobile information architecture are designed. Do not build a separate phone-only date system in the meantime; ordinary entry dates and milestone dates both use the browser's native date control, with Dash responsible for hierarchy, spacing and focus styling around it.
+
+---
+
 # Where to look when something breaks
 
 | What you're seeing | Likely cause | What to do |
