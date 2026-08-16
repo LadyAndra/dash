@@ -761,7 +761,7 @@ function surface(runtime, state, drawer, glanceBtn) {
     // A retained textarea normally needs no focus repair at all. Keep the old
     // fallback for the two cases that still create a textarea: a brand-new note
     // and a genuine project remount.
-    if (noteFocusFrame != null) cancelAnimationFrame(noteFocusFrame);
+    if (noteFocusFrame != null) window.cancelAnimationFrame(noteFocusFrame);
     noteFocusFrame = restoreNoteFocus(deskEl, state);
     if (mounted) fit();
   }
@@ -778,7 +778,7 @@ function surface(runtime, state, drawer, glanceBtn) {
   function mount() {
     if (destroyed || mounted) return;
     mounted = true;
-    if (mountFrame != null) { cancelAnimationFrame(mountFrame); mountFrame = null; }
+    if (mountFrame != null) { window.cancelAnimationFrame(mountFrame); mountFrame = null; }
     fit();
     if (state.scrollX == null) {
       state.scrollX = Math.max(0, Math.round((view.scrollWidth - view.clientWidth) / 2));
@@ -786,7 +786,7 @@ function surface(runtime, state, drawer, glanceBtn) {
     }
     view.scrollLeft = state.scrollX;
     view.scrollTop = state.scrollY;
-    if (guardFrame != null) cancelAnimationFrame(guardFrame);
+    if (guardFrame != null) window.cancelAnimationFrame(guardFrame);
     guardFrame = requestAnimationFrame(() => { guardFrame = null; guard.hold = false; });
   }
 
@@ -804,9 +804,9 @@ function surface(runtime, state, drawer, glanceBtn) {
   function destroy() {
     if (destroyed) return;
     destroyed = true;
-    if (mountFrame != null) cancelAnimationFrame(mountFrame);
-    if (guardFrame != null) cancelAnimationFrame(guardFrame);
-    if (noteFocusFrame != null) cancelAnimationFrame(noteFocusFrame);
+    if (mountFrame != null) window.cancelAnimationFrame(mountFrame);
+    if (guardFrame != null) window.cancelAnimationFrame(guardFrame);
+    if (noteFocusFrame != null) window.cancelAnimationFrame(noteFocusFrame);
     window.removeEventListener("resize", fit);
     interactions.destroy();
   }
