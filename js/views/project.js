@@ -9,7 +9,7 @@
 
 import { el, emptyState, groundStyle, catalogNo } from "./shared.js";
 import { openEditor } from "../editor.js";
-import { renderProjectPage } from "./desk.js";
+import { createProjectPageController } from "./desk.js";
 import { stageOf } from "../milestones.js";
 
 export const projectView = {
@@ -24,6 +24,7 @@ export const projectView = {
     const projects = store.projects(); // only items of type "project"
 
     if (projects.length === 0) {
+      destroyDetail(state);
       state.picker = null;
       container.innerHTML = "";
       container.appendChild(emptyState(
@@ -34,6 +35,7 @@ export const projectView = {
     }
 
     if (!state.projectId || !store.get(state.projectId)) {
+      destroyDetail(state);
       // THE SHELF IS KEPT, NOT REBUILT (August 16, 2026 — the spine shake).
       //
       // Every store write anywhere in Dash redraws the whole screen, and this
@@ -60,16 +62,24 @@ export const projectView = {
       }
       return;
     }
-    state.picker = null;
-    container.innerHTML = "";
 
-    // The detail page is the DESK, and the desk has to size and scroll itself
-    // the moment it lands in the document — synchronously, in this same task,
-    // before the browser gets a chance to paint. Doing it a frame later is what
-    // made typing flicker (see the note on `restore` in views/desk.js).
-    const detail = renderDetail(store, state, ctx);
-    container.appendChild(detail);
-    if (detail._deskMount) detail._deskMount();
+    state.picker = null;
+    const project = store.get(state.projectId);
+    if (!state.detail || state.detail.projectId !== project.id) {
+      destroyDetail(state);
+      state.detail = buildDetail(store, state, ctx, project);
+    } else {
+      state.detail.refresh(project, ctx);
+    }
+
+    // Ordinary store writes stop here: the same wrapper and the same Desk
+    // controller stay attached. Only a genuine picker/project boundary mounts
+    // a different subtree.
+    if (state.detail.el.parentNode !== container) {
+      container.innerHTML = "";
+      container.appendChild(state.detail.el);
+      state.detail.mount();
+    }
   },
 };
 
@@ -262,29 +272,46 @@ function buildPicker(store, state, ctx) {
 // home in the Peek drawers instead — the entry groups became the Filed shelf,
 // and the milestone editor moved into its own drawer, mount point only.
 //
-// This function is now four lines because views/desk.js owns the whole body,
-// banner included: the Peek drawer handles hang off the banner's bottom edge,
-// so drawing them apart would mean two files agreeing about one seam.
-function renderDetail(store, state, ctx) {
-  const project = store.get(state.projectId);
-  const wrap = el("div", { class: "sheet-page sheet-page-desk" });
-  const reload = () => ctx.rerender();
+// views/desk.js owns the whole body, banner included: the Peek drawer handles
+// hang off the banner's bottom edge, so drawing them apart would mean two files
+// agreeing about one seam. This wrapper owns one Desk controller per project.
+function destroyDetail(state) {
+  if (!state.detail) return;
+  state.detail.destroy();
+  state.detail = null;
+}
 
-  const page = renderProjectPage(store, project, ctx, {
-    onBack: () => { state.projectId = null; ctx.rerender(); },
-    onEdit: () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }),
-    onNew:  () => {
+function buildDetail(store, state, ctx, project) {
+  const wrap = el("div", { class: "sheet-page sheet-page-desk" });
+  let currentProject = project;
+  let currentCtx = ctx;
+  const reload = () => currentCtx.rerender();
+
+  const actions = {
+    onBack: () => { state.projectId = null; currentCtx.rerender(); },
+    onEdit: () => openEditor(store, currentProject.id, { onClose: reload, sync: currentCtx.sync }),
+    onNew: () => {
       const newId = store.createItem({ title: "" });
-      store.assignToProject(newId, project.id);
-      openEditor(store, newId, { onClose: reload, sync: ctx.sync });
+      store.assignToProject(newId, currentProject.id);
+      openEditor(store, newId, { onClose: reload, sync: currentCtx.sync });
     },
-    onAdd:  () => openAssignPicker(store, project.id, reload),
-  });
-  wrap.appendChild(page);
-  // pass the desk's mount hook up to render(), which is the thing holding the
-  // container and therefore the only place that knows when we are attached
-  wrap._deskMount = page._deskMount;
-  return wrap;
+    onAdd: () => openAssignPicker(store, currentProject.id, reload),
+  };
+
+  const desk = createProjectPageController(store, currentProject, currentCtx, actions);
+  wrap.appendChild(desk.el);
+
+  return {
+    el: wrap,
+    projectId: project.id,
+    mount: () => desk.mount(),
+    refresh(nextProject, nextCtx) {
+      currentProject = nextProject;
+      currentCtx = nextCtx;
+      desk.refresh(currentProject, currentCtx, actions);
+    },
+    destroy: () => desk.destroy(),
+  };
 }
 
 // Entries that are members of this project — i.e. they link to it with the

@@ -24,6 +24,7 @@ Object.defineProperty(dom.window, 'innerHeight', { get: () => 900, configurable:
 
 const { Store, PROJECT_LINK } = await import('../js/store.js');
 const { renderProjectPage } = await import('../js/views/desk.js');
+const { projectView } = await import('../js/views/project.js');
 
 let fail = 0, n = 0;
 const ok = (name, c, extra = "") => { n++; if (!c) fail++; console.log((c ? "PASS  " : "FAIL  ") + name + (c ? "" : "\n      " + extra)); };
@@ -45,9 +46,9 @@ function makeHost() {
   return { holdRenders, scheduleRender, get renders() { return renders; }, get holds() { return holds; } };
 }
 
-// A whole app-ish harness: build() draws the page, and redraw() rebuilds it the
-// way app.js does after a store write, so a second gesture runs against fresh
-// elements rather than stale ones.
+// The original direct-render harness still rebuilds the page on redraw, which
+// keeps all pre-reconciliation gesture assertions intact. The Step 5 section
+// below exercises projectView itself and asserts that its Desk shell persists.
 function harness(seed) {
   const host = makeHost();
   const store = new Store();
@@ -723,6 +724,106 @@ console.log("\n--- a selection started in an expanded card stays inside it ---")
   ok("the selection is pulled back inside the card",
      (!a || card.contains(a)) && (!f || card.contains(f)),
      `anchor in card: ${a && card.contains(a)}, focus in card: ${f && card.contains(f)}`);
+}
+
+
+// ===================================================================
+console.log("\n--- Step 5 round 1: the Desk shell survives ordinary project renders ---");
+{
+  const host = document.getElementById('host');
+  host.innerHTML = "";
+  const store = new Store();
+  const pid = store.createItem({ title: "Persistent Desk", type: "project" });
+  const ids = ["alpha", "beta"].map(t => store.createItem({ title: t }));
+  for (const id of ids) store.assignToProject(id, pid);
+  ids.forEach((id, i) => store.placeOnDesk(id, pid, { x: 220 + i * 320, y: 180 + i * 180 }, i + 1));
+
+  const viewLocal = { projectId: pid };
+  let ctx;
+  const render = () => {
+    projectView.render({}, ctx, host);
+    const deskEl = host.querySelector('.desk-surface');
+    if (deskEl) deskEl.setPointerCapture = () => {};
+    for (const c of host.querySelectorAll('.dcard, .dnote, .dclip-mark')) {
+      Object.defineProperty(c, 'offsetWidth', { get: () => 300, configurable: true });
+      Object.defineProperty(c, 'offsetHeight', { get: () => 160, configurable: true });
+    }
+    return host.querySelector('.desk-page');
+  };
+  ctx = {
+    store, viewLocal, selection: { active: false }, onOpen(){}, sync: null,
+    holdRenders: makeHost().holdRenders,
+    rerender: () => render(),
+  };
+
+  let page = render();
+  const pageRef = page;
+  const banner = page.querySelector('.pb');
+  const handle = page.querySelector('.desk-handle[data-shelf="filed"]');
+  handle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  const drawer = page.querySelector('.desk-drawer');
+  const inner = page.querySelector('.desk-drawer-inner');
+  const view = page.querySelector('.desk-viewport');
+  const sizer = page.querySelector('.desk-sizer');
+  const surface = page.querySelector('.desk-surface');
+  const mat = page.querySelector('.desk-mat');
+  const opens = page._deskController._drawer.transitionCount;
+
+  store.setField(ids[0], 'status', 'done');
+  page = render();
+
+  ok("the project page itself survives the status write", page === pageRef);
+  ok("the banner is the same DOM node", page.querySelector('.pb') === banner);
+  ok("the Filed handle is the same DOM node", page.querySelector('.desk-handle[data-shelf="filed"]') === handle);
+  ok("the drawer body is the same DOM node", page.querySelector('.desk-drawer') === drawer);
+  ok("the drawer inner container is the same DOM node", page.querySelector('.desk-drawer-inner') === inner);
+  ok("the viewport / sizer / surface all survive",
+     page.querySelector('.desk-viewport') === view && page.querySelector('.desk-sizer') === sizer && page.querySelector('.desk-surface') === surface);
+  ok("the mat is the same SVG node", page.querySelector('.desk-mat') === mat);
+  ok("Filed stays open after the write", viewLocal.desk.drawer === 'filed' && handle.getAttribute('aria-expanded') === 'true');
+  ok("refreshing an already-open shelf did not run its opening transition again",
+     page._deskController._drawer.transitionCount === opens,
+     `${opens} -> ${page._deskController._drawer.transitionCount}`);
+
+  // The close timer must belong to this one persistent drawer. Reopening before
+  // it fires cancels it; otherwise the old timer empties the newly-opened shelf.
+  handle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  handle.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  const reopenedText = inner.textContent;
+  await sleep(430);
+  ok("a fast close-then-reopen keeps the shelf open",
+     viewLocal.desk.drawer === 'filed' && handle.getAttribute('aria-expanded') === 'true');
+  ok("...and the stale close timer does not wipe its contents",
+     inner.textContent === reopenedText && inner.textContent.includes('alpha'), inner.textContent);
+
+  // Repeated refreshes must not add another set of document/window handlers.
+  // One Escape therefore removes exactly ONE layer from the state ladder.
+  viewLocal.desk.clipping = { picked: [] };
+  viewLocal.desk.expanded = ids[0];
+  viewLocal.desk.drawer = 'filed';
+  for (let i = 0; i < 6; i++) render();
+  document.dispatchEvent(Object.assign(new dom.window.Event('keydown', { bubbles: true }), { key: 'Escape' }));
+  ok("repeated refreshes still answer Escape only once",
+     viewLocal.desk.clipping === null && viewLocal.desk.expanded === ids[0] && viewLocal.desk.drawer === 'filed',
+     JSON.stringify({ clipping: viewLocal.desk.clipping, expanded: viewLocal.desk.expanded, drawer: viewLocal.desk.drawer }));
+
+  // The gesture closure is old; its LOOKUPS must not be. Add a note after the
+  // controller was wired and prove the existing contextmenu handler can see it.
+  store.addNote(pid, { text: "late note", pos: { x: 80, y: 80 } });
+  render();
+  const late = host.querySelector('.dnote');
+  late.dispatchEvent(Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }),
+                                   { clientX: 100, clientY: 100 }));
+  ok("the one persistent wireDesk sees data added after initial mount", !!document.querySelector('.desk-menu'));
+  document.querySelector('.desk-menu-item')?.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  const back = [...page.querySelectorAll("button")].find(b => b.textContent === "← All");
+  back.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  ok("returning to the picker destroys the Desk controller", !host.querySelector('.desk-page') && viewLocal.detail === null);
+  viewLocal.desk.clipping = { picked: [] };
+  document.dispatchEvent(Object.assign(new dom.window.Event('keydown', { bubbles: true }), { key: 'Escape' }));
+  ok("the destroyed controller no longer owns document key events", viewLocal.desk.clipping !== null);
+  host.innerHTML = "";
 }
 
 console.log("\n--- the phone still gets no desk, and no clip button ---");
