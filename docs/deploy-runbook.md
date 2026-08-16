@@ -1,80 +1,102 @@
 # Deploying Dash — the runbook
 
-For uploading changes to `LadyAndra.github.io/dash/` through GitHub's website. Same steps every time.
+For uploading changes to `LadyAndra.github.io/dash/` through GitHub's website.
+
+The goal is simple: Andra uploads complete files, GitHub checks them, and GitHub Pages publishes them.
 
 ---
 
-## The one rule that breaks everything
+## The one rule that can still break things
 
-**Drag FOLDERS, not loose files.**
+**Keep files in the folders they belong in.**
 
-If you drag `pet.js` on its own, GitHub drops it in the repo root as `/pet.js` instead of `/js/widgets/pet.js`. The app then can't find it and breaks. Dragging the `js` folder keeps every path correct automatically.
+If a change note says to upload a whole folder such as `js`, `css`, `docs`, or `tests`, drag the **folder**, not loose files pulled out of it. That preserves the correct paths.
 
-The single exception is `sw.js`, which genuinely lives in the root — that one gets dragged on its own.
+Files that genuinely live at the repository root — such as `index.html`, `manifest.json`, `START-HERE.md`, and `sw.js` — are uploaded as individual files only when a change note specifically includes them.
 
 ---
 
-## Steps
+## Normal publishing steps
 
-1. Go to **github.com/LadyAndra/dash**
+1. Go to **github.com/LadyAndra/dash**.
 
-2. Click **Add file** → **Upload files** (top right, next to the green Code button)
+2. Click **Add file → Upload files**.
 
-3. From your Dash folder, drag these in — **all four at once is fine**:
-   - the `js` folder
-   - the `css` folder
-   - the `docs` folder
-   - `sw.js` (the loose file)
+3. Drag in **exactly the files or folders listed in the change note**.
 
-4. Wait for the file list to finish appearing. A big upload takes a few seconds.
+4. Wait for GitHub to finish showing the uploaded files.
 
-5. In the **Commit changes** box, type a short note to your future self — "corner cluster: the pet" or similar.
+5. In the commit message box, type a short plain-English note about the change.
 
 6. Click **Commit changes**.
 
-7. Wait about a minute. GitHub Pages rebuilds the site on its own; there's nothing to click.
+7. Check the repository's **Actions** tab. The automatic workflow called **Check Dash** should run.
+
+8. If it finishes with a **green check**, continue.
+
+9. If it finishes with a **red X**, stop. Do not try to diagnose it. Give the failed check to the AI that made the change.
+
+10. Give GitHub Pages about a minute to publish.
 
 ---
 
-## Then check it worked
+## Then check Dash
 
-**On the Mac:** open Dash and hard-refresh — **Cmd + Shift + R**. The app is set to reload itself once when new code arrives, so you may see it flash and reload. That's correct.
+**Mac:** open Dash while online. If the old version is still showing, press **Cmd + Shift + R** once.
 
-**On the iPhone:** swipe the Dash app fully closed (swipe up and flick it away), then reopen it. A plain close isn't enough — iOS keeps it suspended and you'll keep seeing the old version.
+**iPhone/iPad:** fully close Dash or its browser tab and reopen it while online.
+
+Then try the small list of checks included with the change.
+
+---
+
+## Cache/versioning: no manual step
+
+Dash's service worker (`sw.js`) now uses **one permanent offline cache**.
+
+When Dash is online, it asks for the newest app files and automatically replaces the saved offline copies. When there is no internet, it falls back to the last good copies.
+
+That means:
+
+- ordinary code changes do **not** require editing `sw.js`;
+- there is **no cache version number to bump**;
+- `sw.js` only needs uploading when the service-worker code itself is intentionally changed;
+- a new file will be cached automatically after Dash successfully requests it while online.
+
+Do not reintroduce a manual cache-version step unless Andra explicitly asks for a different offline strategy.
 
 ---
 
 ## If nothing changed after uploading
 
-Almost always one of two things:
+1. Make sure the automatic **Check Dash** action was green.
+2. Open Dash while connected to the internet.
+3. On Mac, use **Cmd + Shift + R** once.
+4. On phone/tablet, fully close and reopen Dash.
+5. If the old behavior is still there, stop and bring the screenshot/problem description back to chat.
 
-**You forgot `sw.js`.** It's the loose file at the root and it's easy to miss when everything else is a folder. Without it, `CACHE_VERSION` never changes and your devices keep happily serving the code they already had. Re-upload just that file.
-
-**The phone is still holding the old app.** Swipe it fully closed and reopen. If it's stubborn, delete the icon from the Home Screen and re-add it from Safari — your data is safe, it lives in the app's storage and in Dropbox, not in the icon.
-
----
-
-## If the app comes up blank or broken
-
-This is nearly always a file that landed in the wrong place. Browse the repo on github.com and check the file tree looks like this:
-
-```
-dash/
-  index.html
-  sw.js
-  manifest.json
-  css/
-  js/
-    widgets/
-  docs/
-```
-
-If you see a stray `.js` file sitting in the root next to `index.html`, that's the problem — delete it (click it, then the bin icon), and re-upload by dragging the folder instead.
-
-To get back to working immediately while sorting it out: on the repo's main page, click the commit count (top right of the file list, says something like "47 commits"), find the last commit that worked, and you can restore from there. Nothing is ever lost.
+Do not delete browser storage or change GitHub settings as a first troubleshooting step.
 
 ---
 
-## Uploading the same folder twice is safe
+## If Dash comes up blank or broken
 
-GitHub replaces files that have the same path and adds ones that are new. It never deletes anything you didn't touch. So if you're unsure whether something uploaded, just do it again — there's no way to make it worse.
+Do not start repairing files yourself.
+
+Take a screenshot and report:
+
+- what was changed;
+- what was uploaded;
+- whether **Check Dash** was green or red;
+- what device/browser is showing the problem;
+- and what you see.
+
+Because files are versioned in GitHub, a previous working version can be recovered if necessary.
+
+---
+
+## Uploading the same folder twice
+
+Uploading a file again to the same path replaces that file with the new copy. Files you did not upload are not automatically removed.
+
+If a change includes file deletions or renames, the AI handing over the change must explain those separately rather than expecting Andra to infer them.
