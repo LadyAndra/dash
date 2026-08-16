@@ -1,0 +1,32 @@
+name: Check Dash
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Dash tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the current Dash files
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the one test-only helper
+        run: npm install --prefix tests --no-save --no-package-lock jsdom
+
+      - name: Run every automated Dash test
+        shell: bash
+        run: |
+          set -e
+          for test_file in tests/*.test.mjs; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
