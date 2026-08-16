@@ -3,7 +3,7 @@
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
 
-const CACHE_VERSION = "dash-v39";
+const CACHE_VERSION = "dash-v41";
 const SHELL = [
   "./",
   "./index.html",
@@ -24,6 +24,7 @@ const SHELL = [
   "./js/selection.js",
   "./js/milestones.js",
   "./js/desk.js",
+  "./js/icons.js",
   "./js/entries.js",
   "./js/merge-notes.js",
   "./js/settings.js",

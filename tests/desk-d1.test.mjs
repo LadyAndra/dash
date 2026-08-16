@@ -127,6 +127,59 @@ console.log("\n--- same card, same desk, two devices: one wins, the loser is rep
   eq("restoring puts the lost position back", s2.deskRecord(ids[0], pid).pos, {x:111,y:111});
 }
 
+console.log("\n--- a dismissed merge note stays dismissed (August 15, 2026) ---");
+// The bug: dismissing removed a note from the visible list, and the visible
+// list was the only record Dash kept of having seen it. Replay the losing op
+// again — which sync does every time it re-reads a log — and the note came
+// straight back.
+//
+// Which assertion is the red one, checked against the un-fixed store: it is
+// "...and it is still gone after a reload", and its clearCollisions twin.
+// The same-session replay passes on the OLD code too, because the in-memory
+// _collisionKeys set happened to still hold the key — which is exactly why
+// the bug was only ever visible the next time Dash was opened, and exactly
+// how it survived a green suite. The reload is the test.
+{
+  const { s, pid, ids } = seeded();
+  s.placeOnDesk(ids[0], pid, { x: 10, y: 10 }, 1);
+  const base = s.drainPendingAsLines().map(JSON.parse);
+  const key = deskKey(pid);
+  const loser  = { op:"vs", itemId: ids[0], key, action:"set", field:"pos", value:{x:111,y:111}, ts:{ wall: Date.now()-2000, count:1, device:"mac" } };
+  const winner = { op:"vs", itemId: ids[0], key, action:"set", field:"pos", value:{x:222,y:222}, ts:{ wall: Date.now()-1000, count:1, device:"ipad" } };
+
+  const s2 = new Store(); s2.replayLog([...base, winner, loser]);
+  ok("the overwritten move is reported once", s2.collisions().length === 1);
+
+  const noteKey = s2.collisions()[0].key;
+  s2.dismissCollision(noteKey);
+  ok("dismissing takes it off the list", s2.collisions().length === 0);
+
+  s2.replayLog([loser]);                                    // sync re-reads the same log
+  ok("replaying the same losing op does not bring it back", s2.collisions().length === 0,
+     JSON.stringify(s2.collisions()));
+
+  // and across a reload: a fresh Store reads the same localStorage this one wrote
+  const s3 = new Store(); s3.replayLog([...base, winner, loser]);
+  ok("...and it is still gone after a reload", s3.collisions().length === 0,
+     JSON.stringify(s3.collisions()));
+
+  // "Clear the list" makes the same promise about every note at once.
+  const other = { op:"vs", itemId: ids[1], key, action:"set", field:"pos", value:{x:333,y:333}, ts:{ wall: Date.now()-2000, count:1, device:"mac" } };
+  const otherWins = { op:"vs", itemId: ids[1], key, action:"set", field:"pos", value:{x:444,y:444}, ts:{ wall: Date.now()-1000, count:1, device:"ipad" } };
+  const s4 = new Store(); s4.replayLog([...base, otherWins, other]);
+  ok("a second collision is reported normally", s4.collisions().length === 1);
+  s4.clearCollisions();
+  s4.replayLog([other]);
+  ok("clearing the list also holds against a replay", s4.collisions().length === 0,
+     JSON.stringify(s4.collisions()));
+
+  // Tidy up: every block in this file shares one localStorage shim, so a
+  // failure here must not leave notes behind and turn a later, unrelated
+  // block red as well.
+  localStorage.removeItem("dash.mergeNotes");
+  localStorage.removeItem("dash.mergeNotesResolved");
+}
+
 console.log("\n--- different fields never contest (move vs clip) ---");
 {
   const { s, pid, ids } = seeded();

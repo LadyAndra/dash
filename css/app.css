@@ -2214,6 +2214,23 @@ button, input, textarea, select {
   --desk-weight-step:  3px;
   --pb-count-size:     22px;     /* locked r5 — the progress fraction */
   --pb-rule: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 45%, transparent);
+
+  /* ---- Phase D2: clips and post-its ----
+     First pass. Every one of these is expected to move once Andra has seen it
+     on a real desk; each has a twin in js/desk.js where the JS needs the same
+     number, and the pairs are marked on both sides. */
+  --desk-clip-mark:    52px;     /* must match MARK_SIZE in js/desk.js */
+  --desk-clip-icon:    22px;     /* the same drawing, at banner-button size */
+  --desk-note-w:       220px;    /* must match NOTE_W */
+  --desk-note-min-h:   118px;
+  /* How much of the project's own colour goes into the post-it's paper.
+     VERIFIED against js/theme.js's contrast(), not eyeballed: at 18% the worst
+     possible project colour still leaves --text-primary at 7.66:1 on the paper
+     in both themes (AAA). See tests/desk-d2.test.mjs, which fails if this
+     number and NOTE_TINT_PCT in js/desk.js drift apart.
+     --text-muted also clears 4.5:1 here. --text-faint does NOT — so nothing on
+     a post-it may use it. */
+  --desk-note-tint:    18%;
 }
 /* The desk owns the whole window. #view-host carries the page inset for every
    other view, so the desk bleeds back out through it with negative margins —
@@ -2589,4 +2606,169 @@ button, input, textarea, select {
 .dcard.is-expanded.is-dragging .dcard-drag { cursor: grabbing; }
 .dcard-grip { color: var(--text-faint); letter-spacing: 0.1em; }
 .dcard-link { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ============================================================
+   THE DESK, PHASE D2 — clips and post-its
+   ------------------------------------------------------------
+   Still no colour named here. The clip mark draws in --ground-bg (the
+   project's own colour, arriving from groundStyle() on .desk-page) and the
+   post-it's paper is that same colour mixed into ordinary raised stock, so
+   both re-colour per project and re-theme with everything else.
+   ============================================================ */
+
+/* ---------- the banner button ---------- */
+/* An icon button, sized like the ✧ beside it: the same --control-min floor, so
+   it keeps a real target and a real accessible name without a word on it. */
+.banner-clip {
+  padding: 0;
+  min-width: var(--control-min);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ground-ink, var(--text-primary));
+}
+.banner-clip svg { width: var(--desk-clip-icon); height: auto; display: block; }
+/* Pressed reads as inked-in rather than merely outlined, because this button
+   puts the desk into a mode and a mode has to be obvious. */
+.banner-clip.is-on {
+  background: var(--ground-ink, var(--text-primary));
+  color: var(--ground-bg, var(--surface));
+  border-color: var(--ground-ink, var(--text-primary));
+}
+
+/* The line that says what to do while picking. Over the viewport, not on the
+   desk, so panning doesn't carry it off. */
+.desk-clip-hint {
+  position: absolute; z-index: 6;
+  left: 50%; top: var(--space-4); transform: translateX(-50%);
+  max-width: min(90%, 52ch);
+  padding: var(--space-2) var(--space-4);
+  background: var(--ground-bg, var(--surface-raised));
+  color: var(--ground-ink, var(--text-primary));
+  border: 1px solid color-mix(in srgb, var(--ground-ink, var(--text-primary)) 45%, transparent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-sm);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* A card picked for a new clip. Deliberately NOT the list view's checkbox
+   chrome — on the desk you point at the paper, you don't tick a box. */
+.dcard.is-clip-picked {
+  box-shadow: 0 0 0 2px var(--ground-ink, var(--text-primary));
+  border-color: var(--ground-ink, var(--text-primary));
+}
+.dcard.is-clip-picked.flag { box-shadow: 0 0 0 2px var(--ground-ink, var(--text-primary)), inset 2px 0 0 var(--ember); }
+
+/* ---------- a clipped card ---------- */
+/* Closed, a member is part of one object, so it doesn't offer its own grab
+   cursor or its own hover edge — the stack does. The pile-weight shadows are
+   off too: a clip is already a stack, and weight is for accidental piles. */
+.dcard.is-clipped { cursor: grab; }
+.dcard.is-clipped:hover { border-color: var(--border-strong); }
+.dcard.is-clipped.is-dragging { cursor: grabbing; }
+/* Open, each member is a card again: its own hover, its own drag, its own
+   double-click to expand. */
+.dcard.is-clip-open { cursor: grab; }
+.dcard.is-clip-open:hover { border-color: var(--text-faint); }
+
+/* ---------- the paperclip mark ---------- */
+.dclip-mark {
+  position: absolute;
+  width: var(--desk-clip-mark);
+  height: var(--desk-clip-mark);
+  display: flex; align-items: center; justify-content: center;
+  /* the project's own colour, straight from the banner's ground */
+  color: var(--ground-bg, var(--text-primary));
+  /* The tilt is set per clip in JS, from a hash of its id — the same static
+     rotation the cards' wobble uses, so it survives reduced motion untouched. */
+  transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(var(--rot, 0deg));
+  cursor: grab; touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  /* it is a real mark on real paper: a hairline of the desk's own ink keeps it
+     from vanishing on a project colour close to the surface behind it */
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, var(--text-primary) 30%, transparent));
+}
+.dclip-mark svg { width: 100%; height: auto; display: block; }
+.dclip-mark.is-dragging { cursor: grabbing; }
+.dclip-mark:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius); }
+.dclip-mark.is-drop-target {
+  box-shadow: 0 0 0 2px var(--text-primary);
+  border-radius: var(--radius);
+}
+/* Open, the clip is parked above its grid rather than gripping anything. */
+.dclip-mark.is-open { opacity: 0.85; }
+
+/* ---------- a post-it ---------- */
+.dnote {
+  position: absolute;
+  width: var(--desk-note-w);
+  min-height: var(--desk-note-min-h);
+  z-index: 55;                    /* above cards, below an expanded card (60) */
+  display: flex; flex-direction: column;
+  /* THE PAPER. A light tint of the project's own colour over ordinary raised
+     stock — the same --ground-bg mechanism the clip mark uses, so a post-it
+     belongs to its project on sight without anything being hard-coded. */
+  background: color-mix(in srgb, var(--ground-bg, var(--surface-sunken)) var(--desk-note-tint), var(--surface-raised));
+  /* The border does the separating, exactly as it does for a card — the theme
+     sets --shadow-1 to none on purpose, and a post-it is not a modal. */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-radius: var(--radius);
+  transform: translate(var(--dx, 0px), var(--dy, 0px));
+}
+.dnote.is-dragging { opacity: 0.92; }
+/* The only draggable strip. Everything below it is a text field, which is why
+   this exists at all — the same two-surfaces split an expanded card uses. */
+.dnote-drag {
+  height: var(--space-4);
+  flex: none;
+  cursor: grab; touch-action: none;
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.dnote.is-dragging .dnote-drag { cursor: grabbing; }
+.dnote-text {
+  flex: 1;
+  width: 100%;
+  border: none; background: transparent;
+  padding: var(--space-3);
+  resize: none;
+  font-family: var(--font-body);
+  font-size: var(--text-base);          /* the 18px floor, like everything else */
+  line-height: 1.35;
+  /* --text-primary is the verified pair for this paper. --text-faint is NOT
+     (3.6:1 worst case) and must not be used here. */
+  color: var(--text-primary);
+  user-select: text; -webkit-user-select: text;
+}
+.dnote-text::placeholder { color: var(--text-muted); opacity: 0.8; }
+.dnote-text:focus { outline: none; }
+.dnote:focus-within { box-shadow: var(--focus-ring); }
+
+/* ---------- the little right-click menu ---------- */
+.desk-menu {
+  /* The menu is parked on <body>, outside .desk-page, so it carries its own
+     one number rather than reading one it can't see. */
+  --desk-menu-w: 180px;
+  position: fixed; z-index: 80;
+  min-width: var(--desk-menu-w);
+  padding: var(--space-1);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.desk-menu-item {
+  display: block; width: 100%;
+  min-height: var(--tap-min);           /* the full 44px, not --control-min */
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border: none; background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui); font-size: var(--text-base);
+  cursor: pointer;
+}
+.desk-menu-item:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.desk-menu-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dcard-link:hover { color: var(--ember); }

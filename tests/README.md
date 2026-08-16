@@ -16,8 +16,12 @@ itself. `node` and the repo's own `js/` folder are the whole toolchain.
 | `desk-d1.gesture.test.mjs` | Steps 3–4: that no render happens while a pointer gesture is in progress, that a hold is never leaked (cancel, blur, doubled pointerdown, teardown), and that double-click survives the rebuild the first click causes. Needs jsdom. |
 | `desk-d1.viewstate.test.mjs` | The post-deploy pass: that a snapshot survives a JSON round-trip unchanged (which is what makes the self-sync marker work), and that a glance never overwrites the saved scroll position. Needs jsdom. |
 | `desk-d1.test.mjs` | Phase D1 of the Desk: the `"vs"` op's merge rules in every arrival order, two-device convergence, un-place/restore, collision reporting, the one-archive-pass rule, and the pure geometry (wobble, clamping, z-order, pile weight, glance framing). |
+| `desk-d2.test.mjs` | Phase D2: the `"dk"` op (clips and post-its) through the same shared merge helper — every arrival order, two devices clipping different cards offline, add-idempotence, remove-vs-edit, a late `create` that must not wipe a project's clips, and an unknown collection (D3's `sym`) landing safely. Also the derived clip geometry, and the post-it tint measured against `js/theme.js`'s own `contrast()` across every possible project colour in both themes. Needs nothing installed. |
+| `desk-d2.render.test.mjs` | Phase D2 interaction: select-to-clip writes one clip and one membership op each and nothing before that; a closed clip drags as one object with relative offsets preserved; open/close writes nothing at all; both unclip gestures; the post-it's deferred commit, its draft surviving a rebuild, and drop-decides-attachment. Needs jsdom. |
 
 Why these exist: merge bugs are invisible until they've quietly eaten
 something, and the desk's whole promise is that two devices arranging the same
 project offline lose nothing. The D1 run found two real bugs before any of it
-was drawn — see `docs/changes-2026-08-14-desk-d1.md`.
+was drawn — see `docs/changes-2026-08-14-desk-d1.md` — and the D2 run found a
+third, in the double-click that opens a clip: see
+`docs/changes-2026-08-16-desk-d2-clips-postits.md`.

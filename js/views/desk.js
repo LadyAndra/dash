@@ -4,10 +4,21 @@
 // page body: the banner, the three Peek drawers hanging off it, and the desk
 // surface itself. views/project.js keeps the picker and delegates to here.
 //
-// What is NOT here, on purpose: clips (D2), post-its (D2), wonder symbols
-// (D3), highlights (D4). The data model already has room for all of them
-// (desk addendum §12.2–§12.4) and `deskData` already carries `clip` through;
-// nothing in this file needs rewriting to add them.
+// AUGUST 2026, PHASE D2 — clips and post-its. What is still NOT here, on
+// purpose: wonder symbols (D3) and highlights (D4). The data model already has
+// room for both (desk addendum §12.3–§12.4).
+//
+// The two D2 objects are deliberately different shapes of thing, and the
+// difference is worth holding on to while reading:
+//
+//   A CLIP is rigid and wordless. It owns no position and no member list — it
+//   is a project-side record that says only "I exist", and everything about
+//   where it sits is recomputed from its members every render (§12.2). That is
+//   why dragging one is just an ordinary card drag run in a loop.
+//
+//   A POST-IT is soft and has words. It owns its own position when it is
+//   free-floating, and gives that up (keeps it, ignores it) when attached to a
+//   clip — one nullable field decides which, per §5.6.
 //
 // The rules this file must keep, all of which have bitten already:
 //
@@ -30,6 +41,8 @@ import { openEditor } from "../editor.js";
 import { renderMilestoneEditor } from "./milestone-editor.js";
 import { PROJECT_LINK } from "../store.js";
 import { stageOf, milestoneProgress, formatDay } from "../milestones.js";
+import { toast } from "../ui/toast.js";
+import { CLIP_BANNER_SVG, CLIP_MARK_SVG } from "../icons.js";
 import * as D from "../desk.js";
 
 // ===================================================================
@@ -65,16 +78,19 @@ export function renderProjectPage(store, project, ctx, actions) {
     style: groundStyle(store, project),            // --ground-bg / --ground-ink for the whole page
   });
 
-  page.appendChild(banner(store, project, stage, prog, data, actions));
+  const hasDesk = supportsDesk();
+  // The state has to exist before the banner is built, because the clip button
+  // is a view of it (pressed or not) as well as a control over it.
+  const state = hasDesk ? deskState(ctx) : null;
+  page.appendChild(banner(store, project, stage, prog, data, actions,
+    hasDesk ? clipModeControl(store, project, ctx, state) : null));
 
-  if (!supportsDesk()) {
+  if (!hasDesk) {
     // Phone (and today's iPad): no desk, no unplaced shelf — there is nothing
     // to be unplaced FROM. Peek content directly, full width (§7).
     page.appendChild(peekPage(store, project, ctx, data));
     return page;
   }
-
-  const state = deskState(ctx);
   const drawer = drawers(store, project, ctx, data, state);
   const glanceBtn = page.querySelector(".banner-glance");
   // NOTE: the drawer body is NOT appended here. It already lives inside
@@ -111,8 +127,67 @@ function deskState(ctx) {
     // click arrived at a desk with no memory of the first, and expanding by
     // double-click only ever worked on a card that happened to be on top.
     lastTapId: null, lastTapAt: 0,
+    // ---- Phase D2 ----
+    // Select-to-clip: null, or { picked: [entryId…] }. A MODE, not content —
+    // it exists between pressing the clip button and pressing it again, and
+    // writes nothing until it commits.
+    clipping: null,
+    // Which clip is open, as an id, or null. Transient, per-device, NOT
+    // synced and NOT stored, exactly like `expanded` above (the brief is
+    // explicit about this, and it is the right call: "which pile I have
+    // fanned out while I read it" is furniture, not arrangement).
+    clipOpen: null,
+    // The post-it editor's deferred-commit bookkeeping — the same three
+    // pieces the milestone editor and the Home capture box already use:
+    // drafts survive a rebuild mid-word, and focus + cursor come back after.
+    noteDrafts: {}, noteFocus: null, noteSel: null,
   };
+  // Older sessions in the same view may have built the object above before D2
+  // existed, so the new keys are filled in rather than assumed.
+  if (!v.desk.noteDrafts) v.desk.noteDrafts = {};
+  if (v.desk.clipping === undefined) v.desk.clipping = null;
+  if (v.desk.clipOpen === undefined) v.desk.clipOpen = null;
   return v.desk;
+}
+
+// ===================================================================
+//  SELECT-TO-CLIP (§5.4)
+// ===================================================================
+// The whole mode, as one small object the banner button can both read and
+// drive. Pressing the button the first time opens the mode; pressing it again
+// closes it, committing if there is anything worth committing.
+//
+// TWO OR MORE, or nothing. One card is not a clip — it is a card — so a
+// one-card selection cancels silently rather than writing a degenerate record.
+// (Degenerate clips are legal data, per §12.2; this just declines to MAKE one
+// on purpose.) Nothing at all is written on the cancel path.
+//
+// This is deliberately NOT the app's existing multi-select. That one is for
+// list rows and stays off on the desk surface (§12.6); this one is desk-only,
+// lives in view-local state, and has one outcome instead of a toolbar.
+function clipModeControl(store, project, ctx, state) {
+  return {
+    get active() { return !!state.clipping; },
+    get count() { return state.clipping ? state.clipping.picked.length : 0; },
+    cancel() {
+      if (!state.clipping) return false;
+      state.clipping = null;
+      ctx.rerender();
+      return true;
+    },
+    toggle() {
+      if (!state.clipping) { state.clipping = { picked: [] }; ctx.rerender(); return; }
+      const picked = state.clipping.picked.slice();
+      state.clipping = null;
+      if (picked.length >= 2) {
+        // ONE clip record, then one membership op per card — the split across
+        // the two floors that §12.2 describes, written in the order it reads.
+        const cid = store.addClip(project.id);
+        for (const id of picked) store.setDeskField(id, project.id, "clip", cid);
+      }
+      ctx.rerender();
+    },
+  };
 }
 
 // ===================================================================
@@ -121,7 +196,7 @@ function deskState(ctx) {
 // Same content the tall banner carried; a third of the height. The name owns
 // the top line whatever its length, and the facts collapse into one thin
 // ruled line beneath it, closer to texture than to data you read.
-function banner(store, project, stage, prog, data, actions) {
+function banner(store, project, stage, prog, data, actions, clipMode) {
   const facts = el("div", { class: "pb-line" });
   const fact = (text, cls) => el("span", { class: "lbl" + (cls ? " " + cls : ""), text });
 
@@ -164,6 +239,20 @@ function banner(store, project, stage, prog, data, actions) {
         el("button", { class: "btn", text: "＋ Existing", onclick: actions.onAdd }),
         el("button", { class: "btn", text: "Edit", onclick: actions.onEdit }),
         el("button", { class: "btn", text: "← All", onclick: actions.onBack }),
+        // THE CLIP (§5.4). Desk platforms only — there is nothing to clip on
+        // the phone's Peek page. It is Andra's own drawing, inlined as SVG and
+        // filled with currentColor, so it comes out in --ground-ink and
+        // re-colours with the project for free.
+        clipMode ? el("button", {
+          class: "btn banner-clip" + (clipMode.active ? " is-on" : ""),
+          "aria-pressed": String(clipMode.active),
+          title: clipMode.active
+            ? "Click the cards you want together, then press this again"
+            : "Clip cards together",
+          "aria-label": clipMode.active ? "Finish clipping" : "Clip cards together",
+          html: CLIP_BANNER_SVG,
+          onclick: () => clipMode.toggle(),
+        }) : null,
         // Held, not pressed — so it is a mark rather than a labelled button
         // (§14.8). It keeps a real accessible name and the full control height.
         el("button", {
@@ -352,10 +441,56 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   // the mat: decorative, inert, fixed footprint, centred (§14.12, §14.13)
   deskEl.appendChild(mat());
 
-  const w = D.weights(data.placed);
-  for (const p of data.placed) deskEl.appendChild(card(store, project, ctx, p, w.get(p.id) || 0, state));
+  // PILE WEIGHT is computed over the LOOSE cards only. A clipped card doesn't
+  // draw at its stored position any more — it draws in its clip's stack — so
+  // feeding those positions in would thicken cards next to a spot where
+  // nothing is visibly sitting (§12.5: weight is a render effect, and it has
+  // to be computed from what is actually rendered).
+  const w = D.weights(data.loose);
 
-  if (data.placed.length === 0) {
+  // ONE ordering pass over everything that occupies the desk, so a clip and a
+  // loose card interleave honestly in the stacking order. Without this, clips
+  // would always paint over cards simply because they were appended later.
+  // A clip rides at its topmost member's z; ties break by id, exactly like
+  // compareZ, so two devices agree with no conversation.
+  const units = [];
+  for (const p of data.loose) units.push({ z: p.z, id: p.id, kind: "card", p });
+  for (const c of data.clips) {
+    if (c.members.length === 0) continue;   // a clip with nothing in it draws nothing
+    units.push({ z: c.z, id: c.cid, kind: "clip", c });
+  }
+  units.sort((a, b) => (a.z - b.z) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  for (const u of units) {
+    if (u.kind === "card") {
+      deskEl.appendChild(card(store, project, ctx, u.p, w.get(u.p.id) || 0, state, u.p.pos, null));
+      continue;
+    }
+    const c = u.c;
+    const open = state.clipOpen === c.cid;
+    // The members. Closed, they draw as a tight sheaf at their own angles;
+    // open, they lie flat in a reading grid. Either way their STORED positions
+    // are untouched — which is what makes unclipping need no repositioning.
+    c.members.forEach((p, i) => {
+      const pos = open ? D.gridPos(c.anchor, i) : D.stackPos(c.anchor, i);
+      deskEl.appendChild(card(store, project, ctx, p, 0, state, pos, { clip: c, open, index: i }));
+    });
+    deskEl.appendChild(clipMark(c, open));
+    // An attached post-it hangs off the mark, so it rides the stack with no
+    // code of its own — the anchor it is given is derived from the same
+    // members the stack is (§12.5).
+    for (const n of c.notes) {
+      deskEl.appendChild(postIt(store, project, ctx, state, n,
+        D.noteAnchor(c.anchor, c.members.length, open), c.cid, u.z));
+    }
+  }
+
+  // Free-floating post-its: their own position, their own business (§5.6).
+  for (const n of data.freeNotes) {
+    deskEl.appendChild(postIt(store, project, ctx, state, n, n.pos || { x: D.ORIGIN, y: D.ORIGIN }, null, null));
+  }
+
+  if (data.placed.length === 0 && data.notes.length === 0) {
     deskEl.appendChild(el("p", { class: "desk-empty hint" }, [
       data.unplaced.length
         ? "Open the Unplaced drawer above and drag something out here."
@@ -374,7 +509,22 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   // glance silently corrupted the saved position (§14.23).
   const guard = { hold: true };
 
-  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard });
+  // The one piece of chrome select-to-clip needs: a line saying what to do and
+  // how many are picked. It sits over the viewport rather than in the desk's
+  // coordinate space, so panning doesn't carry it away.
+  const clipHint = state.clipping ? el("div", { class: "desk-clip-hint", role: "status" }) : null;
+  if (clipHint) view.appendChild(clipHint);
+
+  // Remember which post-it had the cursor, so the next rebuild can hand it
+  // back. Same mechanism, same reasoning, as the milestone editor's.
+  deskEl.addEventListener("focusin", (e) => {
+    const k = e.target && e.target.getAttribute ? e.target.getAttribute("data-fkey") : null;
+    state.noteFocus = k || null;
+    state.noteSel = null;
+  });
+
+  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard, clipHint });
+  restoreNoteFocus(deskEl, state);
 
   // The window IS the viewport: the desk takes whatever height is left under
   // the banner and the handles, rather than a guessed vh. Measured, because
@@ -446,21 +596,45 @@ function mat() {
   return svg;
 }
 
-function card(store, project, ctx, p, weight, state) {
+// `at` is where this card DRAWS, which is not always where it is stored: a
+// clipped card draws in its clip's stack or grid while keeping its own
+// position untouched underneath. `inClip` is null for a loose card, or
+// { clip, open, index } for a member.
+function card(store, project, ctx, p, weight, state, at, inClip) {
   const it = p.item;
-  const expanded = state.expanded === it.id;
+  const clipped = !!inClip;
+  const open = clipped && inClip.open;
+  // A clipped card can only be expanded while its clip is open — closed, the
+  // stack is one object and there is no such thing as "this card" to expand.
+  const expanded = state.expanded === it.id && (!clipped || open);
   const overdue = isOverdueEntry(it);
+  const picked = !!(state.clipping && state.clipping.picked.indexOf(it.id) >= 0);
+  // A card already in a clip can't be picked into a second one — the data
+  // shape says at most one clip per desk, so the UI says so too (§12.2).
+  const spoken = clipped ? ", in a clip" : "";
 
   const node = el("div", {
-    class: "dcard" + (overdue ? " flag" : "") + (expanded ? " is-expanded" : ""),
+    class: "dcard"
+      + (overdue ? " flag" : "")
+      + (expanded ? " is-expanded" : "")
+      + (clipped ? " is-clipped" : "")
+      + (open ? " is-clip-open" : "")
+      + (picked ? " is-clip-picked" : ""),
     "data-id": it.id,
-    "data-w": String(weight),
+    "data-w": String(clipped ? 0 : weight),
+    "data-clip": clipped ? inClip.clip.cid : null,
     tabindex: "0",
-    "aria-label": `${it.title || "Untitled"}${overdue ? ", overdue" : ""}`,
-    style: `left:${p.pos.x}px; top:${p.pos.y}px; z-index:${10 + p.z};`,
+    "aria-label": `${it.title || "Untitled"}${overdue ? ", overdue" : ""}${spoken}`,
+    // A clipped card takes its CLIP's height, so the whole sheaf stays
+    // together in the stacking order; DOM order then decides which sheet is
+    // on top within it.
+    style: `left:${at.x}px; top:${at.y}px; z-index:${10 + (clipped ? inClip.clip.z : p.z)};`,
   });
-  // the wobble: derived, static, never stored (§12.1)
-  node.style.setProperty("--rot", (expanded ? 0 : p.rot).toFixed(3) + "deg");
+  // the wobble: derived, static, never stored (§12.1). Off while expanded, and
+  // off while the clip is open — an open clip is for reading, and reading is
+  // the one time the handmade angle gets in the way (the same treatment an
+  // individually expanded card already gets).
+  node.style.setProperty("--rot", (expanded || open ? 0 : p.rot).toFixed(3) + "deg");
 
   // The header is the drag handle when the card is expanded, and simply the
   // top of the card when it isn't. Marking it rather than the whole card is
@@ -507,6 +681,141 @@ function card(store, project, ctx, p, weight, state) {
   return node;
 }
 
+// ===================================================================
+//  THE PAPERCLIP MARK (§5.4)
+// ===================================================================
+// The clip's only visible body. It is a bigger render of the same drawing the
+// banner button wears, sitting on the corner of the top card, at an angle
+// derived from the clip's own id.
+//
+// It carries no text and never will: "wordless" is enforced by the data shape
+// (a clip record has nowhere to put a word), and the "why" behind a grouping
+// belongs on a post-it, which is a different object (§5.6).
+function clipMark(c, open) {
+  const pos = D.markPos(c.anchor, c.members.length, open);
+  const n = c.members.length;
+  const node = el("div", {
+    class: "dclip-mark" + (open ? " is-open" : ""),
+    "data-cid": c.cid,
+    role: "button",
+    tabindex: "0",
+    "aria-label": `Clip holding ${n} ${n === 1 ? "card" : "cards"}. `
+      + `Double-click to ${open ? "close it" : "open it"}; right-click to unclip.`,
+    title: open ? "Double-click to close · right-click to unclip"
+                : "Drag to move the whole clip · double-click to open · right-click to unclip",
+    style: `left:${pos.x}px; top:${pos.y}px; z-index:${10 + c.z + 1};`,
+    html: CLIP_MARK_SVG,
+  });
+  // The tilt is applied HERE, not in the artwork — see the note in js/icons.js.
+  node.style.setProperty("--rot", (open ? 0 : c.rot).toFixed(3) + "deg");
+  return node;
+}
+
+// ===================================================================
+//  A POST-IT (§5.6)
+// ===================================================================
+// In-view editable text, no title, no status. The editing is the full
+// deferred-commit trio the rest of the app already uses, and for the same
+// reason it exists everywhere else: a background sync (or a keystroke
+// somewhere else in the app) rebuilds this page, which detaches the textarea,
+// which fires blur — so blur is NOT proof that the person left the field.
+//
+//   - nothing is written while you type; the words go to a draft
+//   - the draft survives a rebuild, so a mid-word sync can't swallow it
+//   - focus and cursor come back afterwards, with preventScroll
+//
+// `at` is where it draws: its own `pos` when free, or its clip's derived
+// anchor when attached. `attachedTo` is the cid or null.
+function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
+  const drafts = state.noteDrafts;
+  const nid = rec.nid;
+  const fkey = `note:${nid}`;
+
+  const node = el("div", {
+    class: "dnote" + (attachedTo ? " is-attached" : ""),
+    "data-nid": nid,
+    "data-clip": attachedTo || null,
+    style: `left:${at.x}px; top:${at.y}px;`
+      + (clipZ != null ? ` z-index:${10 + clipZ + 2};` : ""),
+  });
+
+  // The grip is the only draggable part, because the rest of the post-it is a
+  // text field and both gestures want the same pixels — the same two-surfaces
+  // arrangement an expanded card already uses for its header.
+  node.appendChild(el("div", {
+    class: "dnote-drag",
+    "aria-hidden": "true",
+    title: attachedTo
+      ? "Drag onto open desk to take it off the clip"
+      : "Drag onto a clip to attach it",
+  }));
+
+  const ta = el("textarea", {
+    class: "dnote-text",
+    rows: "3",
+    placeholder: "A note to yourself",
+    "aria-label": "Post-it",
+    "data-fkey": fkey,
+  });
+  ta.value = drafts[nid] !== undefined ? drafts[nid] : (rec.text || "");
+
+  ta.addEventListener("input", () => {
+    drafts[nid] = ta.value;                       // survives an unexpected rebuild
+    state.noteSel = [ta.selectionStart, ta.selectionEnd];
+  });
+
+  const commit = () => {
+    const v = ta.value;
+    delete drafts[nid];
+    if (v !== (rec.text || "")) store.setNoteField(project.id, nid, "text", v);
+    // EMPTYING A POST-IT THROWS IT AWAY. It's the natural gesture — a blank
+    // scrap is rubbish, not a note — and it means an accidental double-click
+    // on the desk costs one keystroke to undo rather than a menu.
+    //
+    // The isConnected guard is what makes this safe: a rebuild removes the
+    // textarea and Chrome fires blur on the way out, and a brand-new post-it
+    // is empty by definition. Without the guard, a sync landing in the second
+    // between creating one and typing in it would delete it out from under
+    // her. A blur from a rebuild arrives with the node already detached; a
+    // blur from actually clicking away does not.
+    if (v.trim() === "" && ta.isConnected) store.removeNote(project.id, nid);
+  };
+
+  ta.addEventListener("blur", commit);
+  ta.addEventListener("keydown", (e) => {
+    // Enter commits, Shift+Enter is a new line. A post-it is a sentence or
+    // two, so committing is the common case and gets the plain key.
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); ta.blur(); }
+    // Escape here would otherwise bubble to the desk's own handler and start
+    // closing surfaces out from under a half-typed note.
+    if (e.key === "Escape") { e.stopPropagation(); ta.blur(); }
+  });
+
+  node.appendChild(ta);
+  return node;
+}
+
+// The mirror of the milestone editor's restoreFocus, and deliberately the same
+// shape: a rebuild is not the user leaving the field, so whichever post-it had
+// the cursor gets it back on the next frame, cursor position included.
+function restoreNoteFocus(deskEl, state) {
+  const key = state.noteFocus;
+  if (!key) return;
+  const sel = state.noteSel;
+  requestAnimationFrame(() => {
+    if (!deskEl.isConnected) return;                     // the render pass moved on
+    const active = document.activeElement;
+    if (active && active !== document.body && !deskEl.contains(active)) return;
+    if (active && deskEl.contains(active) && active.getAttribute("data-fkey") === key) return;
+    const node = deskEl.querySelector(`[data-fkey="${key.replace(/["\\]/g, "\\$&")}"]`);
+    if (!node) { state.noteFocus = null; return; }
+    node.focus({ preventScroll: true });
+    if (sel && typeof node.setSelectionRange === "function") {
+      try { node.setSelectionRange(sel[0], sel[1]); } catch { /* not a text input */ }
+    }
+  });
+}
+
 // Turn bare URLs in a body into real links. Plain text in, nodes out — the
 // body is stored as plain text and stays that way; this is a render-time
 // courtesy, not a format. Anything that isn't a link is a text node, so
@@ -547,11 +856,97 @@ function wireDesk(store, project, ctx, data, state, dom) {
 
   const nodeOf = (id) => deskEl.querySelector(`.dcard[data-id="${id}"]`);
   const placedById = new Map(data.placed.map(p => [p.id, p]));
+  // D2 lookups, built once per render from the single archive pass.
+  const clipByCid = new Map(data.clips.map(c => [c.cid, c]));
+  const noteByNid = new Map(data.notes.map(n => [n.nid, n]));
+  const clipOfCard = new Map();
+  for (const c of data.clips) for (const m of c.members) clipOfCard.set(m.id, c);
+
+  // Every element a clip drags as one: its member cards, its mark, and any
+  // post-it attached to it. Collected by selector because the whole cluster is
+  // moved with the same local --dx/--dy the single-card drag uses.
+  const clipNodes = (cid) => [
+    ...deskEl.querySelectorAll(`.dcard[data-clip="${cid}"]`),
+    ...deskEl.querySelectorAll(`.dclip-mark[data-cid="${cid}"]`),
+    ...deskEl.querySelectorAll(`.dnote[data-clip="${cid}"]`),
+  ];
+
+  paintClipHint();
 
   deskEl.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     if (e.target.closest("button")) return;                 // real controls win
     const cardNode = e.target.closest(".dcard");
+    const markNode = e.target.closest(".dclip-mark");
+    const noteNode = e.target.closest(".dnote");
+
+    // ---- SELECT-TO-CLIP: everything else pauses (§5.4) ----
+    // The same treatment the list's multi-select gives Kanban drag: while the
+    // mode is on, a card is a thing you pick, not a thing you move or open.
+    // Panning still works, because otherwise you couldn't reach a card on the
+    // far side of the desk without leaving the mode.
+    if (state.clipping) {
+      if (noteNode) return;                                  // a post-it isn't clippable
+      if (cardNode) { togglePick(cardNode); return; }
+      drag = { kind: "pan", x0: e.clientX, y0: e.clientY, sl: view.scrollLeft, st: view.scrollTop };
+      deskEl.classList.add("is-panning");
+      deskEl.setPointerCapture(e.pointerId);
+      if (release) release();
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
+      return;
+    }
+
+    // ---- A POST-IT ----
+    // Two surfaces again: the grip drags, everything else is a text field and
+    // is left entirely to the browser.
+    if (noteNode) {
+      if (!e.target.closest(".dnote-drag")) return;
+      const rec = noteByNid.get(noteNode.dataset.nid);
+      if (!rec) return;
+      drag = {
+        kind: "note", rec, node: noteNode, x0: e.clientX, y0: e.clientY,
+        from: noteNode.dataset.clip || null,
+      };
+      noteNode.classList.add("is-dragging");
+      deskEl.setPointerCapture(e.pointerId);
+      if (release) release();
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
+      return;
+    }
+
+    // ---- A CLIP, CLOSED: the stack is one object ----
+    // Grabbing the mark or ANY member card drags the whole cluster. This is
+    // the disambiguation the brief asks for, and it works because per-card
+    // dragging simply does not exist in the closed state — so a stack drag can
+    // never be mistaken for an unclip, and vice versa.
+    const cid = markNode ? markNode.dataset.cid
+      : (cardNode ? cardNode.dataset.clip : null);
+    const clip = cid ? clipByCid.get(cid) : null;
+    // The MARK always drives the whole clip — closed or open, it is the clip's
+    // handle. A member CARD only does so while the clip is closed; once it is
+    // open, that card is a card again and dragging it out is the unclip
+    // gesture. That asymmetry is the disambiguation, stated in one line.
+    if (clip && (markNode || state.clipOpen !== clip.cid)) {
+      drag = {
+        kind: "clip", clip, nodes: clipNodes(clip.cid),
+        x0: e.clientX, y0: e.clientY,
+        pendingZ: raiseClipLocally(clip),
+        // WHERE THE GESTURE STARTED, recorded NOW rather than asked for later.
+        // The line below captures the pointer to this surface, which means
+        // every later event in the gesture — pointerup included — reports
+        // `target` as the desk, not the thing under the cursor. Reading
+        // `e.target.closest(".dclip-mark")` on release therefore always said
+        // "no", and double-clicking the mark to open a clip silently did
+        // nothing. Same class of bug as the D1 glance's pointerleave: the
+        // question has to be asked at the moment it is still answerable.
+        onMark: !!markNode,
+      };
+      for (const nd of drag.nodes) nd.classList.add("is-dragging");
+      deskEl.setPointerCapture(e.pointerId);
+      if (release) release();
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
+      return;
+    }
 
     if (cardNode && state.expanded === cardNode.dataset.id) {
       // An expanded card is TWO surfaces, because two gestures want the same
@@ -562,14 +957,24 @@ function wireDesk(store, project, ctx, data, state, dom) {
       if (!e.target.closest(".dcard-drag")) return;
       const p = placedById.get(cardNode.dataset.id);
       drag = p
-        ? { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ: null, wasExpanded: true }
+        ? { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ: null,
+            wasExpanded: true, base: basePosOf(cardNode, p), unclip: !!cardNode.dataset.clip }
         : { kind: "tap", id: cardNode.dataset.id, x0: e.clientX, y0: e.clientY };
       if (p) cardNode.classList.add("is-dragging");
     } else if (cardNode) {
       const p = placedById.get(cardNode.dataset.id);
       if (!p) return;
-      const pendingZ = raiseLocally(p, cardNode);
-      drag = { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ };
+      // A member of an OPEN clip. Dragging one out of the grid is the only way
+      // to unclip a single card, and it is deliberately the only way: the
+      // gesture doesn't exist while the clip is closed, so there is nothing to
+      // confuse it with (§5.4). A tap is still just a tap — TAP_SLOP is what
+      // keeps a twitch from throwing a card out of its clip.
+      const inOpenClip = !!cardNode.dataset.clip;
+      const pendingZ = inOpenClip ? null : raiseLocally(p, cardNode);
+      drag = {
+        kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ,
+        base: basePosOf(cardNode, p), unclip: inOpenClip,
+      };
       cardNode.classList.add("is-dragging");
     } else {
       // empty desk pans the view, so nothing can end up unreachable (§14.2)
@@ -590,6 +995,33 @@ function wireDesk(store, project, ctx, data, state, dom) {
     if (!drag) return;
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
     if (drag.kind === "pan") { view.scrollLeft = drag.sl - dx; view.scrollTop = drag.st - dy; return; }
+
+    // A CLIP moves as one: the same local offset on every piece of it. No
+    // store write, exactly as for a single card — the loop of real position
+    // ops happens once, on drop (§12.2).
+    if (drag.kind === "clip") {
+      for (const nd of drag.nodes) {
+        nd.style.setProperty("--dx", dx + "px");
+        nd.style.setProperty("--dy", dy + "px");
+      }
+      return;
+    }
+
+    if (drag.kind === "note") {
+      drag.node.style.setProperty("--dx", dx + "px");
+      drag.node.style.setProperty("--dy", dy + "px");
+      // Light up the clip the post-it would land on, so "drop decides
+      // attachment" (§5.5, applied to notes per §5.6) is visible before you
+      // commit to it rather than only afterwards.
+      const target = clipAtPoint(e, drag.node);
+      for (const m of deskEl.querySelectorAll(".dclip-mark")) m.classList.remove("is-drop-target");
+      if (target) {
+        const m = deskEl.querySelector(`.dclip-mark[data-cid="${target}"]`);
+        if (m) m.classList.add("is-drop-target");
+      }
+      return;
+    }
+
     if (drag.kind !== "card") return;
     drag.node.style.setProperty("--dx", dx + "px");
     drag.node.style.setProperty("--dy", dy + "px");
@@ -605,6 +1037,10 @@ function wireDesk(store, project, ctx, data, state, dom) {
   const endGesture = () => { if (release) { release(); release = null; } };
   deskEl.addEventListener("pointercancel", () => {
     if (drag && drag.node) drag.node.classList.remove("is-dragging");
+    if (drag && drag.nodes) for (const nd of drag.nodes) {
+      nd.classList.remove("is-dragging");
+      nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy");
+    }
     drag = null;
     deskEl.classList.remove("is-panning");
     endGesture();
@@ -621,15 +1057,77 @@ function wireDesk(store, project, ctx, data, state, dom) {
     // that draws the finished drop — rather than being swallowed and replayed.
     endGesture();
 
-    if (kind === "pan") { deskEl.classList.remove("is-panning"); return; }
+    if (kind === "pan") {
+      deskEl.classList.remove("is-panning");
+      // A DOUBLE-CLICK ON BARE DESK MAKES A POST-IT (§5.6). It reuses the same
+      // tap memory the cards use, under a reserved id, so a click on a card
+      // and a click on the desk can't be mistaken for one double-click.
+      if (!moved && !state.clipping && isSecondTap(" desk")) newPostIt(e);
+      return;
+    }
+
+    if (kind === "clip") {
+      for (const nd of d.nodes) nd.classList.remove("is-dragging");
+      if (!moved) {
+        // Double-click on the MARK opens or closes the clip; anywhere else on
+        // the stack, a plain tap raises the whole thing. Open/closed is
+        // transient per-device UI state — no op, no field, nothing synced.
+        if (isSecondTap("clip:" + d.clip.cid) && d.onMark) {
+          state.clipOpen = state.clipOpen === d.clip.cid ? null : d.clip.cid;
+          state.expanded = null;                 // a card expanded inside it comes back down
+          for (const nd of d.nodes) { nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy"); }
+          ctx.rerender();
+          return;
+        }
+        for (const nd of d.nodes) { nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy"); }
+        // tap-to-raise, extended to every member (§8.9)
+        if (d.pendingZ) { commitClipRaise(d.clip, d.pendingZ); ctx.rerender(); }
+        return;
+      }
+      // A DROP. One ordinary position op per member — the bulk-edit rule, and
+      // deliberately nothing else: relative offsets are preserved because
+      // every member gets the SAME delta, and the clip's own geometry is
+      // derived from them, so it has already moved too (§12.2).
+      const cw = d.nodes[0] ? d.nodes[0].offsetWidth : D.CARD_MAX_W;
+      const ch = d.nodes[0] ? d.nodes[0].offsetHeight : 160;
+      // ONE delta for everybody, clamped to the tightest edge any member is
+      // near. Clamping each member separately would let the card nearest the
+      // edge stop while the rest kept going — the stack would fan out against
+      // the boundary and never come back, which is precisely the arrangement a
+      // clip exists to hold. The clip hits the edge as one object instead.
+      const k = D.clampDelta(d.clip.members.map(m => m.pos), dx, dy, cw, ch);
+      for (const m of d.clip.members) {
+        store.setDeskField(m.id, project.id, "pos", { x: m.pos.x + k.dx, y: m.pos.y + k.dy });
+      }
+      if (d.pendingZ) commitClipRaise(d.clip, d.pendingZ);
+      ctx.rerender();
+      return;
+    }
+
+    if (kind === "note") {
+      d.node.classList.remove("is-dragging");
+      for (const m of deskEl.querySelectorAll(".dclip-mark")) m.classList.remove("is-drop-target");
+      if (!moved) { d.node.style.removeProperty("--dx"); d.node.style.removeProperty("--dy"); return; }
+      // THE DROP DECIDES (§5.5 language, §5.6 object). Landing on a clip
+      // attaches; landing on open desk detaches and gives it a real position.
+      const onto = clipAtPoint(e, d.node);
+      if (onto) {
+        if (onto !== d.from) store.setNoteField(project.id, d.rec.nid, "clip", onto);
+        ctx.rerender();
+        return;
+      }
+      const base = basePosOf(d.node, { pos: d.rec.pos || { x: 0, y: 0 } });
+      const pos = D.clampPos({ x: base.x + dx, y: base.y + dy }, D.NOTE_W, D.NOTE_H);
+      if (d.from) store.setNoteField(project.id, d.rec.nid, "clip", null);
+      store.setNoteField(project.id, d.rec.nid, "pos", pos);
+      ctx.rerender();
+      return;
+    }
 
     if (kind === "tap" || (kind === "card" && !moved)) {
       const id = kind === "tap" ? d.id : d.p.id;
       if (kind === "card") d.node.classList.remove("is-dragging");
-      const now = Date.now();
-      const second = state.lastTapId === id && (now - state.lastTapAt) < DBL_MS;
-      state.lastTapId = second ? null : id;   // a third click starts over
-      state.lastTapAt = now;
+      const second = isSecondTap(id);
       if (second) {                                        // double-click expands / collapses
         state.expanded = state.expanded === id ? null : id;
         ctx.rerender();
@@ -652,13 +1150,158 @@ function wireDesk(store, project, ctx, data, state, dom) {
       ctx.rerender();
       return;
     }
+    // The base is where the card was DRAWING, not where it was stored — the
+    // two differ for a member of an open clip, which draws in the grid. Using
+    // the stored position there would make the card jump the moment you
+    // grabbed it.
     const pos = D.clampPos(
-      { x: d.p.pos.x + dx, y: d.p.pos.y + dy },
+      { x: d.base.x + dx, y: d.base.y + dy },
       d.node.offsetWidth, d.node.offsetHeight);
-    // both writes for this card, together, on release — never before
+    // all the writes for this card, together, on release — never before
     if (d.pendingZ != null) store.setDeskField(d.p.id, project.id, "z", d.pendingZ);
+    // Dragging a card out of an open clip unclips it, in the same batch as the
+    // position it lands at (§5.4). Nobody else has to be repositioned: the
+    // remaining members are still wherever the last cluster drag left them.
+    if (d.unclip) store.setDeskField(d.p.id, project.id, "clip", null);
     store.setDeskField(d.p.id, project.id, "pos", pos);
     ctx.rerender();
+  });
+
+  // ===================================================================
+  //  D2 HELPERS
+  // ===================================================================
+
+  // The shared double-click memory. It lives on `state` rather than in this
+  // closure because the first click often causes a rebuild (it commits a
+  // raise) and the closure dies with it — the D1 bug, kept fixed.
+  function isSecondTap(id) {
+    const now = Date.now();
+    const second = state.lastTapId === id && (now - state.lastTapAt) < DBL_MS;
+    state.lastTapId = second ? null : id;      // a third click starts over
+    state.lastTapAt = now;
+    return second;
+  }
+
+  // Where a node is currently DRAWING, in desk coordinates. Read off the
+  // element because that is the one place the answer is true for every case —
+  // a loose card (its stored pos), a member of an open clip (a derived grid
+  // slot), an attached post-it (a derived anchor).
+  function basePosOf(node, fallback) {
+    const x = parseFloat(node.style.left), y = parseFloat(node.style.top);
+    if (isFinite(x) && isFinite(y)) return { x, y };
+    return { x: (fallback.pos || fallback).x || 0, y: (fallback.pos || fallback).y || 0 };
+  }
+
+  // Which clip, if any, is under the pointer. Rect maths rather than
+  // elementFromPoint, matching overUnplacedHandle above: the dragged node is
+  // itself under the cursor, and this way there is nothing to hide first.
+  //
+  // The mark and the stack's cards both count as the clip. A closed stack is
+  // the natural target (it is one object and it is what you can see); an open
+  // clip accepts a drop too, because refusing it would be a rule to remember
+  // rather than a thing that just works.
+  function clipAtPoint(e, exclude) {
+    const hit = (n) => {
+      if (!n || n === exclude || (exclude && exclude.contains(n))) return false;
+      const r = n.getBoundingClientRect();
+      if (!r || (!r.width && !r.height)) return false;
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    };
+    for (const m of deskEl.querySelectorAll(".dclip-mark")) if (hit(m)) return m.dataset.cid;
+    for (const c of deskEl.querySelectorAll(".dcard[data-clip]")) if (hit(c)) return c.dataset.clip;
+    return null;
+  }
+
+  // Raise the whole sheaf, VISUALLY, with no store write — the single-card
+  // rule (§8.34) applied to a cluster. The commit happens on release.
+  function raiseClipLocally(clip) {
+    if (clip.z >= data.maxZ) return null;                   // already on top
+    let z = data.maxZ;
+    const out = [];
+    for (const m of clip.members) out.push({ id: m.id, z: ++z });
+    for (const nd of clipNodes(clip.cid)) nd.style.zIndex = String(10 + z + 1);
+    return out;
+  }
+  // One z op per member, in member order, so their relative arrangement inside
+  // the stack survives being raised.
+  function commitClipRaise(clip, pending) {
+    for (const { id, z } of pending) store.setDeskField(id, project.id, "z", z);
+  }
+
+  // ---- select-to-clip ----
+  function togglePick(node) {
+    const id = node.dataset.id;
+    const p = placedById.get(id);
+    if (!p) return;
+    if (clipOfCard.has(id)) { toast("That card is already in a clip.", "info", 2600); return; }
+    const picked = state.clipping.picked;
+    const i = picked.indexOf(id);
+    if (i >= 0) { picked.splice(i, 1); node.classList.remove("is-clip-picked"); }
+    else { picked.push(id); node.classList.add("is-clip-picked"); }
+    paintClipHint();
+  }
+
+  function paintClipHint() {
+    const hint = dom.clipHint;
+    if (!hint || !state.clipping) return;
+    const n = state.clipping.picked.length;
+    hint.textContent = n === 0
+      ? "Click the cards you want held together, then press the clip again."
+      : n === 1
+        ? "One picked — a clip needs at least two. Press the clip again to stop."
+        : `${n} picked. Press the clip again to hold them together.`;
+  }
+
+  // ---- a new post-it on bare desk ----
+  function newPostIt(e) {
+    const r = view.getBoundingClientRect();
+    // surface coordinates, so the current pan is added back in — the same sum
+    // the drawer's drag-out already does
+    const pos = D.clampPos({
+      x: e.clientX - r.left + view.scrollLeft - D.NOTE_W / 2,
+      y: e.clientY - r.top + view.scrollTop - 20,
+    }, D.NOTE_W, D.NOTE_H);
+    const nid = store.addNote(project.id, { pos });
+    state.noteFocus = `note:${nid}`;             // land with the cursor in it
+    state.noteSel = null;
+    ctx.rerender();
+  }
+
+  // ---- right-click: unclip, or throw a post-it away (§5.4) ----
+  // Desktop only, and honestly so: the desk itself is behind a `pointer: fine`
+  // gate, so there is no device that can reach a clip and cannot right-click.
+  deskEl.addEventListener("contextmenu", (e) => {
+    const mark = e.target.closest(".dclip-mark");
+    const note = e.target.closest(".dnote");
+    if (!mark && !note) return;
+    e.preventDefault();
+    if (mark) {
+      const clip = clipByCid.get(mark.dataset.cid);
+      if (!clip) return;
+      deskMenu(e, [{
+        label: "Unclip",
+        run: () => {
+          // Both floors, in one batch: the clip record is tombstoned and every
+          // member's membership is cleared. Nobody is repositioned — they are
+          // already sitting wherever the last cluster drag left them (§12.2).
+          for (const m of clip.members) store.setDeskField(m.id, project.id, "clip", null);
+          store.removeClip(project.id, clip.cid);
+          if (state.clipOpen === clip.cid) state.clipOpen = null;
+          ctx.rerender();
+        },
+      }]);
+      return;
+    }
+    const rec = noteByNid.get(note.dataset.nid);
+    if (!rec) return;
+    deskMenu(e, [{
+      label: "Throw this away",
+      run: () => {
+        delete state.noteDrafts[rec.nid];
+        store.removeNote(project.id, rec.nid);
+        ctx.rerender();
+      },
+    }]);
   });
 
   // Touching a card brings it to the top (§8.9) — VISUALLY, right now, with no
@@ -766,15 +1409,54 @@ function wireDesk(store, project, ctx, data, state, dom) {
   // Passed in, not looked up: wireDesk runs while the surface is still
   // detached from the page, so closest(".desk-page") was null and the banner's
   // ✧ silently got no listener — only the Z key worked.
+  //
+  // A hold is "the button is still down", NOT "the cursor is still over the
+  // icon". `pointerleave` answers the second question: it fires the instant the
+  // cursor's coordinates cross the edge of the box, with the mouse button's
+  // state playing no part in it. On a mouse the ✧ is only --control-min wide
+  // (28px, not the 44px touch floor), so an ordinary amount of hand drift while
+  // still holding was enough to fire it — the desk zoomed out and snapped
+  // straight back mid-gesture. Confirmed in a real browser: `pointerleave`
+  // arrives with `buttons: 1`.
+  //
+  // So the release signals are now the ones that actually mean "let go": a real
+  // `pointerup`, the OS taking the gesture away (`pointercancel`), or the
+  // window losing focus. Capturing the pointer on the way down routes the rest
+  // of the gesture to this element wherever the cursor wanders, so the real
+  // `pointerup` lands here even if the release happens far off the icon — the
+  // same shape as the drag/pan code above, which never depended on the cursor
+  // staying over one element either.
   const glanceBtn = dom.glanceBtn;
+  // Belt and braces for the release, because a hold that never ends is a worse
+  // bug than the one being fixed: pointer capture is feature-detected (a
+  // pointerId can be gone by the time we ask, and headless test doubles have no
+  // capture API at all), so the window also listens for the duration of one
+  // hold. Whichever arrives first ends it; the second is a no-op.
+  const endGlanceHold = () => {
+    window.removeEventListener("pointerup", endGlanceHold);
+    window.removeEventListener("pointercancel", endGlanceHold);
+    glanceOff();
+  };
   if (glanceBtn) {
-    glanceBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); glanceOn(); });
-    for (const ev of ["pointerup", "pointerleave", "blur"]) glanceBtn.addEventListener(ev, glanceOff);
+    glanceBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { glanceBtn.setPointerCapture?.(e.pointerId); } catch { /* no capture: the window listeners still end it */ }
+      window.addEventListener("pointerup", endGlanceHold);
+      window.addEventListener("pointercancel", endGlanceHold);
+      glanceOn();
+    });
+    for (const ev of ["pointerup", "pointercancel", "blur"]) glanceBtn.addEventListener(ev, endGlanceHold);
   }
   const onKeyDown = (e) => {
     if (e.key === "Escape") {
-      // topmost surface only, one per press
+      // TOPMOST SURFACE ONLY, ONE PER PRESS. The D2 additions slot into the
+      // existing ladder rather than beside it — read top to bottom, this is
+      // "the thing most recently put in front of you comes off first":
+      //   a little menu → a mode → an expanded card → an open clip → a drawer.
+      if (closeDeskMenu()) return;
+      if (state.clipping) { state.clipping = null; ctx.rerender(); return; }
       if (state.expanded) { state.expanded = null; ctx.rerender(); return; }
+      if (state.clipOpen) { state.clipOpen = null; ctx.rerender(); return; }
       if (state.drawer) { drawer.setDrawer(null); return; }
       return;
     }
@@ -795,9 +1477,12 @@ function wireDesk(store, project, ctx, data, state, dom) {
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("blur", glanceOff);
+    window.removeEventListener("pointerup", endGlanceHold);      // a desk torn
+    window.removeEventListener("pointercancel", endGlanceHold);  // down mid-hold
     if (view._deskFit) window.removeEventListener("resize", view._deskFit);
     window.removeEventListener("blur", endGesture);
     endGesture();                          // a desk torn down mid-drag must not leak its hold
+    closeDeskMenu();                       // ...and must not leave a menu behind either
     obs.disconnect();
   });
   obs.observe(document.body, { childList: true, subtree: true });
@@ -805,6 +1490,58 @@ function wireDesk(store, project, ctx, data, state, dom) {
 
 function isTyping(el2) {
   return el2 && /^(INPUT|TEXTAREA|SELECT)$/.test(el2.tagName);
+}
+
+// ===================================================================
+//  THE LITTLE MENU (§5.4 — unclip; and throwing a post-it away)
+// ===================================================================
+// Deliberately not a modal, not a dialog, and not a new pattern: a few real
+// buttons in a box at the pointer, at full control height, that close on the
+// next click anywhere, on Escape, or when the desk under them is rebuilt.
+//
+// Exactly one can exist at a time. It is parked on document.body rather than
+// inside the desk so it isn't clipped by the viewport's overflow or dragged
+// away by a pan mid-decision.
+let openMenu = null;
+
+function closeDeskMenu() {
+  if (!openMenu) return false;
+  openMenu.remove();
+  openMenu = null;
+  return true;
+}
+
+function deskMenu(e, entries) {
+  closeDeskMenu();
+  const box = el("div", { class: "desk-menu", role: "menu" });
+  for (const entry of entries) {
+    box.appendChild(el("button", {
+      class: "desk-menu-item", role: "menuitem", text: entry.label,
+      onclick: (ev) => { ev.stopPropagation(); closeDeskMenu(); entry.run(); },
+    }));
+  }
+  // Placed at the pointer, then nudged back inside the window if it would
+  // otherwise hang off the right or bottom edge.
+  box.style.left = "0px"; box.style.top = "0px";
+  document.body.appendChild(box);
+  const w = box.offsetWidth || 180, h = box.offsetHeight || 48;
+  box.style.left = Math.max(4, Math.min(e.clientX, window.innerWidth - w - 4)) + "px";
+  box.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)) + "px";
+  openMenu = box;
+
+  // One shot, on the NEXT press anywhere — added a tick late so the press that
+  // opened the menu can't also be the press that closes it.
+  setTimeout(() => {
+    const away = (ev) => {
+      if (openMenu && openMenu.contains(ev.target)) return;
+      document.removeEventListener("pointerdown", away, true);
+      closeDeskMenu();
+    };
+    document.addEventListener("pointerdown", away, true);
+  }, 0);
+  const first = box.querySelector("button");
+  if (first) first.focus({ preventScroll: true });
+  return box;
 }
 // Locked in D0 round 2/3, and the same numbers as --desk-drawer-ms and
 // --desk-glance-ms in app.css. Zero when the system asks for reduced motion —

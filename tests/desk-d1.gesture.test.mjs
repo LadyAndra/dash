@@ -167,5 +167,60 @@ console.log("\n--- 4. double-click survives the rebuild the first click causes -
   ok("a click five seconds later is just a click", viewLocal.desk.expanded === null);
 }
 
+// ===================================================================
+console.log("\n--- 5. holding the ✧ survives the cursor drifting off it ---");
+// The bug: `pointerleave` was in the release list, and it fires the moment the
+// cursor's coordinates leave the box — with the button still down. On a mouse
+// the ✧ is 28px (--control-min), so a little hand drift ended the glance
+// mid-hold. Real-browser instrumentation showed `pointerleave` arriving with
+// buttons=1 before any pointerup. jsdom can't move a cursor, but it can answer
+// the structural question: is a leave still treated as a release?
+{
+  const host = makeHost();
+  const { page } = build(host);
+  const btn = page.querySelector('.banner-glance');
+  const view = page.querySelector('.desk-viewport');
+  const deskEl = page.querySelector('.desk-surface');
+  // jsdom has no layout: give the glance real numbers to work with
+  Object.defineProperty(view, 'clientWidth', { get: () => 1200, configurable: true });
+  Object.defineProperty(view, 'clientHeight', { get: () => 700, configurable: true });
+  for (const c of page.querySelectorAll('.dcard')) for (const [k, v] of Object.entries({
+    offsetLeft: parseInt(c.style.left) || 0, offsetTop: parseInt(c.style.top) || 0,
+    offsetWidth: 300, offsetHeight: 160,
+  })) Object.defineProperty(c, k, { get: () => v, configurable: true });
+
+  let captured = null;
+  btn.setPointerCapture = (id) => { captured = id; };
+
+  btn.dispatchEvent(pointer('pointerdown', 1390, 30));
+  ok("pressing the ✧ starts a glance", /scale/.test(deskEl.style.transform), deskEl.style.transform);
+  ok("...and captures the pointer, so the release comes back here", captured === 1, String(captured));
+
+  // the drift: leave fires, button never came up
+  const leave = pointer('pointerleave', 1420, 60);
+  leave.buttons = 1;
+  btn.dispatchEvent(leave);
+  btn.dispatchEvent(pointer('pointerout', 1420, 60));
+  ok("the cursor drifting off the icon does NOT end the glance",
+     /scale/.test(deskEl.style.transform), deskEl.style.transform || '(cleared)');
+
+  // a real release does, wherever it happens
+  dom.window.dispatchEvent(pointer('pointerup', 1600, 400));
+  ok("a real pointerup ends it, even released well off the icon",
+     deskEl.style.transform === "", deskEl.style.transform);
+
+  // pointercancel — the OS taking the gesture away — also ends it
+  btn.dispatchEvent(pointer('pointerdown', 1390, 30));
+  ok("...and the ✧ still glances on the next press", /scale/.test(deskEl.style.transform));
+  btn.dispatchEvent(pointer('pointercancel', 1390, 30));
+  ok("pointercancel ends the glance", deskEl.style.transform === "", deskEl.style.transform);
+
+  // a plain tap still flashes and returns
+  btn.dispatchEvent(pointer('pointerdown', 1390, 30));
+  const flashed = /scale/.test(deskEl.style.transform);
+  btn.dispatchEvent(pointer('pointerup', 1390, 30));
+  ok("a quick tap still flashes and returns", flashed && deskEl.style.transform === "");
+}
+
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);
 process.exit(fail ? 1 : 0);

@@ -24,10 +24,19 @@
 //   pos      {x, y} in the desk's own logical pixels. One field, not two:
 //            a card is never half-way between two dropped positions.
 //   z        integer. Touch or drop sets desk-max + 1; ties break by entry id.
-//   clip     a clip's id, or null. Phase D2 — nothing reads it yet.
+//   clip     a clip's id, or null. Phase D2 reads this.
 //   removed  tombstone. Un-placing keeps the position, so restoring puts the
 //            card back where it was rather than somewhere new.
 //   created  ISO timestamp of first placement.
+//
+// Phase D2 adds the other floor: project-side desk objects, carried by the
+// `"dk"` op and materialised on the PROJECT item (§12.3):
+//
+//   project.deskObjects = { clips: [ { cid, created, removed } ],
+//                           notes: [ { nid, text, pos, clip, created, removed } ] }
+//
+// Everything about a clip's geometry is derived here, at render time, from its
+// members' positions — a clip stores no position and no member list (§12.2).
 //
 // "Missing viewState means never placed, everywhere, always." Every reader
 // here honours that, so no entry ever needs a backfill.
@@ -72,6 +81,53 @@ export const WEIGHT_MAX = 3;         // most hairline sheets drawn under one car
 export const GLANCE_PAD = 60;        // breathing room around the content when glancing
 
 // ===================================================================
+//  D2 CONSTANTS — first pass, expect Andra to tune these live
+// ===================================================================
+// Same posture as the D0/D1 numbers above: small, named, in one place, so a
+// reaction to seeing it on screen is a one-line edit rather than a hunt. None
+// of these is stored, synced or merged — they are all render-time arithmetic.
+
+// THE CLOSED STACK. A clip is "rigid" where a pile is "fluid" (§5.4), so its
+// members draw much tighter than a dropped pile ever lands — just enough that
+// the paper edges peek out at their own angles underneath. Bigger numbers =
+// looser sheaf.
+export const STACK_DX = 7;           // per-member step to the right, in the stack
+export const STACK_DY = 6;           // ...and down
+
+// THE PAPERCLIP MARK. Sits in a corner of the stack, overlapping the top card.
+// Offsets are relative to the TOP card's corner, so negative values hang the
+// clip off the edge of the paper the way a real one does.
+export const MARK_DX = -18;
+export const MARK_DY = -22;
+export const MARK_SIZE = 52;         // must match --desk-clip-mark in css/app.css
+
+// THE CLIP'S OWN TILT. Derived from a hash of the clip's id, exactly like a
+// card's wobble — stable, identical on every device, never stored. Wider than
+// a card's 2.3° on purpose: a clip is put on by hand and by eye, and a mark
+// that agrees too closely with the paper under it reads as printed-on.
+export const CLIP_ROT_MAX_DEG = 7;
+
+// THE OPEN GRID. Double-clicking the mark lays the members out to be read.
+export const OPEN_COLS = 3;
+export const OPEN_DX = 300;          // column pitch — a little over CARD_MIN_W
+export const OPEN_DY = 210;          // row pitch
+export const OPEN_INSET_Y = 44;      // grid starts below the mark, not under it
+
+// POST-ITS.
+export const NOTE_W = 220;           // must match --desk-note-w in css/app.css
+export const NOTE_H = 140;           // used only for clamping on drop
+// An attached post-it hangs off the stack, below the paperclip mark.
+export const NOTE_ATTACH_DX = -14;
+export const NOTE_ATTACH_DY = 40;
+// The paper tint: this percentage of the project's banner colour mixed into
+// the ordinary raised surface. VERIFIED, not eyeballed — tests/desk-d2.test.mjs
+// walks the whole RGB cube against js/theme.js's own contrast() and demands
+// --text-primary clear 4.5:1 on the result in BOTH themes (the worst case at
+// this value is 7.66:1, which is AAA). --text-muted also clears; --text-faint
+// does NOT, so nothing on a post-it may use it.
+export const NOTE_TINT_PCT = 18;     // must match --desk-note-tint in css/app.css
+
+// ===================================================================
 //  WOBBLE — derived, never stored (§12.1, §8.26)
 // ===================================================================
 // A hash of entry id + project id. Stable, identical on every device for
@@ -91,6 +147,12 @@ export function rotationOf(entryId, projectId, maxDeg = ROT_MAX_DEG) {
   return hashUnit(String(entryId) + "|" + String(projectId)) * maxDeg;
 }
 
+// The paperclip mark's tilt. Same technique, different salt — so a clip and a
+// card that happen to share an id prefix don't end up at the same angle.
+export function clipRotationOf(cid, projectId, maxDeg = CLIP_ROT_MAX_DEG) {
+  return hashUnit("clip|" + String(cid) + "|" + String(projectId)) * maxDeg;
+}
+
 // ===================================================================
 //  GEOMETRY
 // ===================================================================
@@ -108,6 +170,33 @@ export function clampPos(pos, cardW = CARD_MAX_W, cardH = 160, w = DESK_W, h = D
   };
 }
 function num(v) { return typeof v === "number" && isFinite(v) ? v : 0; }
+
+// CLAMPING A WHOLE CLUSTER (§12.2, Phase D2).
+//
+// Clamping each member separately would be wrong, and visibly so: push a clip
+// into a corner and the card nearest the edge stops while the others keep
+// going, so the stack fans out and never comes back — the relative offsets a
+// clip exists to preserve would be destroyed by an edge. Instead the DELTA is
+// clamped once, to the tightest constraint any member imposes, and every
+// member then moves by exactly that. The clip stops at the edge as one object,
+// which is what a real one does.
+//
+// Pure, and separate from clampPos on purpose: clampPos answers "is this
+// position on the desk", this answers "how far can all of these move together".
+export function clampDelta(positions, dx, dy, cardW = CARD_MAX_W, cardH = 160, w = DESK_W, h = DESK_H) {
+  if (!positions || positions.length === 0) return { dx: Math.round(dx), dy: Math.round(dy) };
+  const maxX = Math.max(0, w - ORIGIN - cardW);
+  const maxY = Math.max(0, h - ORIGIN - cardH);
+  let loX = -Infinity, hiX = Infinity, loY = -Infinity, hiY = Infinity;
+  for (const p of positions) {
+    loX = Math.max(loX, 0 - num(p.x));    hiX = Math.min(hiX, maxX - num(p.x));
+    loY = Math.max(loY, 0 - num(p.y));    hiY = Math.min(hiY, maxY - num(p.y));
+  }
+  // A cluster wider than the desk itself has no legal delta at all; pinning it
+  // to the low bound keeps it on screen rather than producing NaN.
+  const pick = (v, lo, hi) => Math.round(hi < lo ? lo : Math.min(Math.max(v, lo), hi));
+  return { dx: pick(dx, loX, hiX), dy: pick(dy, loY, hiY) };
+}
 
 // Z-ORDER (§8.27). Touch or drop sets max + 1. Ties break by entry id, so two
 // devices that raise different cards to the same number still agree on which
@@ -137,6 +226,57 @@ export function weights(placed, radius = WEIGHT_RADIUS, cap = WEIGHT_MAX) {
     out.set(a.id, Math.min(cap, n));
   }
   return out;
+}
+
+// ===================================================================
+//  CLIP GEOMETRY (§12.2, §12.5 — derived, never stored)
+// ===================================================================
+// A clip owns no position. Where it sits is a question you ask its members,
+// and the answer is recomputed on every render. That is the whole reason
+// dragging a clip is "one ordinary pos op per member" and nothing else: move
+// the members and the clip has already moved, because there was never a second
+// coordinate to keep in step.
+
+// THE ANCHOR — the topmost member's position, not the centroid.
+//
+// Both were offered; this one is cleaner against the helpers that already
+// exist. `placed` arrives sorted by compareZ, so "topmost" is just the last
+// element — no new comparison, no averaging, and no rounding drift. It also
+// behaves better under a drag: every member moves by the same delta, so the
+// anchor moves by exactly that delta too, and the stack cannot creep.
+export function clipAnchor(members) {
+  if (!members || members.length === 0) return { x: 0, y: 0 };
+  const top = members[members.length - 1];
+  return { x: top.pos.x, y: top.pos.y };
+}
+
+// Where member i draws while the clip is CLOSED: a tight sheaf, in member
+// order, so the last one is the top card and the mark sits on its corner.
+export function stackPos(anchor, i, dx = STACK_DX, dy = STACK_DY) {
+  return { x: anchor.x + i * dx, y: anchor.y + i * dy };
+}
+
+// ...and while it is OPEN: a plain reading grid starting under the mark.
+export function gridPos(anchor, i, cols = OPEN_COLS, dx = OPEN_DX, dy = OPEN_DY, inset = OPEN_INSET_Y) {
+  return {
+    x: anchor.x + (i % cols) * dx,
+    y: anchor.y + inset + Math.floor(i / cols) * dy,
+  };
+}
+
+// The mark's own corner, derived from the TOP card (so it always overlaps the
+// sheet you can actually see) — closed only; an open clip parks it at the
+// anchor, above its grid.
+export function markPos(anchor, count, open = false) {
+  const top = open ? anchor : stackPos(anchor, Math.max(0, count - 1));
+  return { x: top.x + MARK_DX, y: top.y + MARK_DY };
+}
+
+// Where an attached post-it hangs. Follows the mark, so it rides the stack for
+// free — "moves with the stack when it's dragged" needs no code of its own.
+export function noteAnchor(anchor, count, open = false) {
+  const m = markPos(anchor, count, open);
+  return { x: m.x + NOTE_ATTACH_DX, y: m.y + NOTE_ATTACH_DY };
 }
 
 // THE GLANCE (§14.3, §14.18) — fit the CONTENT, not the desk's own bounds, and
@@ -176,9 +316,14 @@ export function deskData(items, projectId, linkLabel = "in project") {
   const placed = [];
   const unplaced = [];
   const members = [];
+  let project = null;
 
   for (const it of items) {
-    if (!it || it.id === projectId) continue;
+    if (!it) continue;
+    // The project item is not a member of its own desk, but it IS where the
+    // project-side desk objects live (§12.3) — so it is picked up on the way
+    // past rather than costing a second walk.
+    if (it.id === projectId) { project = it; continue; }
     // membership is an explicit link, not a generic "see also" connection
     let member = false;
     for (const l of it.links || []) {
@@ -207,7 +352,58 @@ export function deskData(items, projectId, linkLabel = "in project") {
   }
 
   placed.sort(compareZ);
-  return { key, projectId, placed, unplaced, members, maxZ: nextZ(placed) - 1 };
+
+  // ---- the project-side floor: clips and post-its (§12.3) ----
+  // Both collections are already stored sorted by id, so nothing is sorted
+  // again here; a tombstoned record is simply skipped, never erased.
+  const objects = (project && project.deskObjects) || {};
+  const liveClips = (objects.clips || []).filter(c => c && !c.removed);
+  const liveNotes = (objects.notes || []).filter(n => n && !n.removed);
+  const clipIds = new Set(liveClips.map(c => c.cid));
+
+  // Membership inverted in ONE pass over the cards we already have. A card
+  // whose `clip` points at a clip that has since been removed (or that this
+  // device hasn't received yet) is simply a loose card — the reference is
+  // ignored, never repaired, because repairing it would be a write.
+  const byClip = new Map(liveClips.map(c => [c.cid, []]));
+  const loose = [];
+  for (const p of placed) {
+    const arr = p.clip && clipIds.has(p.clip) ? byClip.get(p.clip) : null;
+    if (arr) arr.push(p); else loose.push(p);
+  }
+
+  const notesByClip = new Map();
+  const freeNotes = [];
+  for (const n of liveNotes) {
+    if (n.clip && clipIds.has(n.clip)) {
+      if (!notesByClip.has(n.clip)) notesByClip.set(n.clip, []);
+      notesByClip.get(n.clip).push(n);
+    } else {
+      // Same rule as a card: a note whose clip is gone is a free note, and it
+      // keeps whatever `pos` it last had. Its data outlives the clip (§12.3).
+      freeNotes.push(n);
+    }
+  }
+
+  const clips = liveClips.map(rec => {
+    const mem = byClip.get(rec.cid) || [];
+    return {
+      cid: rec.cid,
+      rec,
+      members: mem,                                  // already in compareZ order
+      anchor: clipAnchor(mem),
+      // A clip rides at the height of its topmost member, so the whole sheaf
+      // stays together in the stacking order rather than interleaving.
+      z: mem.length ? num(mem[mem.length - 1].z) : 0,
+      rot: clipRotationOf(rec.cid, projectId),
+      notes: notesByClip.get(rec.cid) || [],
+    };
+  });
+
+  return {
+    key, projectId, placed, unplaced, members, maxZ: nextZ(placed) - 1,
+    project, clips, loose, freeNotes, notes: liveNotes,
+  };
 }
 
 // ===================================================================

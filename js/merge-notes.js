@@ -112,6 +112,10 @@ const FIELD_NAMES = {
   title: "the title", body: "the notes", status: "the status", type: "the type",
   due: "the due date", remind: "the reminder",
   label: "name", date: "date", done: "done", order: "position", removed: "removed",
+  // the desk (Phase D1/D2). `pos` and `clip` are shared by cards and post-its,
+  // and read the same way for both.
+  pos: "where it sits", z: "which is on top",
+  clip: "which clip it's in", text: "the words on it",
 };
 
 function describe(n) {

@@ -644,4 +644,26 @@ Two things to keep straight when either is picked up:
 
 ---
 
+### 14.26 Phase D2 landed — clips and post-its (16 August 2026)
+
+Built to §5.4, §5.6, §12.2 and §12.3 exactly as written; nothing in the data model was reopened. Recorded here are only the calls the brief explicitly left to the implementer, plus the one thing that turned out to be a bug rather than a choice.
+
+**The calls that were left open, and what they were made:**
+
+- **Stack anchor: the topmost member's position, not the centroid.** `placed` already arrives sorted by `compareZ`, so "topmost" is the last element — no new comparison and no averaging. It also behaves better under a drag: every member moves by the same delta, so the anchor moves by exactly that delta and the stack cannot creep by a rounding error per drop.
+- **Clip drag hit target: the mark *and* every member card.** The brief offered "top card or the icon"; making the whole closed stack draggable is the more forgiving target and costs nothing, because per-card dragging genuinely does not exist in the closed state. The mark keeps driving the clip when it is *open* too, so an open grid can still be moved as a unit.
+- **A post-it may be dropped on a clip in either state.** Closed is the natural target and is what the brief expected; refusing the open one would have been a rule to remember rather than a thing that works.
+- **An attached post-it hangs off the mark**, so it rides the stack with no code of its own — the anchor it is given is derived from the same members the stack is.
+- **Clip tilt range: ±7°**, against the cards' ±2.3°. A mark that agrees too closely with the paper under it reads as printed-on. One constant, `CLIP_ROT_MAX_DEG`, expected to be tuned.
+- **Emptying a post-it's text throws it away.** Not asked for; added because it makes an accidental double-click on the desk cost one keystroke instead of a menu, and because a blank scrap is rubbish rather than a note. Guarded so a *rebuild's* blur can never trigger it — see below.
+
+**The bug, and the rule it earns.** Double-clicking the paperclip mark did nothing at all. `setPointerCapture` on pointerdown routes the rest of the gesture to the captured element, so `pointerup` reports `target` as the desk surface, not the mark — and the "was this on the mark?" test on release always came back no. **After a pointer capture, `event.target` is a fact about the capture, not about the cursor.** Anything a gesture needs to know about where it *started* has to be captured on pointerdown. This is the same shape as §14.20's `pointerleave` problem: a question asked at the wrong moment, answered honestly, wrong.
+
+**Two things worth knowing before tuning it:**
+
+1. **The paperclip mark draws in the project's own colour** (`--ground-bg`), with a hairline of desk ink under it so it can't vanish. A very pale project colour will give a very pale clip. That is the "it re-colours per project for free" trade, and the alternative (nudging the colour toward ink) was left undone deliberately — it would mean the mark is not quite the project's colour, which is a bigger lie than a pale clip.
+2. **Open/closed is not stored, on purpose and per the brief.** If a clip's open state ever needs to survive a reload, that is a `viewLocal` persistence question, not a data-model one — do not give the clip record a field.
+
+---
+
 *End of addendum. Next action: hand this document, alongside `dash-architecture-proposal.md`, `dash-current-state.md`, and `dash-milestones-calendar-addendum.md`, to the implementing model via `docs/changes-2026-08-10-desk.md` with the instruction: "Build Phase D0 only." Update `dash-current-state.md` as each phase lands.*

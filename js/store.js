@@ -38,6 +38,9 @@ import { deskKey } from "./desk.js";
 // same 3, deliberately, so that "what version am I on" keeps meaning
 // something (desk addendum §12.7). Ignore-and-preserve in _applyOp makes a
 // device that is behind safe regardless.
+//
+// Phase D2 (August 2026) added the "dk" op kind — project-side clips and
+// post-its — and STAYS ON 3 for exactly that reason. No bump, no migration.
 export const FORMAT_VERSION = 3;
 
 // The dedicated "Project" type. An entry assigned to a project links to it
@@ -79,6 +82,7 @@ export const OP = {
   DELETE: "delete",   // tombstone the item
   MS:     "ms",       // milestone sub-record: action add | set | remove
   VS:     "vs",       // per-key viewState sub-record: action add | set | remove
+  DK:     "dk",       // project-side desk object: action add | set | remove
 };
 
 // ---- the desk (desk addendum §12.1) ----
@@ -137,6 +141,53 @@ const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"
 //            keeps its position, so restoring puts the card back where it was.
 const VS_FIELDS = new Set(["pos", "z", "clip", "removed"]);
 
+// ---- the project-side desk objects (desk addendum §12.3, Phase D2) ----
+// One op kind carries every desk object that belongs to the PROJECT rather
+// than to an entry, addressed by collection: (projectId, coll, id).
+//
+//   { itemId: "<projectId>", op: "dk", coll: "clip", action: "add",
+//     id: "<cid>", value: {}, ts: … }
+//
+// Materialised as ONE optional field on the project item:
+//   project.deskObjects = { clips: [ … ], notes: [ … ] }
+// each array kept sorted by id, so two devices that received the same ops in
+// different sequences write byte-identical snapshots — the milestones
+// precedent, and the reason the convergence test is a real test.
+//
+// Missing means empty, everywhere, always. That is why formatVersion stays 3:
+// the bump D1 made already marks the desk format FAMILY (§12.7), and a device
+// that is behind ignores-and-preserves an op kind it doesn't know.
+//
+// The `sym` collection (wonder symbols) is Phase D3 and deliberately absent —
+// an incoming `dk` op naming it is ignored and preserved like any unknown
+// kind, so a future device may write them safely before this one updates.
+const DK_COLLS = {
+  // A clip is NEARLY EMPTY on purpose: wordless by data shape, not by
+  // discipline (§5.4). Membership is not here — it is the `clip` field on each
+  // card's own desk record, so a card is in at most one clip per desk and
+  // nothing can drift out of step (§12.2).
+  clip: { array: "clips", idKey: "cid", fields: new Set(["removed"]), addFields: [] },
+  // A post-it. `pos` is used when it is free-floating; when `clip` names a
+  // clip, it renders at that clip's derived bounds and `pos` is ignored — the
+  // same field either way, which is what makes attaching one op (§5.6).
+  note: {
+    array: "notes", idKey: "nid",
+    fields: new Set(["text", "pos", "clip", "removed"]),
+    addFields: ["text", "pos", "clip"],
+  },
+};
+
+// The skeleton a `set` lands in when it arrives before its `add`. Built from
+// the spec so a new collection can never forget one.
+function emptyDeskObject(coll, id) {
+  const spec = DK_COLLS[coll];
+  const rec = { [spec.idKey]: id };
+  for (const f of spec.fields) rec[f] = null;
+  for (const f of spec.addFields) rec[f] = null;
+  rec.created = null;
+  return rec;
+}
+
 // Where this device's merge notes are kept between reloads. Per-device on
 // purpose, like every other localStorage key in Dash: a merge note is an
 // inbox for the person sitting at THIS device, not content to be synced.
@@ -182,10 +233,12 @@ function emptyItem(id) {
     _deleted: false,
     // per-field winning timestamps, so LWW is decided without re-reading logs
     _fieldTs: {},
-    // NOTE: there is deliberately NO `milestones: []` here. Missing means
-    // empty (addendum §9), so the field only ever appears on an item once a
-    // real `ms add` op materialises it. That is what makes "no migration"
-    // true rather than aspirational.
+    // NOTE: there is deliberately NO `milestones: []` here, and no
+    // `deskObjects: {}` either. Missing means empty (addendum §9), so those
+    // fields only ever appear on an item once a real `ms add` / `dk add` op
+    // materialises them. That is what makes "no migration" true rather than
+    // aspirational — and it is why a project with no clips is byte-identical
+    // to one written before clips existed.
   };
 }
 
@@ -570,6 +623,87 @@ export class Store {
     this._action("edit", { id: entryId, field: "desk" });
   }
 
+  // =====================================================
+  //  CLIPS AND POST-ITS  (desk addendum §12.2, §12.3 — Phase D2)
+  //  Everything project-side. One op per call, same as the desk methods above.
+  // =====================================================
+
+  // Missing means empty, everywhere, always (§9). Callers get real arrays back
+  // so nothing downstream has to null-check. TOMBSTONES ARE INCLUDED — the
+  // render layer filters them (deskData does), because "what has ever existed"
+  // and "what is on the desk right now" are different questions.
+  deskObjects(projectId) {
+    const it = this.get(projectId);
+    const o = (it && it.deskObjects) || {};
+    return { clips: o.clips || [], notes: o.notes || [] };
+  }
+
+  clips(projectId) { return this.deskObjects(projectId).clips.filter(c => !c.removed); }
+  notes(projectId) { return this.deskObjects(projectId).notes.filter(n => !n.removed); }
+
+  // A clip carries nothing but its own existence. Returns the cid so the
+  // caller can write the membership ops that follow it.
+  addClip(projectId) {
+    const cid = ulid();
+    this._addDeskObject(projectId, "clip", cid, {});
+    return cid;
+  }
+
+  // Tombstone, never erase. The members' own `clip` fields are cleared by the
+  // caller in the same batch — this method deliberately does NOT walk the
+  // archive to find them, because a store method that scans is exactly the
+  // render-scan bug in a different coat.
+  removeClip(projectId, cid) {
+    this._removeDeskObject(projectId, "clip", cid);
+  }
+
+  addNote(projectId, partial = {}) {
+    const nid = ulid();
+    this._addDeskObject(projectId, "note", nid, {
+      text: partial.text || "",
+      pos: partial.pos || null,
+      clip: partial.clip || null,
+    });
+    return nid;
+  }
+
+  setNoteField(projectId, nid, field, value) {
+    this._setDeskObjectField(projectId, "note", nid, field, value);
+  }
+
+  removeNote(projectId, nid) {
+    this._removeDeskObject(projectId, "note", nid);
+  }
+
+  // ---- the three writers every method above funnels through ----
+  _addDeskObject(projectId, coll, id, value) {
+    if (!DK_COLLS[coll]) throw new Error(`desk object: '${coll}' is not a collection`);
+    const ts = clockNow();
+    this._applyOp({
+      op: OP.DK, itemId: projectId, coll, id, action: "add",
+      value: { ...value, created: new Date(ts.wall).toISOString() }, ts,
+    }, true);
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+
+  _setDeskObjectField(projectId, coll, id, field, value) {
+    const spec = DK_COLLS[coll];
+    if (!spec) throw new Error(`desk object: '${coll}' is not a collection`);
+    if (!spec.fields.has(field)) throw new Error(`desk object: '${field}' is not a ${coll} field`);
+    this._applyOp({
+      op: OP.DK, itemId: projectId, coll, id, action: "set", field, value, ts: clockNow(),
+    }, true);
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+
+  _removeDeskObject(projectId, coll, id) {
+    if (!DK_COLLS[coll]) throw new Error(`desk object: '${coll}' is not a collection`);
+    this._applyOp({
+      op: OP.DK, itemId: projectId, coll, id, action: "remove", ts: clockNow(),
+    }, true);
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+
   // Shared by every writer above, and by restoreCollision. Kept private
   // because the key format ("desk:<pid>") is this file's business.
   _setViewStateField(entryId, key, field, value) {
@@ -642,6 +776,13 @@ export class Store {
         const it = this._ensure(op.itemId);
         this._applyMilestoneOp(it, op);
         this._bumpModified(it, op.ts);
+        break;
+      }
+      case OP.DK: {
+        const it = this._ensure(op.itemId);
+        this._applyDeskObjectOp(it, op);
+        // Same reasoning as VS below: putting a clip round two cards is
+        // arranging a desk, not editing the project (§10).
         break;
       }
       case OP.VS: {
@@ -760,6 +901,55 @@ export class Store {
     });
   }
 
+  // ---- the project-side desk-object merge rules (desk addendum §12.3) ----
+  // The THIRD caller of the same helper, and the reason it was written as one:
+  // this is `"ms"` again with a different address. The only structural
+  // difference is that the address has one more part — a collection — so the
+  // namespace carries it ("dk:note:<nid>:text"), which keeps every clip's and
+  // every note's bookkeeping in its own lane inside the same _fieldTs map.
+  //
+  // Two devices clipping DIFFERENT cards together while offline write two
+  // clips with two ULIDs and both survive. Two devices editing the same
+  // post-it's words contest that one field and the loser goes to merge notes,
+  // exactly like a title.
+  _applyDeskObjectOp(it, op) {
+    const spec = DK_COLLS[op.coll];
+    if (!spec) {
+      // Forward compatibility again, one level down: `sym` ships in D3, and a
+      // device still on D2 must carry those ops in its log untouched rather
+      // than choke on them.
+      console.warn("unknown desk collection (ignored, forward-compat):", op.coll);
+      return;
+    }
+    if (!it.deskObjects || typeof it.deskObjects !== "object") it.deskObjects = {};
+    if (!Array.isArray(it.deskObjects[spec.array])) it.deskObjects[spec.array] = [];
+    this._applySubRecordOp(it, op, {
+      ns: `dk:${op.coll}`,
+      idKey: "id",
+      fields: spec.fields,
+      addFields: spec.addFields,
+      ensure: (item, id) => this._ensureDeskObject(item, op.coll, id),
+      label: (rec, o) => ({ coll: o.coll, dkId: o.id, label: `${o.coll} · ${o.field}` }),
+    });
+  }
+
+  // Kept sorted by id for the same reason milestones are sorted by mid: one
+  // canonical byte form per set of ops, whatever order they arrived in.
+  _ensureDeskObject(it, coll, id) {
+    const spec = DK_COLLS[coll];
+    const list = it.deskObjects[spec.array];
+    let rec = list.find(r => r[spec.idKey] === id);
+    if (!rec) {
+      rec = emptyDeskObject(coll, id);
+      list.push(rec);
+      list.sort((a, b) => {
+        const x = a[spec.idKey], y = b[spec.idKey];
+        return x < y ? -1 : x > y ? 1 : 0;
+      });
+    }
+    return rec;
+  }
+
   // A milestone we haven't seen yet gets a skeleton, so a `set` arriving
   // before its `add` has somewhere to land (§4.2). The `add` fills the blanks
   // when it turns up.
@@ -840,7 +1030,9 @@ export class Store {
       ? (this._msFieldValue(it, meta.mid, op.field))
       : key.startsWith("vs:")
         ? (((it.viewState || {})[meta.vsKey] || {})[op.field])
-        : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
+        : key.startsWith("dk:")
+          ? (this._dkFieldValue(it, meta.coll, meta.dkId, op.field))
+          : (DATE_SCALARS.has(op.field) ? it.dates[op.field] : it[op.field]);
     if (sameValue(current, op.value)) return;           // both wrote the same thing
 
     // The key is derived entirely from the losing op, so replaying that same
@@ -857,6 +1049,8 @@ export class Store {
       itemTitle: it.title || "Untitled",
       mid: meta.mid || null,
       vsKey: meta.vsKey || null,
+      coll: meta.coll || null,          // "clip" | "note" — a project-side object
+      dkId: meta.dkId || null,
       field: op.field,
       what: meta.label || op.field,
       lostValue: op.value === undefined ? null : op.value,
@@ -874,6 +1068,14 @@ export class Store {
   _msFieldValue(it, mid, field) {
     const ms = (it.milestones || []).find(m => m.mid === mid);
     return ms ? ms[field] : undefined;
+  }
+
+  _dkFieldValue(it, coll, id, field) {
+    const spec = DK_COLLS[coll];
+    if (!spec) return undefined;
+    const list = (it.deskObjects || {})[spec.array] || [];
+    const rec = list.find(r => r[spec.idKey] === id);
+    return rec ? rec[field] : undefined;
   }
 
   // The merge-notes surface reads these (see js/merge-notes.js).
@@ -926,6 +1128,7 @@ export class Store {
     try {
       if (c.mid) this.setMilestoneField(c.itemId, c.mid, c.field, c.lostValue);
       else if (c.vsKey) this._setViewStateField(c.itemId, c.vsKey, c.field, c.lostValue);
+      else if (c.coll) this._setDeskObjectField(c.itemId, c.coll, c.dkId, c.field, c.lostValue);
       else this.setField(c.itemId, c.field, c.lostValue);
     } catch (err) {
       console.warn("couldn't restore that merge note:", err);
@@ -1074,8 +1277,11 @@ function fillCreateBlanks(it, skel) {
     // any order — so letting the skeleton assign here wipes real records that
     // arrived first. That was the Phase M1 bug for `milestones`; `viewState`
     // is the same bug, found by the D1 out-of-order replay test before it
-    // could reach anyone's data.
-    if (k === "id" || k === "_fieldTs" || k === "milestones" || k === "viewState") continue;
+    // could reach anyone's data. `deskObjects` (D2) joins the list for exactly
+    // the same reason — a project's create op landing after its clips would
+    // otherwise assign an empty {} over them and take the clips with it.
+    if (k === "id" || k === "_fieldTs" || k === "milestones"
+        || k === "viewState" || k === "deskObjects") continue;
     if (k === "_deleted") { if (!it._deleted && v) it._deleted = true; continue; }
     if (k === "tags" || k === "links" || k === "attachments") {
       // Set fields: add-ops may already have landed, so merge, never replace.
