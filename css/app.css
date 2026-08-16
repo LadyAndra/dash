@@ -1347,6 +1347,13 @@ button, input, textarea, select {
   box-shadow: 0 0 0 2px var(--ground-bg, var(--surface)),
               0 0 0 4px var(--ground-ink, var(--text-on-accent));
 }
+/* A spine that has only just been created does not animate into the state the
+   pointer was ALREADY in. The tilt describes a gesture — moving onto a spine —
+   and the browser works out :hover a style pass after an element is inserted,
+   so without this a spine born under a stationary pointer plays that gesture
+   by itself. js/views/project.js takes the class off two frames later, so
+   every real hover on and off still animates exactly as it did. */
+.spine.is-fresh { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .spine { transition: none; }
   .spine:hover, .spine:focus-visible { transform: none; }
@@ -2682,16 +2689,29 @@ button, input, textarea, select {
   background: transparent; border-color: transparent;
 }
 .banner-clip svg { width: var(--desk-clip-icon); height: auto; display: block; }
-/* ON: the glyph flips to a bold fill in the project's own banner colour,
-   knocked out of a solid block of the banner's ink. It is the one place a box
-   is wanted — a mode has to be unmistakable, and against a row that now
-   carries no chrome at all, this reads from across the room. */
+/* ON: the same drawing, but as a LINE drawing — its silhouette stroked in the
+   banner's ink at the weight of the banner's own rules, with the fill taken
+   out. No box, no block: the icon simply changes from a solid mark to an
+   outlined one, which is a bigger change at a glance than it sounds and keeps
+   the row's no-chrome rule intact in both states.
+   `fill: none` on the path overrides the fill="currentColor" in the artwork —
+   presentation attributes lose to CSS, which is why the SVG needs no variant. */
 .pb-acts .banner-clip.is-on,
 .pb-acts .banner-clip.is-on:hover {
-  background: var(--ground-ink, var(--text-primary));
-  color: var(--ground-bg, var(--surface));
-  border-color: var(--ground-ink, var(--text-primary));
-  border-radius: var(--radius);
+  background: transparent;
+  border-color: transparent;
+  color: var(--ground-ink, var(--text-primary));
+}
+.pb-acts .banner-clip.is-on svg path {
+  fill: none;
+  stroke: currentColor;
+  /* vector-effect keeps this a true 1px on screen whatever the artwork's own
+     coordinate system is — the same technique the desk mat already uses, and
+     the reason the stroke matches --pb-rule's hairline exactly rather than
+     approximately. */
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 
 /* The line that says what to do while picking. Over the viewport, not on the

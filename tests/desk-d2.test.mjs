@@ -361,6 +361,30 @@ console.log("\n--- clip geometry: derived, never stored ---");
      desk.MARK_RX > 0 && mk.right > desk.stackSlot(c.anchor, 2).right);
   ok("...and above the top of it", mk.y < desk.stackSlot(c.anchor, 2).y);
 
+  // THE LEAN IS MIRRORED (August 16). Same hash, same range, same per-clip
+  // spread — opposite direction, because the mark grips from the right now.
+  const raw = desk.hashUnit("clip|" + c.cid + "|" + pid);
+  ok("the clip's lean is the mirror of its hash, not the hash",
+     Math.abs(desk.clipRotationOf(c.cid, pid) - (-raw * desk.CLIP_ROT_MAX_DEG)) < 1e-9);
+  ok("...so it is the same size as before, the other way",
+     Math.abs(desk.clipRotationOf(c.cid, pid)) <= desk.CLIP_ROT_MAX_DEG + 1e-9);
+  ok("...and still identical on every device, from the same two ids",
+     desk.clipRotationOf(c.cid, pid) === desk.clipRotationOf(c.cid, pid));
+  ok("...and different clips still lean differently",
+     desk.clipRotationOf("01AAA", pid) !== desk.clipRotationOf("01BBB", pid));
+
+  // OPEN, THE MARK STAYS ON THE RIGHT — it is the same object in both states.
+  const origin = { x: 400, y: 300 };
+  const open = desk.markSlotOpen(origin, 380);
+  ok("an open clip's mark is reckoned from a right edge too",
+     typeof open.right === "number" && open.x === undefined);
+  ok("...hanging off the first column's right edge, not its left",
+     open.right === origin.x + 380 + desk.MARK_RX);
+  ok("...and above the grid, clear of the first row",
+     open.y < origin.y + desk.OPEN_INSET_Y);
+  ok("...so opening a clip barely moves it, rather than swapping sides",
+     Math.abs(open.right - desk.markSlot(origin, 1, 380).right) < 1);
+
   // The whole point of a derived anchor: move every member by the same delta
   // and the clip has already moved, with nothing to keep in step.
   for (const m of c.members) s.setDeskField(m.id, pid, "pos", { x: m.pos.x + 200, y: m.pos.y - 40 });

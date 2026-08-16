@@ -499,7 +499,7 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
     const anchor = open ? grid.origin : c.anchor;
     anchors.set(c.cid, anchor);
     deskEl.appendChild(clipMark(c, open,
-      open ? { x: grid.origin.x, y: grid.origin.y + D.MARK_DY }
+      open ? D.markSlotOpen(grid.origin, grid.pitchX - D.OPEN_GAP_X)
            : D.markSlot(c.anchor, c.members.length)));
     // An attached post-it sits where it was DROPPED, at its own offset from
     // the anchor above — so it rides the stack for free (the anchor is derived
@@ -543,7 +543,7 @@ function surface(store, project, ctx, data, state, drawer, glanceBtn) {
       nodes.forEach((n, i) => { if (n) placeAt(n, g.at[i]); });
       anchors.set(c.cid, g.origin);
       const mark = deskEl.querySelector(`.dclip-mark[data-cid="${cssId(c.cid)}"]`);
-      if (mark) placeAt(mark, { x: g.origin.x, y: g.origin.y + D.MARK_DY });
+      if (mark) placeAt(mark, D.markSlotOpen(g.origin, g.pitchX - D.OPEN_GAP_X));
       for (const n of c.notes) {
         const nd = deskEl.querySelector(`.dnote[data-nid="${cssId(n.nid)}"]`);
         if (nd) placeAt(nd, D.noteAt(g.origin, n.offset));

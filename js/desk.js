@@ -177,8 +177,15 @@ export function rotationOf(entryId, projectId, maxDeg = ROT_MAX_DEG) {
 
 // The paperclip mark's tilt. Same technique, different salt — so a clip and a
 // card that happen to share an id prefix don't end up at the same angle.
+//
+// THE SIGN IS FLIPPED, and it is not arbitrary. The mark used to sit on the
+// stack's LEFT corner, and the lean was chosen against that. Now that it grips
+// from the RIGHT (decision 55), the same angle reads as leaning INTO the paper
+// rather than away from it — a clip pinched from the right hangs the other
+// way. Mirroring the sign is the whole change: same range, same per-clip
+// spread, same hash, opposite direction.
 export function clipRotationOf(cid, projectId, maxDeg = CLIP_ROT_MAX_DEG) {
-  return hashUnit("clip|" + String(cid) + "|" + String(projectId)) * maxDeg;
+  return -hashUnit("clip|" + String(cid) + "|" + String(projectId)) * maxDeg;
 }
 
 // ===================================================================
@@ -297,11 +304,23 @@ export function stackSlot(anchor, i, dx = STACK_DX, dy = STACK_DY, cardW = STACK
 }
 
 // The mark's own corner, derived from the TOP card (so it always overlaps the
-// sheet you can actually see) — closed only; an open clip parks it above the
-// grid's own origin, which openGrid() reports.
+// sheet you can actually see).
 export function markSlot(anchor, count, cardW = STACK_W) {
   const top = stackSlot(anchor, Math.max(0, count - 1), STACK_DX, STACK_DY, cardW);
   return { right: top.right + MARK_RX, y: top.y + MARK_DY };
+}
+
+// ...and where it parks once the clip is OPEN. It stays on the RIGHT there
+// too: the mark is the same object in both states, and having it hop to the
+// other side of the stack on a double-click made opening a clip read as
+// turning it into something else.
+//
+// It hangs off the first column's right edge rather than the whole grid's,
+// which is where the closed stack's own right edge was — so opening a clip
+// lays the sheets out underneath a mark that has barely moved, instead of
+// flinging it a thousand pixels sideways to the far corner of the grid.
+export function markSlotOpen(origin, colW = STACK_W) {
+  return { right: origin.x + colW + MARK_RX, y: origin.y + MARK_DY };
 }
 
 // THE OPEN GRID — laid out from what the cards MEASURE, not from a constant.
