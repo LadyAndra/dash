@@ -30,6 +30,3 @@ jobs:
             echo "Running $test_file"
             node "$test_file"
           done
-            echo "Running $test_file"
-            node "$test_file"
-          done
