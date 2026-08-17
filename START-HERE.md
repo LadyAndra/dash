@@ -37,13 +37,16 @@ If an AI finds a real gap between the code and `dash-current-state.md`, closing 
 
 # Publishing a change
 
-Every finished change arrives as **complete files**, plus a short plain-English note covering: what changed, exactly what to upload, anything unusual that has to happen first, and a few things to check afterward.
+Every finished change arrives as **complete files**, plus a short plain-English note covering: what changed, exactly what to upload, a **ready-to-paste commit message**, anything unusual that has to happen first, and a few things to check afterward.
 
 1. Open the repo on **github.com** → **Add file → Upload files**.
 2. Drag in whatever the note says — usually whole folders (`js`, `css`, `docs`, `tests`), keeping folders intact rather than pulling files out of them, plus `sw.js` on its own at the root if the note includes it.
-3. Click **Commit changes**.
-4. Give it about a minute, then **hard-reload** on each device: **Cmd+Shift+R** on Mac, or fully close and reopen the tab/app on phone or tablet. A plain reload often isn't enough — see below for why.
-5. Check the few things the note asks you to check.
+3. In GitHub's commit-message box, replace any generic text such as **“Add files via upload”** with the exact **Commit message** supplied in the handoff.
+4. Click **Commit changes**.
+5. Give it about a minute, then **hard-reload** on each device: **Cmd+Shift+R** on Mac, or fully close and reopen the tab/app on phone or tablet. A plain reload often isn't enough — see below for why.
+6. Check the few things the note asks you to check.
+
+Commit messages should be short plain English that says what the change *did*, usually about 3–8 words: **“Simplify mobile navigation”**, **“Add release safety check”**, **“Fix project shelf redraw”**. Do not use filenames, dates, ticket numbers, or “Add files via upload” unless that phrase genuinely describes the change. The AI preparing the files chooses the message; Andra should not have to summarize technical work herself.
 
 If the new version still doesn't show up after a hard reload, stop there — don't start changing GitHub or browser settings. Screenshot it and bring it back to chat.
 
@@ -161,10 +164,11 @@ No format change should ever be hidden inside what looks like an ordinary featur
 - [ ] No secrets were added to the repo
 - [ ] `docs/dash-current-state.md` was updated if real behavior changed
 - [ ] This file was updated if the maintenance process itself changed
+- [ ] The handoff includes a short, meaningful, ready-to-paste commit message
 
 Then deliver complete replacement files with a short note:
 
-**What changed** — one or two plain-English sentences. **Upload these** — the exact files or folders. **Try these** — a short numbered list of things to check. **Anything unusual** — only if there's genuinely something to flag.
+**What changed** — one or two plain-English sentences. **Upload these** — the exact files or folders. **Commit message** — one short plain-English line to paste into GitHub. **Try these** — a short numbered list of things to check. **Anything unusual** — only if there's genuinely something to flag.
 
 ---
 
@@ -174,6 +178,7 @@ Then deliver complete replacement files with a short note:
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs/dash-architecture-proposal.md`        | The original design and the non-negotiable rules — why Dash is built the way it is.                                                                      |
 | `docs/dash-current-state.md`                | Broad current-state record. Trust the code over it; the known stale Desk Step 5 paragraph is explicitly superseded above.                               |
+| `docs/deploy-runbook.md`                    | The short GitHub-web publishing routine: what to upload, what commit message to use, what the checks mean, and what to do after publishing.              |
 | `docs/dash-desk-addendum.md`                | The spec and decision history for the Desk. §14.27 records the completed in-place reconciliation work.                                                    |
 | `docs/desk-handoff-2026-08-14.md`           | Historical Desk handoff. Its old Step 5 bug is closed; it now points forward instead of acting as an open-task list.                                      |
 | `docs/dash-milestones-calendar-addendum.md` | The spec for milestones and the Calendar view.                                                                                                           |

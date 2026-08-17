@@ -2,7 +2,7 @@
 
 For uploading changes to `LadyAndra.github.io/dash/` through GitHub's website.
 
-The goal is simple: Andra uploads complete files, GitHub checks them, and GitHub Pages publishes them.
+The goal is simple: Andra uploads complete files, gives the upload a useful name, GitHub checks it, and GitHub Pages publishes it.
 
 ---
 
@@ -26,7 +26,7 @@ Files that genuinely live at the repository root — such as `index.html`, `mani
 
 4. Wait for GitHub to finish showing the uploaded files.
 
-5. In the commit message box, type a short plain-English note about the change.
+5. In the commit-message box, paste the exact **Commit message** from the change note. If GitHub has filled in something generic such as **“Add files via upload”**, replace it.
 
 6. Click **Commit changes**.
 
@@ -37,6 +37,18 @@ Files that genuinely live at the repository root — such as `index.html`, `mani
 9. If it finishes with a **red X**, stop. Do not try to diagnose it. Give the failed check to the AI that made the change.
 
 10. Give GitHub Pages about a minute to publish.
+
+### What a good commit message looks like
+
+The AI preparing the files supplies this. Andra should not have to invent it.
+
+Keep it short and say what changed:
+
+- `Simplify mobile navigation`
+- `Add release safety check`
+- `Fix project shelf redraw`
+
+Avoid filenames, dates, long explanations, and generic messages such as `Add files via upload`. The point is that six months from now the repository history should read like a useful list of what changed.
 
 ---
 
@@ -50,20 +62,22 @@ Then try the small list of checks included with the change.
 
 ---
 
-## Cache/versioning: no manual step
+## Cache/versioning: handled in the change, checked by GitHub
 
-Dash's service worker (`sw.js`) now uses **one permanent offline cache**.
+Dash's service worker (`sw.js`) keeps an explicit offline **SHELL** list and a `CACHE_VERSION`.
 
-When Dash is online, it asks for the newest app files and automatically replaces the saved offline copies. When there is no internet, it falls back to the last good copies.
+Whenever a cached app file is added, renamed, or changed, whoever prepares the change must update `sw.js` and bump `CACHE_VERSION` in the same upload. **Andra never needs to edit either one herself.**
 
-That means:
+The automated `tests/release-safety.test.mjs` check is the backstop. It fails loudly if:
 
-- ordinary code changes do **not** require editing `sw.js`;
-- there is **no cache version number to bump**;
-- `sw.js` only needs uploading when the service-worker code itself is intentionally changed;
-- a new file will be cached automatically after Dash successfully requests it while online.
+- `sw.js` names a file that does not exist;
+- a required offline runtime file is missing from `SHELL`;
+- a cached app file changed but `sw.js` did not; or
+- `sw.js` changed without a new `CACHE_VERSION`.
 
-Do not reintroduce a manual cache-version step unless Andra explicitly asks for a different offline strategy.
+So the practical rule is simple: **upload `sw.js` only when the change note tells you to.** If the bookkeeping was prepared incorrectly, **Check Dash** should turn red and explain what was missed.
+
+Do not redesign or bypass this cache strategy as part of an unrelated change.
 
 ---
 
