@@ -7,10 +7,10 @@
 // all surface together without needing folders (§0's core requirement).
 // "Add existing" and "quick create" both just create/edit a `links` entry.
 
-import { el, emptyState, groundStyle, catalogNo } from "./shared.js";
+import { el, emptyState, groundStyle, catalogNo, stageChip } from "./shared.js";
 import { openEditor } from "../editor.js";
 import { createProjectPageController } from "./desk.js";
-import { stageOf } from "../milestones.js";
+import { stageOf, formatDay } from "../milestones.js";
 
 export const projectView = {
   name: "project",
@@ -128,6 +128,45 @@ function memberCounts(store) {
   return counts;
 }
 
+// The overview answers TWO different questions, and keeping them separate is
+// intentional:
+//
+//   shelf   = what projects do I have?
+//   next up = which open project stage reaches me first?
+//
+// The shelf keeps Store.projects() order because it is a stable library. Next
+// up is the dynamic register. Nothing here stores priority: the order is
+// derived from the same milestone data stageOf() already uses everywhere.
+//
+// Ordering is intentionally boring and legible:
+//   1. overdue current stages
+//   2. dated current stages, nearest date first
+//   3. undated current stages
+// Complete projects and projects without milestones stay on the shelf but
+// don't enter this register.
+function nextUp(items) {
+  const ranked = [];
+  for (const item of items) {
+    const stage = stageOf(item);
+    if (!stage || stage.complete) continue;
+    ranked.push({
+      item,
+      stage,
+      group: stage.overdue ? 0 : (stage.date ? 1 : 2),
+    });
+  }
+  ranked.sort((a, b) => {
+    if (a.group !== b.group) return a.group - b.group;
+    if (a.stage.date && b.stage.date && a.stage.date !== b.stage.date) {
+      return a.stage.date < b.stage.date ? -1 : 1;
+    }
+    const at = (a.item.title || "").toLocaleLowerCase();
+    const bt = (b.item.title || "").toLocaleLowerCase();
+    return at.localeCompare(bt);
+  });
+  return ranked;
+}
+
 // Build the picker once, and hand back a refresh() that reconciles it in
 // place. Nothing here is rebuilt on a redraw unless it actually changed.
 function buildPicker(store, state, ctx) {
@@ -145,16 +184,56 @@ function buildPicker(store, state, ctx) {
     ]),
   ]);
   wrap.appendChild(band);
+
+  // NEXT UP uses the existing panel + specimen-row language rather than a new
+  // card type. The single tokenised margin is the only local layout nudge;
+  // everything else is already part of Dash's visual system.
+  const nextCount = el("span", { class: "panel-right num" });
+  const nextBody = el("div", { class: "panel-body panel-body-flush" });
+  const nextPanel = el("section", {
+    class: "panel",
+    "data-project-next": "1",
+    "aria-label": "Next up",
+    style: "margin-bottom:var(--space-5)",
+  }, [
+    el("div", { class: "panel-head" }, [
+      el("span", { class: "plate-title", text: "Next up" }),
+      nextCount,
+    ]),
+    nextBody,
+  ]);
+  wrap.appendChild(nextPanel);
+
   const shelf = el("div", { class: "project-shelf" });
   const shelfWrap = el("div", { class: "project-shelf-wrap" }, [shelf]);
+
+  function openProject(id) {
+    if (!id) return;
+    state.projectId = id;
+    ctx.rerender();
+  }
 
   // ONE click handler for the whole shelf, rather than a closure per spine —
   // which is what lets a spine be kept across a redraw without rebinding it.
   shelf.addEventListener("click", (e) => {
     const s = e.target.closest(".spine");
     if (!s || !s.dataset.id) return;
-    state.projectId = s.dataset.id;
-    ctx.rerender();
+    openProject(s.dataset.id);
+  });
+
+  // Same delegated idea for Next up. Rows are reconciled by id, so a background
+  // write that changes some other project doesn't throw away the row under the
+  // keyboard/pointer.
+  nextBody.addEventListener("click", (e) => {
+    const row = e.target.closest(".item-row[data-id]");
+    if (row && nextBody.contains(row)) openProject(row.dataset.id);
+  });
+  nextBody.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const row = e.target.closest(".item-row[data-id]");
+    if (!row || !nextBody.contains(row)) return;
+    e.preventDefault();
+    openProject(row.dataset.id);
   });
 
   const empty = el("p", { class: "item-body-preview", text: "No matching projects." });
@@ -196,6 +275,63 @@ function buildPicker(store, state, ctx) {
     if (no.textContent !== noText) no.textContent = noText;
   }
 
+  function makeNextRow(it) {
+    return el("div", {
+      class: "item-row",
+      role: "button",
+      tabindex: "0",
+      "data-id": it.id,
+    }, [
+      el("span", { class: "item-no project-next-no" }),
+      el("div", { class: "item-main" }, [
+        el("div", { class: "item-meta project-next-meta" }, [
+          el("span", { class: "project-next-stage" }),
+          el("span", { class: "num project-next-date" }),
+          el("span", { class: "num project-next-members" }),
+        ]),
+        el("h3", { class: "item-title project-next-title" }),
+      ]),
+    ]);
+  }
+
+  function dressNext(node, it, stage, count) {
+    const no = node.querySelector(".project-next-no");
+    const noText = `№ ${catalogNo(store, it)}`;
+    if (no.textContent !== noText) no.textContent = noText;
+
+    const title = node.querySelector(".project-next-title");
+    const titleText = it.title || "Untitled project";
+    if (title.textContent !== titleText) title.textContent = titleText;
+
+    const stageSlot = node.querySelector(".project-next-stage");
+    const chip = stageChip(it);
+    const oldChip = stageSlot.firstElementChild;
+    const oldSig = oldChip ? `${oldChip.textContent}|${oldChip.className}` : "";
+    const newSig = chip ? `${chip.textContent}|${chip.className}` : "";
+    if (oldSig !== newSig) {
+      stageSlot.replaceChildren();
+      if (chip) stageSlot.appendChild(chip);
+    }
+
+    const date = node.querySelector(".project-next-date");
+    const dateText = stage.date ? formatDay(stage.date) : "No date";
+    if (date.textContent !== dateText) date.textContent = dateText;
+
+    const members = node.querySelector(".project-next-members");
+    const memberText = `${count} ${count === 1 ? "entry" : "entries"}`;
+    if (members.textContent !== memberText) members.textContent = memberText;
+
+    const labelParts = [titleText, `current stage ${stage.label}`];
+    if (stage.date) labelParts.push(stage.overdue ? `overdue since ${formatDay(stage.date)}` : `due ${formatDay(stage.date)}`);
+    else labelParts.push("no stage date");
+    labelParts.push(memberText);
+    const label = labelParts.join(", ");
+    if (node.getAttribute("aria-label") !== label) {
+      node.setAttribute("aria-label", label);
+      node.title = label;
+    }
+  }
+
   // A BRAND NEW SPINE IS BORN IN WHATEVER STATE THE POINTER IS ALREADY IN.
   //
   // The tilt is meant to describe a gesture: you move onto a spine and it
@@ -226,12 +362,44 @@ function buildPicker(store, state, ctx) {
     }));
   }
 
+  function drawNext(items, counts) {
+    const ranked = nextUp(items);
+    nextPanel.hidden = ranked.length === 0;
+    if (ranked.length === 0) return;
+
+    const overdue = ranked.filter(x => x.stage.overdue).length;
+    const summary = overdue
+      ? `${overdue} overdue · ${ranked.length} active`
+      : `${ranked.length} active`;
+    if (nextCount.textContent !== summary) nextCount.textContent = summary;
+
+    const have = new Map();
+    for (const node of nextBody.querySelectorAll(".item-row[data-id]")) {
+      have.set(node.dataset.id, node);
+    }
+
+    const wanted = [];
+    for (const { item, stage } of ranked) {
+      let node = have.get(item.id);
+      if (node) have.delete(item.id); else node = makeNextRow(item);
+      dressNext(node, item, stage, counts.get(item.id) || 0);
+      wanted.push(node);
+    }
+    for (const [, node] of have) node.remove();
+
+    wanted.forEach((node, i) => {
+      if (nextBody.children[i] !== node) nextBody.insertBefore(node, nextBody.children[i] || null);
+    });
+  }
+
   function draw() {
     const q = search.value.toLowerCase();
     const items = store.projects().filter(i => (i.title || "").toLowerCase().includes(q));
-    const counts = memberCounts(store);           // ONE archive pass, not one per spine
+    const counts = memberCounts(store);           // ONE archive pass, shared by shelf + Next up
     const n = items.length === 1 ? "1 project" : `${items.length} projects`;
     if (bandCount.textContent !== n) bandCount.textContent = n;
+
+    drawNext(items, counts);
 
     // Reconcile by project id. A spine that is still wanted is DRESSED, never
     // replaced — which is the whole point: an element that survives a redraw
