@@ -364,9 +364,9 @@ The phone app chrome now keeps only the primary **+ New** action permanently vis
 
 This is implemented by `js/mobile-chrome.js`, which moves the existing controls built by `js/app.js` rather than cloning their behavior. The phone boundary is the same coarse-pointer / 600px short-side rule used to hide Project, so desktop and iPad-sized touch layouts are unchanged.
 
-### Phone capture sheet — August 16, 2026
+### Editor finish action — August 16, 2026
 
-The item editor is now a full-screen sheet on phones, and its existing **Done** action stays reachable at the top-right while the form scrolls. This fixes the mismatch in the quick-capture path: `editor.js` already focuses Title immediately and saves fields as they change, but Done previously lived only after Sketch, Files, Projects, Tags and Connections at the very bottom of the long form. A one-line capture could therefore take one tap to start and a long scroll to finish.
+The item editor keeps its existing **Done** action reachable while the form scrolls. On phones the editor is a full-screen capture sheet with Done at the top-right. On fine-pointer desktop browsers the normal dialog proportions remain, but Done now shares the sticky editor heading row instead of living only after Sketch, Files, Projects, Tags and Connections at the bottom. This fixes the same mismatch in both places: `editor.js` already focuses Title immediately and saves fields as they change, so finishing an edit should not require a trip to the end of the form.
 
-This pass is deliberately **CSS-only**. It does not duplicate or replace the editor's close/save logic: the same Done button is repositioned for the phone, Delete stays at the long-form end, and desktop/iPad-sized dialog presentation is unchanged. The phone sheet uses the same coarse-pointer / 600px short-side boundary as the rest of the phone chrome.
+This remains deliberately **CSS-only**. It does not duplicate or replace the editor's close/save logic: the same Done button is repositioned, and Delete stays at the long-form end. The phone sheet still uses the coarse-pointer / 600px short-side boundary; the desktop sticky row is limited to fine-pointer devices. Coarse-pointer iPad-sized presentation is left unchanged until it can be checked on-device.
 
