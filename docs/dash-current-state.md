@@ -45,7 +45,7 @@ Everything else in the proposal's data model (Items, registries, content-address
 - Dropbox sync (see above)
 - App icon: cameo silhouette of a cocker spaniel
 - PWA installable on Mac (Chrome/Edge) and iPhone
-- **Sketch canvas on every item** (`js/sketch.js`) — always visible in the editor, not behind a reveal. Two inks, eraser, undo, clear. Apple Pencil pressure drives line weight; finger/mouse strokes fake a natural taper from stroke speed. Strokes autosave as a content-addressed PNG attachment (`role: "sketch"`), replacing the previous one on each save
+- **Sketch canvas on every item** (`js/sketch.js`) — available in the item editor under the shared **More details** disclosure (new items collapsed; existing edits open by default). Two inks, eraser, undo, clear. Apple Pencil pressure drives line weight; finger/mouse strokes fake a natural taper from stroke speed. Strokes autosave as a content-addressed PNG attachment (`role: "sketch"`), replacing the previous one on each save
 - **Sketch view/draw modes** (July 31, 2026) — the canvas loads in a "view" state where `pointer-events: none` lets touches pass through and the page scrolls normally; a pencil toggle arms it for drawing. Enforced in two independent layers (CSS + a guard in `onDown`) so a bug in one can't leave a stray mark. State is shown by a dark outline on the paper plus a plain-English label
 - **The Today panel, on Home** (August 1, 2026) — `js/entries.js` + a rebuilt `js/views/home.js`. Home shows Overdue (no floor — six months late is still late), Today, then the next 14 days grouped by day, drawing from project milestones **and** ordinary item dates in one interleaved list. Milestone rows carry a done toggle; reminder rows carry a dismiss; ordinary entries deliberately get no done action (what "finished" means depends on user-defined statuses). Read-aloud on Home speaks the day. An ember count on the Home tab, shown only when nonzero, is the from-anywhere signal. See `docs/changes-2026-08-01-today.md`
   - **Phone Home priority (August 16, 2026):** at the 820px single-column breakpoint, Home explicitly reads **Capture → stats → Due & coming up → From the archive**. Desktop keeps the archive panel in the left rail. This corrects the old nested-column DOM order, which put archival material ahead of the due list on a phone.
@@ -370,3 +370,11 @@ The item editor keeps its existing **Done** action reachable while the form scro
 
 This remains deliberately **CSS-only**. It does not duplicate or replace the editor's close/save logic: the same Done button is repositioned, and Delete stays at the long-form end. The phone sheet still uses the coarse-pointer / 600px short-side boundary; the desktop framed cap is limited to fine-pointer devices. Coarse-pointer iPad-sized presentation is left unchanged until it can be checked on-device.
 
+
+### Editor information hierarchy — August 16, 2026
+
+The item editor now uses one shared **capture-first hierarchy** on phone and desktop. **Title → Type / Status → Due / Reminder → Notes** stays immediately visible. The less-frequent organising tools — **Projects, Tags, Files & images, Connections, and Sketch** — are grouped under a native **More details** disclosure by `js/editor-details.js`.
+
+A **new item starts with More details collapsed**, so quick capture no longer begins with the full long-form editor. An **existing item starts with More details open**. That is deliberately conservative: the presentation module does not reach into the Store, and opening edits guarantees that information already recorded in projects/tags/files/connections/sketches can never appear to have disappeared behind the new hierarchy. The disclosure can still be closed manually while editing.
+
+This is progressive disclosure only. `editor.js` still owns every field, every autosave operation, Done/Delete, attachment handling, project assignment, links and sketch persistence. `editor-details.js` moves the existing field nodes after the editor is built; it does not clone controls or introduce a second save path. The phone full-screen capture sheet and the fine-pointer desktop framed sticky cap remain unchanged around it.
