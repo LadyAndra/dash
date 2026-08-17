@@ -364,3 +364,9 @@ The phone app chrome now keeps only the primary **+ New** action permanently vis
 
 This is implemented by `js/mobile-chrome.js`, which moves the existing controls built by `js/app.js` rather than cloning their behavior. The phone boundary is the same coarse-pointer / 600px short-side rule used to hide Project, so desktop and iPad-sized touch layouts are unchanged.
 
+### Phone capture sheet — August 16, 2026
+
+The item editor is now a full-screen sheet on phones, and its existing **Done** action stays reachable at the top-right while the form scrolls. This fixes the mismatch in the quick-capture path: `editor.js` already focuses Title immediately and saves fields as they change, but Done previously lived only after Sketch, Files, Projects, Tags and Connections at the very bottom of the long form. A one-line capture could therefore take one tap to start and a long scroll to finish.
+
+This pass is deliberately **CSS-only**. It does not duplicate or replace the editor's close/save logic: the same Done button is repositioned for the phone, Delete stays at the long-form end, and desktop/iPad-sized dialog presentation is unchanged. The phone sheet uses the same coarse-pointer / 600px short-side boundary as the rest of the phone chrome.
+

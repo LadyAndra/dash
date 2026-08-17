@@ -3399,3 +3399,79 @@ button, input, textarea, select {
   .catalog-band .band-count { margin-left: auto; }
   .catalog-band .band-select-btn { margin-left: var(--space-2); }
 }
+
+/* ---------- phone capture sheet (August 2026) ----------
+   The item editor already saves as you type and puts focus straight into the
+   title, so a quick capture should not end with a hunt for the exit. On a
+   phone the editor becomes a full-screen sheet and its existing Done button is
+   kept at the top-right of the viewport. Nothing about saving, fields or the
+   desktop dialog changes; this is only the phone presentation of the same
+   editor. */
+@media (pointer: coarse) and (max-width: 600px),
+       (pointer: coarse) and (max-height: 600px) {
+  .modal-scrim:has(> .modal input[aria-label="Title"]) {
+    padding: 0;
+    background: var(--surface-raised);
+    overflow-y: auto;
+  }
+
+  .modal-scrim:has(> .modal input[aria-label="Title"]) > .modal {
+    width: 100%;
+    min-height: 100dvh;
+    margin-top: 0;
+    padding:
+      0
+      var(--space-4)
+      calc(env(safe-area-inset-bottom) + var(--space-6));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* The first editor row carries the small NEW ITEM / EDIT ITEM label and the
+     read-aloud mark. Leave a quiet lane on its right for the always-available
+     Done action so those utilities never collide. */
+  .modal:has(input[aria-label="Title"]) > :first-child {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    margin: 0 calc(-1 * var(--space-4)) var(--space-3);
+    padding:
+      calc(env(safe-area-inset-top) + var(--space-3))
+      calc(var(--space-4) + 5.5rem)
+      var(--space-2)
+      var(--space-4);
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* This is the SAME Done button that used to live at the end of the form,
+     simply positioned where a phone can always reach it. The form autosaves,
+     so Done means exactly what it says: finish this capture and return. */
+  .modal:has(input[aria-label="Title"]) > .modal-actions .btn-primary {
+    position: fixed;
+    z-index: 2;
+    top: calc(env(safe-area-inset-top) + var(--space-3));
+    right: var(--space-4);
+    min-height: 40px;
+    padding: var(--space-1) var(--space-3);
+    border-color: var(--mount);
+    background: var(--mount);
+    color: var(--ink-on-mount);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    box-shadow: 0 2px 0 color-mix(in srgb, var(--mount) 24%, transparent);
+  }
+  .modal:has(input[aria-label="Title"]) > .modal-actions .btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: none;
+  }
+
+  /* Once Done leaves the bottom action row, Delete should not stretch into the
+     empty space it leaves behind. Keep it a deliberately secondary action at
+     the far left of the long-form end of the editor. */
+  .modal:has(input[aria-label="Title"]) > .modal-actions {
+    justify-content: flex-start;
+    padding-bottom: var(--space-4);
+  }
+}
