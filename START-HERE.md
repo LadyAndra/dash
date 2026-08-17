@@ -52,13 +52,13 @@ If the new version still doesn't show up after a hard reload, stop there — don
 Every push to `main` runs two separate things, and they answer different questions:
 
 - **Pages build and deployment** — did GitHub publish the site? A green check here means the files made it live.
-- **Check Dash** — did Dash's automated tests pass? A green check here means every `tests/*.test.mjs` file completed successfully.
+- **Check Dash** — did Dash's automated tests pass? A green check here means every `tests/*.test.mjs` file completed successfully, including the release-safety check described below.
 
 One can be green while the other is red. A successful Pages deploy does **not** prove the tests passed, and a red Check Dash does not by itself mean the live site failed to publish.
 
 If **Check Dash** is red, open that run, open the step with the red ×, and copy the bottom of the log from the first `FAIL`, `Error`, or `ReferenceError` through `Process completed with exit code 1`. Bring that text back to chat rather than trying to diagnose or edit code yourself. Warnings above the real error can be noisy; the failed step is the thing to trust.
 
-**A known friction point, not yet solved:** Dash currently needs `sw.js` manually updated whenever an app file is added, renamed, or changed. Miss it and devices may keep serving old code. An AI should not redesign this system as unrequested scope; until it is intentionally changed, whoever hands Andra a change is responsible for getting `sw.js` right so she never has to open it herself.
+**The cache bookkeeping is now checked automatically:** `sw.js` is still intentionally maintained by hand, but `tests/release-safety.test.mjs` checks the easy-to-forget parts after every push. It fails if the offline `SHELL` names a missing file, if Dash actively loads a local asset that is not in `SHELL`, if a commit changes a cached app file without changing `sw.js`, or if `sw.js` changes without a new `CACHE_VERSION`. This is a guardrail, not a build step: whoever hands Andra a change is still responsible for getting `sw.js` right before upload; GitHub now fails loudly if that bookkeeping was missed.
 
 ---
 
@@ -68,7 +68,7 @@ If **Check Dash** is red, open that run, open the step with the red ×, and copy
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `index.html`                                                        | The single page Dash runs from.                                                                                                                                   |
 | `manifest.json`                                                     | Makes Dash installable as an app, with its name and icons.                                                                                                        |
-| `sw.js`                                                             | The offline cache. Lists every file the app needs to work with no internet; needs updating by hand right now (see above).                                         |
+| `sw.js`                                                             | The offline cache. Lists every file the app needs to work with no internet; maintained by hand, with `release-safety.test.mjs` checking the bookkeeping after each push. |
 | `css/tokens.css`                                                    | Every color, size, and font Dash uses, in one place. This is how a full theme change stays possible.                                                              |
 | `css/app.css`                                                       | All actual styling — pulls from `tokens.css`, never a literal color or size of its own.                                                                           |
 | `js/`                                                               | The app's logic. No build step; the browser runs these files as written.                                                                                          |
@@ -82,7 +82,7 @@ If **Check Dash** is red, open that run, open the step with the red ×, and copy
 | `js/ui/`                                                            | Small reusable interface pieces (toasts, color pickers, and similar).                                                                                             |
 | `js/widgets/`                                                       | The home-screen corner widgets (weather, tide, pet). Currently switched off — see below.                                                                          |
 | `docs/`                                                             | Dash's written memory: architecture, current behavior, feature specs, and a dated note for every past change.                                                     |
-| `tests/`                                                            | Automated checks. GitHub runs every `*.test.mjs` file after each push to `main`; they are not part of the live app.                                                  |
+| `tests/`                                                            | Automated checks. GitHub runs every `*.test.mjs` file after each push to `main`. The app never loads them, though the public Pages site can serve them because it publishes from the repo root. |
 | `mockups/`                                                          | Throwaway design previews. Not part of the live app.                                                                                                              |
 | `icon*.png`, `icon.svg`, `logo-mark.png`                            | Dash's app icons.                                                                                                                                                 |
 
@@ -127,7 +127,7 @@ Before making a real change: read this file, read `docs/dash-current-state.md`, 
 - **Views are registered modules**, declared in `app.js` — not hardcoded checks scattered through the app.
 - **Accessibility floor stays intact:** 18px+ base text, AA contrast, 44px+ tap targets, `prefers-reduced-motion` respected.
 - **Never delete user data.** Tombstone, don't erase.
-- **Every new or renamed JS file goes into** **`sw.js`****'s file list, with the cache version bumped, in the same upload.** The single most common cause of "I uploaded it and nothing happened."
+- **Every new or renamed runtime file goes into `sw.js`'s file list, with the cache version bumped, in the same upload.** `release-safety.test.mjs` is a backstop for this rule, not a reason to leave it for CI to discover after publishing.
 - **Never commit a secret.** Passwords, Dropbox tokens, API keys — none of it belongs in this repository, ever, regardless of how the feature is framed. If something needs a secret to work, that's a sign to redesign, not to hide it in a file.
 - **Deliverables are complete files, never diffs or snippets**, with a short plain-English note — Andra doesn't read code.
 - **Don't relitigate settled decisions** in the architecture proposal or an addendum without Andra raising it first.
@@ -156,7 +156,7 @@ No format change should ever be hidden inside what looks like an ordinary featur
 - [ ] Existing user data is preserved
 - [ ] Dropbox sync wasn't unintentionally affected
 - [ ] Relevant tests pass
-- [ ] Any new/renamed file is in `sw.js`, with the cache version bumped
+- [ ] Any new/renamed runtime file is in `sw.js`, the cache version is bumped, and the release-safety check would accept the bookkeeping
 - [ ] No paid service or recurring cost was introduced
 - [ ] No secrets were added to the repo
 - [ ] `docs/dash-current-state.md` was updated if real behavior changed
@@ -178,6 +178,7 @@ Then deliver complete replacement files with a short note:
 | `docs/desk-handoff-2026-08-14.md`           | Historical Desk handoff. Its old Step 5 bug is closed; it now points forward instead of acting as an open-task list.                                      |
 | `docs/dash-milestones-calendar-addendum.md` | The spec for milestones and the Calendar view.                                                                                                           |
 | `docs/changes-2026-08-16-desk-reconciliation.md` | The dated record of the Desk reconciliation rounds, pile-weight cache, and the CI closeout.                                                          |
+| `docs/changes-2026-08-16-release-safety.md` | The service-worker release guardrail: what it checks, what it deliberately does not automate, and how it fits the existing publishing routine.           |
 | `docs/changes-YYYY-MM-DD-*.md`              | One per past change, dated — history, useful for *why*, not authoritative on *now*.                                                                      |
 
 You don't need to read these yourself. Point an AI at this file and the relevant one; it'll take it from there.
