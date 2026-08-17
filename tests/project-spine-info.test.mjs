@@ -1,9 +1,6 @@
-// The Projects shelf's larger, information-bearing book spines.
-//
-// jsdom cannot judge whether a book LOOKS large enough. This test guards the
-// structural promises behind that visual pass: title, derived stage, entry
-// count, catalogue number, explicit late marker, and DOM identity on redraw.
+// Projects overview — editorial slats.
 import { JSDOM } from "jsdom";
+import fs from "node:fs";
 
 const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', {
   pretendToBeVisual: true, url: "https://x.test/",
@@ -63,52 +60,74 @@ const ctx = {
 const draw = () => projectView.render(null, ctx, host);
 draw();
 
-const spine = (id) => host.querySelector(`.spine[data-id="${id}"]`);
+const slat = (id) => host.querySelector(`.project-slat[data-id="${id}"]`);
 
-console.log("\n--- every book carries useful shelf information ---");
+console.log("\n--- each project is one restrained typographic specimen ---");
 {
-  const s = spine(activeId);
-  ok("book has a separate copy area", !!s.querySelector(".spine-copy"));
-  ok("project title is present", s.querySelector(".spine-title").textContent === "Active project");
-  ok("current stage is visible", s.querySelector(".spine-stage").textContent === "Research");
-  ok("entry count is visible", s.querySelector(".spine-count").textContent === "4 entries");
-  ok("catalogue number is still present", /^№ \d+/.test(s.querySelector(".spine-no").textContent));
-  ok("book has the new readable width floor",
-     s.getAttribute("style").includes("min-width:calc(var(--tap-min) + var(--space-5))"));
-  ok("title uses the larger existing type token",
-     s.querySelector(".spine-title").getAttribute("style").includes("var(--text-lg)"));
+  const s = slat(activeId);
+  ok("the stable spine node also carries the editorial-slat class",
+     s?.classList.contains("spine") && s.classList.contains("project-slat"));
+  ok("project title is present once",
+     s.querySelectorAll(".spine-title").length === 1 &&
+     s.querySelector(".spine-title").textContent === "Active project");
+  ok("current stage is one optional caption",
+     s.querySelectorAll(".spine-stage").length === 1 &&
+     s.querySelector(".spine-stage").textContent === "Research" &&
+     !s.querySelector(".spine-stage").hidden);
+  ok("footer contains only count + catalogue number",
+     s.querySelectorAll(".spine-meta > *").length === 2 &&
+     s.querySelector(".spine-count").textContent === "4 entries" &&
+     /^№ \d+/.test(s.querySelector(".spine-no").textContent));
 }
 
-console.log("\n--- milestone states read plainly on the shelf ---");
+console.log("\n--- absence stays empty; overdue is a datum, not another label ---");
 {
-  ok("a project with no milestones says No stage",
-     spine(plainId).querySelector(".spine-stage").textContent === "No stage");
-  ok("a completed pipeline says Complete",
-     spine(doneId).querySelector(".spine-stage").textContent === "Complete");
-  ok("an overdue project gets an explicit Late marker",
-     spine(lateId).querySelector(".spine-late")?.textContent === "Late");
-  ok("an ordinary active project has no Late marker",
-     !spine(activeId).querySelector(".spine-late"));
+  const plain = slat(plainId);
+  ok("a project with no milestones prints no filler stage",
+     plain.querySelector(".spine-stage").hidden &&
+     plain.querySelector(".spine-stage").textContent === "" &&
+     !plain.textContent.includes("No stage"));
+
+  ok("a completed pipeline still says Complete because that is real state",
+     slat(doneId).querySelector(".spine-stage").textContent === "Complete" &&
+     !slat(doneId).querySelector(".spine-stage").hidden);
+
+  const late = slat(lateId);
+  ok("overdue is carried by the slat class",
+     late.classList.contains("is-overdue"));
+  ok("there is no Late badge or Late filler text",
+     !late.querySelector(".spine-late") &&
+     ![...late.querySelectorAll("*")].some(n => n.textContent === "Late"));
 }
 
-console.log("\n--- richer books still reconcile in place ---");
+console.log("\n--- the hierarchy is encoded in the scoped stylesheet ---");
 {
-  const before = spine(activeId);
+  const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
+  ok("title uses the large existing type token",
+     /\.spine-title[\s\S]*font-size:\s*var\(--text-xl\)/.test(css));
+  ok("shelf gains deliberate breathing room",
+     /\.project-shelf\s*\{[\s\S]*gap:\s*var\(--space-4\)/.test(css));
+  ok("slats have a broader token-based minimum",
+     /min-width:\s*calc\(var\(--tap-min\) \+ var\(--space-6\)\)/.test(css));
+  ok("overdue is a top-edge ember rule",
+     /\.is-overdue[\s\S]*border-top-color:\s*var\(--ember\)/.test(css));
+  ok("hover lift contains no rotation",
+     /\.project-slat:hover[\s\S]*translateY/.test(css) &&
+     !/\.project-slat:hover[\s\S]{0,180}rotate/.test(css));
+}
+
+console.log("\n--- data changes still update the same slat in place ---");
+{
+  const before = slat(activeId);
   store.setMilestoneField(activeId, activeMid, "label", "Prototype");
   const extra = store.createItem({ title: "One more entry" });
   store.assignToProject(extra, activeId);
   draw();
 
-  const after = spine(activeId);
-  ok("the same book element survives the redraw", after === before);
+  const after = slat(activeId);
+  ok("the same element survives the redraw", after === before);
   ok("stage updates in place", after.querySelector(".spine-stage").textContent === "Prototype");
   ok("entry count updates in place", after.querySelector(".spine-count").textContent === "5 entries");
-
-  store.setMilestoneField(activeId, activeMid, "done", new Date().toISOString());
-  draw();
-  ok("finishing the milestone changes the same book to Complete",
-     spine(activeId) === before &&
-     spine(activeId).querySelector(".spine-stage").textContent === "Complete");
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

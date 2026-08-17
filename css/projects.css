@@ -1,0 +1,114 @@
+/* ============================================================
+   Projects overview — editorial slats (August 16, 2026)
+   ------------------------------------------------------------
+   The shelf began as a book-spine metaphor. That was useful scaffolding,
+   not a realism goal. These overrides keep the vertical colour rhythm and
+   the stable DOM mechanics, but treat each project as a TYPOGRAPHIC SPECIMEN:
+
+     one loud serif title
+     one tiny stage caption, only when there is one
+     one tiny metadata footer
+     a lot of untouched colour between them
+
+   This file is intentionally scoped to .project-picker-page and loads after
+   app.css. Nothing on Home, List, Board, or an individual Project/Desk page
+   inherits these choices.
+   ============================================================ */
+
+.project-picker-page .project-shelf {
+  gap: var(--space-4);
+  align-items: flex-end;
+}
+
+.project-picker-page .project-shelf-wrap {
+  padding-bottom: var(--space-4);
+}
+
+.project-picker-page .project-slat {
+  min-width: calc(var(--tap-min) + var(--space-6));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  border-top: calc(var(--space-1) / 2) solid transparent;
+  transform: none;
+  transition: transform var(--transition);
+}
+
+.project-picker-page .project-slat.is-overdue {
+  border-top-color: var(--ember);
+}
+
+.project-picker-page .project-slat:hover,
+.project-picker-page .project-slat:focus-visible {
+  transform: translateY(calc(0px - var(--space-2)));
+}
+
+.project-picker-page .project-slat .spine-stage {
+  writing-mode: horizontal-tb;
+  transform: none;
+  display: block;
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-align: left;
+  color: var(--ground-ink, var(--text-on-accent));
+  opacity: 0.68;
+}
+
+.project-picker-page .project-slat .spine-stage[hidden] {
+  display: none;
+}
+
+.project-picker-page .project-slat .spine-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  justify-self: center;
+  align-self: center;
+  max-height: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.project-picker-page .project-slat .spine-meta {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.project-picker-page .project-slat .spine-count,
+.project-picker-page .project-slat .spine-no {
+  writing-mode: horizontal-tb;
+  color: var(--ground-ink, var(--text-on-accent));
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.project-picker-page .project-slat.is-fresh {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-picker-page .project-slat {
+    transition: none;
+  }
+  .project-picker-page .project-slat:hover,
+  .project-picker-page .project-slat:focus-visible {
+    transform: none;
+  }
+}
