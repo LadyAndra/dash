@@ -20,13 +20,16 @@ jobs:
           node-version: 22
 
       - name: Install the one test-only helper
-        run: npm install --prefix tests --no-save --no-package-lock jsdom
+        run: npm install --prefix tests --no-save --no-package-lock jsdom@30.0.1
 
       - name: Run every automated Dash test
         shell: bash
         run: |
           set -e
           for test_file in tests/*.test.mjs; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
             echo "Running $test_file"
             node "$test_file"
           done
