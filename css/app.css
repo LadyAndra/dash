@@ -3159,3 +3159,83 @@ button, input, textarea, select {
   .ms-done-toggle { margin-left: 0; }
   .ms-controls { gap: 0; }
 }
+
+/* ------------------------------------------------------------
+   Portrait Home rows: remove the utility gutter
+   ------------------------------------------------------------
+   On a narrow phone the catalogue number and milestone completion
+   control were reading as a second column of content. The number is
+   useful archival texture on larger screens, but not useful enough to
+   tax the action-first phone view. Hide it here, let the entry take the
+   full row, and keep completion's 44px hit area while drawing a much
+   smaller square inside it.
+   ------------------------------------------------------------ */
+@media (max-width: 480px) and (orientation: portrait) {
+  .today-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .today-row > .item-no { display: none; }
+  .today-row > .item-main { grid-column: 1; }
+  .today-row > .today-actions {
+    grid-column: 1;
+    width: auto;
+    justify-self: start;
+    justify-content: flex-start;
+    margin-top: var(--space-2);
+  }
+
+  /* Home may receive the legacy milestone tick or the shared select-box
+     shape. In either case the interaction area stays generous while the
+     visible mark is deliberately small and instrument-like. */
+  .today-actions .ms-tick,
+  .today-actions .select-box {
+    width: var(--control-min);
+    height: var(--control-min);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text-muted);
+    position: relative;
+    font-size: 0;
+    box-shadow: none;
+  }
+  .today-actions .ms-tick::before,
+  .today-actions .select-box::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    border: 1px solid currentColor;
+    background: transparent;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .today-actions .ms-tick.on::before,
+  .today-actions .select-box.on::before {
+    background: currentColor;
+  }
+  .today-actions .ms-tick.on::after,
+  .today-actions .select-box.on::after {
+    content: "✓";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -54%);
+    color: var(--surface-raised);
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    line-height: 1;
+  }
+  .today-band-overdue .today-actions .ms-tick,
+  .today-band-overdue .today-actions .select-box {
+    color: var(--ember-ink);
+  }
+  .today-band-overdue .today-actions .ms-tick.on::after,
+  .today-band-overdue .today-actions .select-box.on::after {
+    color: var(--ember);
+  }
+}

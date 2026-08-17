@@ -46,3 +46,8 @@ The next Calendar work can begin from a single predictable rule: **a date field 
 
 On narrow portrait phones, dated Home rows now lay their small metadata marks out as a compact two-column ledger instead of forcing Reminder, Milestone, and date information into one crowded flex line. Phone landscape, tablet, and desktop layouts are unchanged. This is presentation only; no date, milestone, reminder, Store, or Sync behavior changes. `sw.js` moves to `dash-v47` because `css/app.css` changed.
 
+
+
+## Portrait Home utility-gutter follow-up
+
+The remaining portrait crowding was not date metadata itself; it was the left utility gutter. On narrow portrait phones, Home dated rows now omit the catalogue/accession number so the actual entry uses the full row. Landscape and larger layouts keep the number. Milestone completion keeps its full interaction target, but the visible square is reduced and attached to the item instead of reading like a separate block in the margin. No item, milestone, date, Store, or Sync behavior changes. `sw.js` moves to `dash-v48` because `css/app.css` changed.
