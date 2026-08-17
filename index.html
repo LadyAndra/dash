@@ -19,6 +19,9 @@
 
   <!-- No build step: the browser runs these files exactly as uploaded (§13.1). -->
   <script type="module" src="js/app.js"></script>
+  <!-- Phone-only chrome rearrangement: keeps the core app verbs intact, but
+       gives + New one designed action row and tucks utilities behind More. -->
+  <script type="module" src="js/mobile-chrome.js"></script>
 
   <!-- Offline-first: register the service worker so the app shell works with
        no network (data is local anyway). (§13.2 #6) -->

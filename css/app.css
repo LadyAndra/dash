@@ -3272,3 +3272,130 @@ button, input, textarea, select {
     color: var(--ember);
   }
 }
+
+/* ---------- phone utility hierarchy (August 2026) ----------
+   Phone chrome now has three levels only:
+     1. destination — Home / List / Board
+     2. primary verb — + New
+     3. utilities — More
+   The actual buttons are still owned by app.js; mobile-chrome.js only moves
+   them. Desktop and iPad-sized coarse-pointer devices keep the existing strip. */
+@media (pointer: coarse) and (max-width: 600px),
+       (pointer: coarse) and (max-height: 600px) {
+  .phone-chrome-on .topbar {
+    gap: 0;
+    padding-bottom: var(--space-2);
+  }
+
+  .phone-action-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding-top: var(--space-3);
+  }
+
+  /* The one designed phone action. It uses Dash's existing mount material,
+     square-ish instrument geometry and mono label — prominence through
+     hierarchy and proportion, not a new colour or fashionable pill shape. */
+  .phone-new-btn.btn,
+  .phone-new-btn.btn-primary {
+    min-height: 48px;
+    padding: var(--space-2) var(--space-5);
+    border: 1px solid var(--mount);
+    border-radius: var(--radius);
+    background: var(--mount);
+    color: var(--ink-on-mount);
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--ink-on-mount) 10%, transparent),
+      0 2px 0 color-mix(in srgb, var(--mount) 32%, transparent);
+  }
+  .phone-new-btn.btn::first-letter { letter-spacing: 0; }
+  .phone-new-btn.btn:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-on-mount) 10%, transparent);
+  }
+
+  .phone-more-wrap {
+    position: relative;
+    justify-self: end;
+  }
+  .phone-more-btn {
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  .phone-more-btn:active,
+  .phone-more-wrap.is-open .phone-more-btn {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  .phone-more-menu {
+    display: none;
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    width: min(250px, calc(100vw - (2 * var(--space-4))));
+    padding: var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--text-primary) 16%, transparent);
+  }
+  .phone-more-wrap.is-open .phone-more-menu { display: grid; gap: var(--space-1); }
+  .phone-more-menu .btn {
+    width: 100%;
+    justify-content: flex-start;
+    min-height: 44px;
+    border-color: transparent;
+    background: transparent;
+    padding-inline: var(--space-3);
+    text-align: left;
+  }
+  .phone-more-menu .btn:hover,
+  .phone-more-menu .btn:active { background: var(--surface-sunken); }
+
+  /* Healthy sync is ambient information: a dot, not a permanent sentence.
+     Dirty/auth/error states retain their words because they require action. */
+  .phone-action-row .sync-pill {
+    justify-self: end;
+    min-height: 44px;
+    padding: 0 var(--space-1);
+    gap: var(--space-2);
+  }
+  .phone-action-row .sync-pill.ok #sync-label { display: none; }
+  .phone-action-row .sync-pill.ok { min-width: 24px; }
+
+  /* Select is a verb on the current collection. Keep it in the dark catalog
+     band beside the entry count instead of spending app-level header space. */
+  .catalog-band .band-select-btn.btn {
+    min-height: 36px;
+    padding: var(--space-1) var(--space-2);
+    border-color: color-mix(in srgb, var(--ground-ink) 48%, transparent);
+    background: transparent;
+    color: var(--ground-ink);
+    font-size: var(--text-label);
+    white-space: nowrap;
+  }
+  .catalog-band .band-select-btn.btn-primary {
+    background: var(--ground-ink);
+    border-color: var(--ground-ink);
+    color: var(--mount);
+  }
+  .catalog-band .band-count { margin-left: auto; }
+  .catalog-band .band-select-btn { margin-left: var(--space-2); }
+}
