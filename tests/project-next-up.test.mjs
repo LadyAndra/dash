@@ -1,17 +1,16 @@
-// Projects overview "Next up" register, under jsdom.
+// Projects overview: compact Next up register inside the dark Projects band.
 //
 //   node tests/project-next-up.test.mjs    (needs jsdom)
 //
-// The shelf is the stable library. Next up is the derived answer to
-// "which open project stage reaches me first?" Nothing about this order is
-// stored: it comes from stageOf() every render.
+// The shelf is the stable library. Next up is only the at-a-glance queue and
+// must NOT consume a second block of vertical space below the banner.
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', {
   pretendToBeVisual: true, url: "https://x.test/",
 });
 for (const k of ["window","document","Node","Element","HTMLElement","SVGElement",
-                 "MutationObserver","requestAnimationFrame","getComputedStyle","Event","KeyboardEvent"])
+                 "MutationObserver","requestAnimationFrame","getComputedStyle","Event"])
   globalThis[k] = dom.window[k];
 globalThis.localStorage = dom.window.localStorage;
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
@@ -58,6 +57,7 @@ function harness() {
     undated: project("Undated", null, { members: 2 }),
     overdue: project("Overdue", dateOffset(-3), { members: 7 }),
     soon: project("Soon", dateOffset(2), { members: 1 }),
+    fourth: project("Fourth", dateOffset(20), { members: 6 }),
     complete: project("Complete", dateOffset(-20), { done: true, members: 3 }),
     noMilestones: project("No milestones", undefined, { members: 5 }),
   };
@@ -72,44 +72,53 @@ function harness() {
   const draw = () => projectView.render(null, ctx, host);
   draw();
 
-  const rows = () => [...host.querySelectorAll('[data-project-next="1"] .item-row[data-id]')];
-  const rowTitles = () => rows().map(r => r.querySelector(".project-next-title")?.textContent);
+  const next = () => host.querySelector('[data-project-next="1"]');
+  const buttons = () => [...host.querySelectorAll("[data-project-next-item]")];
+  const buttonTitles = () => buttons().map(b => b.querySelector(".project-next-title")?.textContent);
 
-  return { store, ids, viewLocal, host, draw, rows, rowTitles };
+  return { store, ids, viewLocal, host, draw, next, buttons, buttonTitles };
 }
 
-console.log("\n--- Next up is derived, ordered and selective ---");
+console.log("\n--- Next up lives INSIDE the Projects banner ---");
 {
   const h = harness();
-  const panel = h.host.querySelector('[data-project-next="1"]');
-  ok("Next up is visible when unfinished milestone stages exist", panel && !panel.hidden);
-  ok("overdue comes first, then nearest dated stages, then undated",
-     JSON.stringify(h.rowTitles()) === JSON.stringify(["Overdue", "Soon", "Later", "Undated"]),
-     `got ${JSON.stringify(h.rowTitles())}`);
-  ok("completed projects stay off Next up", !h.rowTitles().includes("Complete"));
-  ok("projects with no milestones stay off Next up", !h.rowTitles().includes("No milestones"));
-  ok("header reports overdue and active counts",
-     panel.querySelector(".panel-right").textContent === "1 overdue · 4 active",
-     panel.querySelector(".panel-right").textContent);
-  ok("member count reuses the shelf count data",
-     h.rows()[0].querySelector(".project-next-members").textContent === "7 entries");
+  const band = h.host.querySelector(".project-picker-band");
+  ok("Next up exists", !!h.next());
+  ok("Next up is a child of the dark Projects banner", band.contains(h.next()));
+  ok("there is no standalone Next up panel below the banner",
+     !h.host.querySelector('.panel[data-project-next], [data-project-next-panel]'));
+  ok("the shelf follows the banner directly in the overview",
+     band.nextElementSibling?.classList.contains("project-shelf-wrap"));
 }
 
-console.log("\n--- the register survives ordinary redraws ---");
+console.log("\n--- it is a compact immediate queue, not a second project list ---");
 {
   const h = harness();
-  const before = h.rows();
+  ok("only three immediate projects are shown", h.buttons().length === 3, `${h.buttons().length} shown`);
+  ok("overdue comes first, then nearest dated stages",
+     JSON.stringify(h.buttonTitles()) === JSON.stringify(["Overdue", "Soon", "Later"]),
+     `got ${JSON.stringify(h.buttonTitles())}`);
+  ok("summary still reports the full active queue",
+     h.next().querySelector(".num").textContent === "1 overdue · 5 active",
+     h.next().querySelector(".num").textContent);
+  ok("completed projects are omitted", !h.buttonTitles().includes("Complete"));
+  ok("projects without milestones are omitted", !h.buttonTitles().includes("No milestones"));
+}
+
+console.log("\n--- ordinary redraws keep the compact controls ---");
+{
+  const h = harness();
+  const before = h.buttons();
   h.draw();
-  const after = h.rows();
-  ok("a redraw reuses every Next up row element",
-     before.length === after.length && after.every((r, i) => r === before[i]));
+  const after = h.buttons();
+  ok("a redraw reuses every shown Next up control",
+     before.length === after.length && after.every((b, i) => b === before[i]));
 
   h.store.setField(h.ids.soon, "title", "Soon renamed");
   h.draw();
-  ok("a title edit updates the kept row",
-     h.rowTitles().includes("Soon renamed"));
-  ok("...without replacing that row",
-     h.rows().some(r => r === before.find(x => x.dataset.id === h.ids.soon)));
+  ok("a title edit updates the kept control", h.buttonTitles().includes("Soon renamed"));
+  ok("...without replacing that control",
+     h.buttons().some(b => b === before.find(x => x.dataset.id === h.ids.soon)));
 }
 
 console.log("\n--- search scopes shelf and Next up together ---");
@@ -118,22 +127,21 @@ console.log("\n--- search scopes shelf and Next up together ---");
   const search = h.host.querySelector('input[aria-label="Search projects"]');
   search.value = "soon";
   search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-  ok("search narrows Next up too",
-     JSON.stringify(h.rowTitles()) === JSON.stringify(["Soon"]));
+  ok("search narrows Next up too", JSON.stringify(h.buttonTitles()) === JSON.stringify(["Soon"]));
   ok("search narrows the shelf to the same project",
      h.host.querySelectorAll(".project-shelf .spine").length === 1);
 }
 
-console.log("\n--- Next up rows open the project ---");
+console.log("\n--- compact controls still open projects ---");
 {
   const h = harness();
-  const first = h.rows()[0];
+  const first = h.buttons()[0];
   const id = first.dataset.id;
   first.dispatchEvent(new dom.window.Event("click", { bubbles: true }));
-  ok("clicking a Next up row selects that project", h.viewLocal.projectId === id);
+  ok("clicking a Next up control selects that project", h.viewLocal.projectId === id);
 }
 
-console.log("\n--- the extra overview does not add archive walks ---");
+console.log("\n--- no archive-walk regression ---");
 {
   const h = harness();
   let walks = 0;
@@ -141,7 +149,7 @@ console.log("\n--- the extra overview does not add archive walks ---");
   h.store.all = () => { walks++; return realAll(); };
   h.draw();
   h.store.all = realAll;
-  ok("shelf + Next up still share one member-count pass",
+  ok("the overview still avoids one archive pass per project",
      walks <= 3, `walked archive ${walks} times`);
 }
 
