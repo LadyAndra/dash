@@ -170,7 +170,14 @@ function nextUp(items) {
 // Build the picker once, and hand back a refresh() that reconciles it in
 // place. Nothing here is rebuilt on a redraw unless it actually changed.
 function buildPicker(store, state, ctx) {
-  const wrap = el("div", {});
+  // Full-bleed only on the Projects OVERVIEW. #view-host normally carries
+  // the page inset that Home wants. Rather than changing the global shell, this
+  // one wrapper reaches through that inset so the dark band aligns with the
+  // List / Board bands; the shelf gets the normal inset back below it.
+  const wrap = el("div", {
+    class: "project-picker-page",
+    style: "margin:calc(0px - var(--space-5)) calc(0px - var(--space-6)) 0",
+  });
   const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects" });
   const bandCount = el("span", { class: "band-count" });
 
@@ -204,7 +211,12 @@ function buildPicker(store, state, ctx) {
     el("div", { class: "search-wrap" }, [search]),
     nextBand,
   ]);
-  const band = el("div", { class: "project-picker-band" }, [
+  const band = el("div", {
+    class: "project-picker-band",
+    // Match the shared catalog band's horizontal inset and remove the old
+    // below-band margin; the shelf owns its own breathing room now.
+    style: "padding:var(--space-4) var(--space-6);margin-bottom:0",
+  }, [
     el("div", { class: "band-top" }, [
       el("h2", { class: "band-title", text: "Projects" }),
       bandCount,
@@ -215,7 +227,11 @@ function buildPicker(store, state, ctx) {
   wrap.appendChild(band);
 
   const shelf = el("div", { class: "project-shelf" });
-  const shelfWrap = el("div", { class: "project-shelf-wrap" }, [shelf]);
+  const shelfWrap = el("div", {
+    class: "project-shelf-wrap",
+    // Restore the ordinary page inset immediately after the full-bleed band.
+    style: "padding:var(--space-5) var(--space-6) 0",
+  }, [shelf]);
 
   function openProject(id) {
     if (!id) return;

@@ -82,7 +82,19 @@ function harness() {
 console.log("\n--- Next up lives INSIDE the Projects banner ---");
 {
   const h = harness();
+  const page = h.host.querySelector(".project-picker-page");
   const band = h.host.querySelector(".project-picker-band");
+  const shelfWrap = h.host.querySelector(".project-shelf-wrap");
+  ok("the overview has one scoped full-bleed wrapper", !!page);
+  ok("the wrapper reaches through the host's normal inset",
+     page.getAttribute("style").includes("var(--space-5)") &&
+     page.getAttribute("style").includes("var(--space-6)"));
+  ok("the dark banner uses the shared page-band horizontal inset",
+     band.getAttribute("style").includes("var(--space-6)") &&
+     band.getAttribute("style").includes("margin-bottom:0"));
+  ok("the shelf gets the normal page inset back below the band",
+     shelfWrap.getAttribute("style").includes("var(--space-5)") &&
+     shelfWrap.getAttribute("style").includes("var(--space-6)"));
   ok("Next up exists", !!h.next());
   ok("Next up is a child of the dark Projects banner", band.contains(h.next()));
   ok("there is no standalone Next up panel below the banner",
