@@ -101,7 +101,7 @@ console.log("\n--- the focus specimen carries identity, then tiny metadata ---")
      meta.includes("Stage") && meta.includes("Research") && meta.includes("Next due") && meta.includes("Entries") && meta.includes("4"));
   ok("entry count is not repeated on the colour rail",
      !host.querySelector(`.project-index-list [data-id="${activeId}"]`).textContent.includes("4 entries"));
-  ok("the title doorway carries the new datum rule and notch",
+  ok("the title doorway carries the datum rule and notch",
      !!host.querySelector(".project-focus-datum .project-focus-datum-notch"));
   ok("the specimen includes a quiet position reference",
      host.querySelector(".project-focus-position")?.textContent === "01 / 02");
@@ -127,18 +127,27 @@ console.log("\n--- Next up and the full-bleed Projects banner are preserved ---"
      host.querySelector(".project-picker-band")?.contains(next));
 }
 
-console.log("\n--- the scoped Projects stylesheet carries the refinement contract ---");
+console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract ---");
 {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
   ok("index.html loads projects.css after the shared app stylesheet",
      html.indexOf('href="css/projects.css"') > html.indexOf('href="css/app.css"'));
-  ok("selected project styling no longer draws the old inset highlight",
+  ok("selected project styling does not draw a persistent highlight",
      /\.project-index-item\[aria-pressed="true"\][\s\S]*?box-shadow:\s*none;/.test(css));
+  ok("the selector pointer uses Dash ink rather than the project's colour",
+     /\.project-index-pointer[\s\S]*?border-left:[^;]*var\(--text-primary\)/.test(css));
   ok("the rail owns vertical overflow for larger project collections",
      /\.project-index-rail[\s\S]*?overflow-y:\s*auto;/.test(css));
-  ok("the focus rule has a directional notch",
-     css.includes(".project-focus-datum-notch"));
+  ok("title, datum and metadata share one shortened specimen measure",
+     css.includes("--project-specimen-measure") &&
+     /project-focus-title-button[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css) &&
+     /project-focus-meta[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css));
+  ok("the datum notch is registered to the metadata label/value division",
+     /project-focus-datum-notch[\s\S]*?left:\s*var\(--project-meta-label-w\)/.test(css) &&
+     /project-focus-meta[\s\S]*?grid-template-columns:\s*var\(--project-meta-label-w\)/.test(css));
+  ok("Open desk is registered to the far end of the datum",
+     /project-focus-enter[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*0;/.test(css));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

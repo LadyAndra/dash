@@ -120,8 +120,8 @@
   border-top: 2px solid var(--ember);
 }
 
-/* Selection is expressed by shape, not a generic highlight: the chosen strip
-   projects slightly from the registry and carries one small directional pointer. */
+/* Selection is a DASH interface mark, not part of the project's colour.
+   The project strip projects slightly, while the page's own ink points at it. */
 .project-index-pointer {
   position: absolute;
   top: 50%;
@@ -130,7 +130,7 @@
   height: 0;
   border-top: var(--space-1) solid transparent;
   border-bottom: var(--space-1) solid transparent;
-  border-left: var(--space-2) solid var(--ground-bg);
+  border-left: var(--space-2) solid var(--text-primary);
   transform: translateY(-50%);
   opacity: 0;
   pointer-events: none;
@@ -147,6 +147,12 @@
 
 /* ---------- Focus specimen ---------- */
 .project-focus-specimen {
+  /* One deliberate measure keeps the specimen from echoing the full-width
+     dark banner above it. The notch and metadata share one registration
+     coordinate so the little marker always has a reason for being where it is. */
+  --project-specimen-measure: min(100%, calc(var(--panel-max) + var(--space-6)));
+  --project-meta-label-w: calc(var(--space-6) + var(--space-6));
+
   position: sticky;
   top: 0;
   align-self: start;
@@ -190,10 +196,12 @@
 
 /* The title is the one deliberate doorway into the Desk. It behaves like
    typography, not like a UI card/button, while remaining a real button for
-   keyboard and screen-reader users. */
+   keyboard and screen-reader users. The title, datum and metadata all use
+   the SAME shortened specimen measure. */
 .project-focus-title-button {
+  position: relative;
   display: block;
-  width: 100%;
+  width: var(--project-specimen-measure);
   min-width: 0;
   padding: var(--space-5) 0 0;
   border: 0;
@@ -217,40 +225,46 @@
   max-width: 100%;
   font-family: var(--font-body);
   font-size: clamp(
-    var(--text-3xl),
-    7.2vw,
-    calc(var(--text-3xl) + var(--text-3xl))
+    calc(var(--text-3xl) + var(--space-5)),
+    8.4vw,
+    calc(var(--text-3xl) + var(--text-3xl) + var(--space-5))
   );
-  line-height: 0.94;
-  letter-spacing: -0.035em;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
   overflow-wrap: anywhere;
 }
 
+/* OPEN DESK is now technical annotation registered to the end of the datum,
+   rather than a separate layer interrupting the title hierarchy. */
 .project-focus-enter {
-  display: block;
-  margin-top: var(--space-4);
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--space-3) + var(--space-1));
+  margin: 0;
   color: var(--text-faint);
+  white-space: nowrap;
 }
 
 .project-focus-title-button:hover .project-focus-enter {
   color: var(--text-primary);
 }
 
-/* A reusable bit of Dash grammar starts here: a datum rule with one small
-   directional notch marks the current point without becoming a progress bar. */
+/* A reusable bit of Dash grammar: a datum rule with one small directional
+   notch marks a meaningful registration point. Here it is not decorative:
+   it aligns exactly with the metadata label/value division below. */
 .project-focus-datum {
   position: relative;
   display: block;
   width: 100%;
   height: var(--space-3);
-  margin-top: var(--space-3);
+  margin-top: var(--space-5);
   border-top: 1px solid var(--border-strong);
 }
 
 .project-focus-datum-notch {
   position: absolute;
   top: calc(0px - 1px);
-  left: 18%;
+  left: var(--project-meta-label-w);
   width: 0;
   height: 0;
   border-left: var(--space-1) solid transparent;
@@ -261,9 +275,9 @@
 
 .project-focus-meta {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--space-3) var(--space-6);
-  width: min(100%, var(--panel-min));
+  grid-template-columns: var(--project-meta-label-w) minmax(0, 1fr);
+  gap: var(--space-3) 0;
+  width: var(--project-specimen-measure);
   margin: var(--space-6) 0 0;
   padding: 0;
 }
@@ -316,6 +330,13 @@
   .project-focus-meta dd {
     padding-left: 0;
     border-left: 0;
+  }
+
+  /* With no label/value division in the narrow fallback there is no honest
+     registration point for the notch, so it disappears rather than floating
+     somewhere arbitrary. */
+  .project-focus-datum-notch {
+    display: none;
   }
 
   .project-focus-meta dd + dt {
