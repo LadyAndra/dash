@@ -3177,6 +3177,11 @@ button, input, textarea, select {
   }
   .today-row > .item-no { display: none; }
   .today-row > .item-main { grid-column: 1; }
+  /* The overdue edge flag is intentionally visible, but on a narrow phone
+     the normal row inset leaves it too close to the first mark/title. Give
+     the flagged row one full content inset so the rule reads as a margin
+     marker rather than a divider touching the text. */
+  .today-band-overdue .today-row.flag { padding-left: var(--space-4); }
   .today-row > .today-actions {
     grid-column: 1;
     width: auto;

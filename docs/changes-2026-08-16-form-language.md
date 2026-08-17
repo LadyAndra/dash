@@ -51,3 +51,9 @@ On narrow portrait phones, dated Home rows now lay their small metadata marks ou
 ## Portrait Home utility-gutter follow-up
 
 The remaining portrait crowding was not date metadata itself; it was the left utility gutter. On narrow portrait phones, Home dated rows now omit the catalogue/accession number so the actual entry uses the full row. Landscape and larger layouts keep the number. Milestone completion keeps its full interaction target, but the visible square is reduced and attached to the item instead of reading like a separate block in the margin. No item, milestone, date, Store, or Sync behavior changes. `sw.js` moves to `dash-v48` because `css/app.css` changed.
+
+## Portrait overdue spacing polish
+
+After the narrow-phone Home rows were simplified, the overdue row's existing inset edge flag sat too close to the first metadata/title text. On portrait phones only, flagged overdue rows now use a larger left content inset. The overdue rule, data, ordering, selection behavior, landscape layout, and desktop layout are unchanged.
+
+`sw.js` moves to `dash-v49` because `css/app.css` changed.
