@@ -89,9 +89,12 @@ console.log("\n--- Next up lives INSIDE the Projects banner ---");
   ok("the wrapper reaches through the host's normal inset",
      page.getAttribute("style").includes("var(--space-5)") &&
      page.getAttribute("style").includes("var(--space-6)"));
-  ok("the dark banner uses the shared page-band horizontal inset",
-     band.getAttribute("style").includes("var(--space-6)") &&
-     band.getAttribute("style").includes("margin-bottom:0"));
+  ok("the dark banner is one compact ledger row",
+     !band.querySelector(".band-top") && !band.querySelector(".band-controls"));
+  ok("Projects search is intentionally absent",
+     !band.querySelector('input[aria-label="Search projects"]'));
+  ok("the duplicate New project action is intentionally absent",
+     ![...band.querySelectorAll("button")].some(b => b.textContent.includes("New project")));
   ok("Next up exists", !!h.next());
   ok("Next up is a child of the dark Projects banner", band.contains(h.next()));
   ok("there is no standalone Next up panel below the banner",
@@ -132,17 +135,15 @@ console.log("\n--- ordinary redraws keep the compact controls ---");
      h.buttons().some(b => b === before.find(x => x.dataset.id === h.ids.soon)));
 }
 
-console.log("\n--- search scopes index and Next up together ---");
+console.log("\n--- the rail is the complete project-finding surface ---");
 {
   const h = harness();
-  const search = h.host.querySelector('input[aria-label="Search projects"]');
-  search.value = "soon";
-  search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-  ok("search narrows Next up too", JSON.stringify(h.buttonTitles()) === JSON.stringify(["Soon"]));
-  ok("search narrows the project index to the same project",
-     h.host.querySelectorAll(".project-index-list [data-project-index-item]").length === 1);
-  ok("the focus specimen follows the filtered project",
-     h.host.querySelector('.project-focus-title')?.textContent === "Soon");
+  ok("the rail calls itself All projects",
+     h.host.querySelector(".project-index-head .lbl")?.textContent === "All projects");
+  ok("the project count moved into the rail header",
+     h.host.querySelector(".project-index-count")?.textContent === "7");
+  ok("all projects remain visible without a search/filter layer",
+     h.host.querySelectorAll(".project-index-list [data-project-index-item]").length === 7);
 }
 
 console.log("\n--- compact controls still open projects ---");

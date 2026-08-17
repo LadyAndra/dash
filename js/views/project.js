@@ -166,65 +166,43 @@ function buildPicker(store, state, ctx) {
     class: "project-picker-page",
     style: "margin:calc(0px - var(--space-5)) calc(0px - var(--space-6)) 0",
   });
-  const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects" });
-  const bandCount = el("span", { class: "band-count" });
 
-  // NEXT UP belongs in the Projects banner, not in a second block that steals
-  // the collection's vertical room. It stays exactly the compact derived
-  // register introduced on August 16: a summary and up to three immediate
-  // project controls in the unused horizontal space beside Search.
-  const nextSummary = el("span", {
-    class: "num",
-    style: "color:var(--ink-on-mount-muted);white-space:nowrap",
-  });
-  const nextItems = el("div", {
-    style: "display:flex;align-items:center;gap:var(--space-2);min-width:0;overflow-x:auto",
-  });
+  // NEXT UP remains a compact derived register inside the mount band. The band
+  // is deliberately only ONE ROW now: Projects at left, immediate work at
+  // right. Search is gone because the colour rail is the project-finding
+  // surface, and project creation stays in Dash's global + New flow.
+  const nextSummary = el("span", { class: "num project-next-summary" });
+  const nextItems = el("div", { class: "project-next-items" });
   const nextBand = el("div", {
+    class: "project-next-ledger",
     "data-project-next": "1",
     "aria-label": "Next up",
-    style: "display:flex;align-items:center;gap:var(--space-2);margin-left:auto;min-width:0;flex:1 1 auto;justify-content:flex-end",
   }, [
-    el("span", {
-      class: "lbl",
-      text: "Next up",
-      style: "color:var(--ink-on-mount);white-space:nowrap",
-    }),
+    el("span", { class: "lbl project-next-label", text: "Next up" }),
     nextSummary,
     nextItems,
   ]);
 
-  const bandControls = el("div", { class: "band-controls" }, [
-    el("div", { class: "search-wrap" }, [search]),
+  const band = el("div", { class: "project-picker-band" }, [
+    el("h2", { class: "band-title", text: "Projects" }),
     nextBand,
-  ]);
-  const band = el("div", {
-    class: "project-picker-band",
-    // Match the shared catalog band's horizontal inset. The collection begins
-    // at the seam immediately below; there is intentionally no floating panel.
-    style: "padding:var(--space-4) var(--space-6);margin-bottom:0",
-  }, [
-    el("div", { class: "band-top" }, [
-      el("h2", { class: "band-title", text: "Projects" }),
-      bandCount,
-      el("button", { class: "band-btn", text: "＋ New project", onclick: () => createProject(store, ctx) }),
-    ]),
-    bandControls,
   ]);
   wrap.appendChild(band);
 
   // ---- colour-forward project index rail ----
-  const railLabel = el("span", { class: "lbl", text: "Project index" });
-  const railList = el("div", { class: "project-index-list", "aria-label": "Project index" });
-  const railEmpty = el("p", { class: "project-index-empty", text: "No matching projects." });
+  const railCount = el("span", { class: "num project-index-count" });
+  const railList = el("div", { class: "project-index-list", "aria-label": "All projects" });
   const rail = el("section", { class: "project-index-rail" }, [
-    el("div", { class: "project-index-head" }, [railLabel]),
+    el("div", { class: "project-index-head" }, [
+      el("span", { class: "lbl", text: "All projects" }),
+      railCount,
+    ]),
     railList,
   ]);
 
   // ---- quiet focus specimen ----
-  // The big type carries identity. Technical metadata stays in one small zone.
-  // Clicking the title is the explicit transition into the project's Desk.
+  // The large display face carries identity. Technical metadata stays in one
+  // small zone. Clicking the title is the explicit transition into the Desk.
   const focusNo = el("span", { class: "num project-focus-no" });
   const focusPosition = el("span", { class: "num project-focus-position" });
   const focusTitle = el("span", { class: "project-focus-title" });
@@ -237,7 +215,7 @@ function buildPicker(store, state, ctx) {
     type: "button",
   }, [focusTitle, focusEnter, focusDatum]);
   const focusMeta = el("dl", { class: "project-focus-meta" });
-  const focusEmpty = el("p", { class: "project-focus-empty", text: "No matching projects." });
+  const focusEmpty = el("p", { class: "project-focus-empty", text: "No projects." });
   const focus = el("section", { class: "project-focus-specimen", "data-project-focus": "1" }, [
     el("div", { class: "project-focus-head" }, [
       el("div", { class: "project-focus-head-left" }, [
@@ -332,19 +310,12 @@ function buildPicker(store, state, ctx) {
 
   function makeNextButton(it) {
     return el("button", {
-      class: "band-btn",
+      class: "band-btn project-next-item",
       "data-project-next-item": "1",
       "data-id": it.id,
-      style: "text-align:left;white-space:nowrap;min-width:0",
     }, [
-      el("span", {
-        class: "project-next-title",
-        style: "white-space:nowrap",
-      }),
-      el("span", {
-        class: "num project-next-stage",
-        style: "color:var(--ink-on-mount-muted);white-space:nowrap",
-      }),
+      el("span", { class: "project-next-title" }),
+      el("span", { class: "num project-next-stage" }),
     ]);
   }
 
@@ -357,10 +328,7 @@ function buildPicker(store, state, ctx) {
     const dateText = stage.date ? formatDay(stage.date) : "No date";
     const metaText = `${stage.label} · ${dateText}`;
     if (meta.textContent !== metaText) meta.textContent = metaText;
-    const metaStyle = stage.overdue
-      ? "color:var(--ember-on-mount);white-space:nowrap"
-      : "color:var(--ink-on-mount-muted);white-space:nowrap";
-    if (meta.getAttribute("style") !== metaStyle) meta.setAttribute("style", metaStyle);
+    meta.classList.toggle("overdue", !!stage.overdue);
 
     const labelParts = [titleText, `current stage ${stage.label}`];
     if (stage.date) labelParts.push(stage.overdue ? `overdue since ${dateText}` : `due ${dateText}`);
@@ -387,7 +355,7 @@ function buildPicker(store, state, ctx) {
     if (nextSummary.textContent !== summary) nextSummary.textContent = summary;
 
     // This is an AT-A-GLANCE register, not a second project list. Three is
-    // enough to show the immediate queue without letting the banner become the
+    // enough to show the immediate queue without letting the band become the
     // thing that crowds the index.
     const shown = ranked.slice(0, 3);
     const have = new Map();
@@ -451,16 +419,14 @@ function buildPicker(store, state, ctx) {
   }
 
   function draw() {
-    const q = search.value.toLowerCase();
-    const items = store.projects().filter(i => (i.title || "").toLowerCase().includes(q));
+    const items = store.projects();
     const counts = memberCounts(store); // ONE archive pass for all overview counts
-    const n = items.length === 1 ? "1 project" : `${items.length} projects`;
-    if (bandCount.textContent !== n) bandCount.textContent = n;
+    if (railCount.textContent !== String(items.length)) railCount.textContent = String(items.length);
 
     drawNext(items);
 
-    // The focus selection is view-local only. Keep it if it still exists in the
-    // current search result; otherwise quietly fall to the first visible project.
+    // The focus selection is view-local only. Keep it if it still exists;
+    // otherwise quietly fall to the first project in the stable index.
     let focused = items.find(it => it.id === state.focusProjectId) || null;
     if (!focused && items.length) {
       focused = items[0];
@@ -488,12 +454,6 @@ function buildPicker(store, state, ctx) {
       if (railList.children[i] !== node) railList.insertBefore(node, railList.children[i] || null);
     });
 
-    if (items.length === 0) {
-      if (!railEmpty.parentNode) railList.appendChild(railEmpty);
-    } else if (railEmpty.parentNode) {
-      railEmpty.remove();
-    }
-
     const focusedPosition = focused ? items.findIndex(it => it.id === focused.id) + 1 : 0;
     drawFocus(
       focused,
@@ -503,9 +463,7 @@ function buildPicker(store, state, ctx) {
     );
   }
 
-  search.addEventListener("input", draw);
   draw();
-
   return { el: wrap, refresh: draw };
 }
 

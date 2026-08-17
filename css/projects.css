@@ -7,6 +7,61 @@
    stays quiet paper. Ember remains overdue-only.
    ============================================================ */
 
+.project-picker-band {
+  /* Projects is a ledger strip, not a second toolbar: one row only. Search and
+     the duplicate + New project action are intentionally absent. */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-6);
+  margin-bottom: 0;
+}
+
+.project-picker-band .band-title {
+  flex: none;
+  margin: 0;
+  line-height: 1;
+}
+
+.project-next-ledger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-left: auto;
+  flex: 1 1 auto;
+}
+
+.project-next-label {
+  color: var(--ink-on-mount);
+  white-space: nowrap;
+}
+
+.project-next-summary,
+.project-next-stage {
+  color: var(--ink-on-mount-muted);
+  white-space: nowrap;
+}
+
+.project-next-items {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.project-next-item {
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.project-next-title { white-space: nowrap; }
+.project-next-stage.overdue { color: var(--ember-on-mount); }
+
 .project-index-layout {
   display: grid;
   grid-template-columns:
@@ -36,9 +91,16 @@
   z-index: 4;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   min-height: var(--control-min);
   padding: 0 var(--space-2) var(--space-2);
   background: var(--surface);
+}
+
+.project-index-count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .project-index-list {
@@ -55,7 +117,7 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: var(--tap-min);
+  min-height: calc(var(--tap-min) + var(--space-3));
   padding: 0 var(--space-3) 0 var(--space-2);
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--ground-ink) 24%, transparent);
@@ -107,10 +169,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: 1.05;
-  letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1;
+  letter-spacing: -0.01em;
 }
 
 /* Overdue is a datum mark cut into the row, not a badge or word label. */
@@ -223,14 +285,14 @@
 .project-focus-title {
   display: block;
   max-width: 100%;
-  font-family: var(--font-body);
+  font-family: var(--font-display);
   font-size: clamp(
     calc(var(--text-3xl) + var(--space-5)),
     8.4vw,
     calc(var(--text-3xl) + var(--text-3xl) + var(--space-5))
   );
   line-height: 0.9;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 

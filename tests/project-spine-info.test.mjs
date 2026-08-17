@@ -131,6 +131,7 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
 {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
+  const tokens = fs.readFileSync(new URL("../css/tokens.css", import.meta.url), "utf8");
   ok("index.html loads projects.css after the shared app stylesheet",
      html.indexOf('href="css/projects.css"') > html.indexOf('href="css/app.css"'));
   ok("selected project styling does not draw a persistent highlight",
@@ -148,6 +149,16 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
      /project-focus-meta[\s\S]*?grid-template-columns:\s*var\(--project-meta-label-w\)/.test(css));
   ok("Open desk is registered to the far end of the datum",
      /project-focus-enter[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*0;/.test(css));
+  ok("Canyon is requested only from a locally installed copy",
+     tokens.includes('local("BN Canyon")') && tokens.includes('local("BNCanyonRegular")') &&
+     !/@font-face[\s\S]*?url\(/.test(tokens));
+  ok("the display token falls back to Dash's existing reading serif",
+     /--font-display:[^;]*Dash Canyon Local[^;]*Iowan Old Style/.test(tokens));
+  ok("project identity uses the display token while body typography stays separate",
+     /project-index-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
+     /project-focus-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css));
+  ok("the Projects band is the compact one-row ledger",
+     /project-picker-band[\s\S]*?flex-direction:\s*row;/.test(css));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);
