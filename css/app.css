@@ -2188,6 +2188,25 @@ button, input, textarea, select {
   .today-actions { width: 100%; justify-content: flex-end; margin-top: var(--space-2); }
 }
 
+/* Portrait phones have one more constraint than phone landscape: the Home
+   date register's small marks (Reminder / Milestone / date) otherwise crowd
+   into one long strip. Treat them like a tiny two-column ledger here. The
+   content and order are unchanged; only the narrowest presentation differs. */
+@media (max-width: 480px) and (orientation: portrait) {
+  .today-row .item-meta {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    justify-content: start;
+    column-gap: var(--space-4);
+    row-gap: var(--space-1);
+    margin-bottom: var(--space-2);
+  }
+  .today-row .item-foot {
+    column-gap: var(--space-4);
+    row-gap: var(--space-1);
+  }
+}
+
 /* ============================================================
    THE DESK  (docs/dash-desk-addendum.md, Phase D1)
    ------------------------------------------------------------

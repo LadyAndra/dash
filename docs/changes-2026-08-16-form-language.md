@@ -41,3 +41,8 @@ This does **not** remove, migrate, or alter project data. Desktop Projects and D
 ## What this sets up
 
 The next Calendar work can begin from a single predictable rule: **a date field means one thing everywhere**. The eventual custom Calendar may replace the picker/display layer, but it should keep that shared contract rather than create separate systems for Home, the editor, milestones, desktop and phone.
+
+## Portrait Home metadata follow-up
+
+On narrow portrait phones, dated Home rows now lay their small metadata marks out as a compact two-column ledger instead of forcing Reminder, Milestone, and date information into one crowded flex line. Phone landscape, tablet, and desktop layouts are unchanged. This is presentation only; no date, milestone, reminder, Store, or Sync behavior changes. `sw.js` moves to `dash-v47` because `css/app.css` changed.
+
