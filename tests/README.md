@@ -11,11 +11,13 @@ test/support material, not part of the app runtime.
 There is no test framework and no build step. Most tests need only `node` and
 the repo's own `js/` folder. The rendering/interaction tests use `jsdom`, which
 GitHub installs only for the test run; nothing Dash ships depends on it.
+**Check Dash pins jsdom to 30.0.1** so an unrelated upstream release cannot
+change the test environment between Dash uploads.
 
 | File | What it covers |
 |---|---|
 | `release-safety.test.mjs` | Publishing guardrail. Checks that every file named in `sw.js` exists, every required offline asset reached from `index.html`, `manifest.json`, CSS, and ES-module imports is covered by `SHELL` (with explicit online-only diagnostics documented as exceptions), and — when git history is available — a commit that changes a cached app file also changes `sw.js`, while every `sw.js` change bumps `CACHE_VERSION`. Needs no package. |
-| `desk-d1.render.test.mjs` | Phase D1 rendering: the desk and the phone's Peek page both build, the drawers open one at a time, and place / clamp / un-place write what they claim. Needs jsdom (`npm install jsdom` in this folder) — the only thing in the repo that wants an install, and nothing ships depends on it. |
+| `desk-d1.render.test.mjs` | Phase D1 rendering: the desk and the phone's Peek page both build, the drawers open one at a time, and place / clamp / un-place write what they claim. Needs jsdom — GitHub installs the pinned CI version; nothing ships depends on it. |
 | `desk-d1.gesture.test.mjs` | Steps 3–4: that no render happens while a pointer gesture is in progress, that a hold is never leaked (cancel, blur, doubled pointerdown, teardown), and that double-click survives the rebuild the first click causes. Needs jsdom. |
 | `desk-d1.viewstate.test.mjs` | The post-deploy pass: that a snapshot survives a JSON round-trip unchanged (which is what makes the self-sync marker work), and that a glance never overwrites the saved scroll position. Needs jsdom. |
 | `desk-d1.test.mjs` | Phase D1 of the Desk: the `"vs"` op's merge rules in every arrival order, two-device convergence, un-place/restore, collision reporting, the one-archive-pass rule, and the pure geometry (wobble, clamping, z-order, pile weight, glance framing). |
