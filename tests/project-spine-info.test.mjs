@@ -101,8 +101,14 @@ console.log("\n--- the focus specimen carries identity, then tiny metadata ---")
      meta.includes("Stage") && meta.includes("Research") && meta.includes("Next due") && meta.includes("Entries") && meta.includes("4"));
   ok("entry count is not repeated on the colour rail",
      !host.querySelector(`.project-index-list [data-id="${activeId}"]`).textContent.includes("4 entries"));
-  ok("the title doorway carries the datum rule and notch",
+  ok("the title doorway carries the datum rule and dip",
      !!host.querySelector(".project-focus-datum .project-focus-datum-notch"));
+  const enter = host.querySelector(".project-focus-enter");
+  ok("the specimen carries one concise ENTER ticket",
+     enter?.textContent === "Enter" && (enter.getAttribute("style") || "").includes("background:"));
+  ok("the ENTER ticket receives the focused project's ground variables",
+     (enter?.getAttribute("style") || "").includes("--ground-bg:") &&
+     (enter?.getAttribute("style") || "").includes("--ground-ink:"));
   ok("the specimen includes a quiet position reference",
      host.querySelector(".project-focus-position")?.textContent === "01 / 02");
 }
@@ -140,25 +146,37 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
      /\.project-index-pointer[\s\S]*?border-left:[^;]*var\(--text-primary\)/.test(css));
   ok("the rail owns vertical overflow for larger project collections",
      /\.project-index-rail[\s\S]*?overflow-y:\s*auto;/.test(css));
-  ok("title, datum and metadata share one shortened specimen measure",
-     css.includes("--project-specimen-measure") &&
-     /project-focus-title-button[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css) &&
-     /project-focus-meta[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css));
-  ok("the datum notch is registered to the metadata label/value division",
-     /project-focus-datum-notch[\s\S]*?left:\s*var\(--project-meta-label-w\)/.test(css) &&
-     /project-focus-meta[\s\S]*?grid-template-columns:\s*var\(--project-meta-label-w\)/.test(css));
-  ok("Open desk is registered to the far end of the datum",
-     /project-focus-enter[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*0;/.test(css));
+  ok("cream gutters separate the project colour bars",
+     /\.project-index-list[\s\S]*?gap:\s*var\(--space-1\);/.test(css));
+  ok("rail project names return to Dash's normal reading serif",
+     /\.project-index-title[\s\S]*?font-family:\s*var\(--font-body\)/.test(css));
+  ok("the large identity title owns the full focus pane",
+     /\.project-focus-title-button[\s\S]*?width:\s*100%;/.test(css) &&
+     /\.project-focus-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
+     !/\.project-focus-title[\s\S]*?overflow-wrap:\s*anywhere;/.test(css));
+  ok("datum and metadata keep the deliberate shorter specimen measure",
+     /\.project-focus-datum[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css) &&
+     /\.project-focus-meta[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css));
+  ok("the datum dip is drawn as two hairlines, not a filled triangle",
+     css.includes(".project-focus-datum-notch::before") &&
+     css.includes(".project-focus-datum-notch::after") &&
+     /\.project-focus-datum-notch[\s\S]*?background:\s*var\(--surface\)/.test(css));
+  ok("the ENTER control is a shaped ticket rather than a rectangle button",
+     /\.project-focus-enter[\s\S]*?clip-path:\s*polygon\(/.test(css) &&
+     /\.project-focus-enter::before[\s\S]*?border-radius:\s*var\(--radius-pill\)/.test(css));
+  ok("the redundant far-right specimen accession is visually removed",
+     /\.project-focus-no\s*\{[\s\S]*?display:\s*none;/.test(css));
   ok("Canyon is requested only from a locally installed copy",
      tokens.includes('local("BN Canyon")') && tokens.includes('local("BNCanyonRegular")') &&
      !/@font-face[\s\S]*?url\(/.test(tokens));
-  ok("the display token falls back to Dash's existing reading serif",
+  ok("the display token still falls back to Dash's reading serif",
      /--font-display:[^;]*Dash Canyon Local[^;]*Iowan Old Style/.test(tokens));
-  ok("project identity uses the display token while body typography stays separate",
-     /project-index-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
-     /project-focus-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css));
-  ok("the Projects band is the compact one-row ledger",
-     /project-picker-band[\s\S]*?flex-direction:\s*row;/.test(css));
+  ok("Canyon stays reserved for graphic project identity",
+     /\.project-focus-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
+     /\.desk-page \.pb-name[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
+     /\.project-index-title[\s\S]*?font-family:\s*var\(--font-body\)/.test(css));
+  ok("the Projects band remains the compact one-row ledger",
+     /\.project-picker-band[\s\S]*?flex-direction:\s*row;/.test(css));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

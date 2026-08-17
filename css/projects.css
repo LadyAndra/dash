@@ -106,8 +106,9 @@
 .project-index-list {
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
-  border-top: 1px solid var(--border);
+  padding-top: var(--space-1);
 }
 
 .project-index-item {
@@ -120,7 +121,6 @@
   min-height: calc(var(--tap-min) + var(--space-3));
   padding: 0 var(--space-3) 0 var(--space-2);
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--ground-ink) 24%, transparent);
   border-radius: 0;
   color: var(--ground-ink);
   text-align: left;
@@ -169,10 +169,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  line-height: 1;
-  letter-spacing: -0.01em;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
 }
 
 /* Overdue is a datum mark cut into the row, not a badge or word label. */
@@ -246,9 +246,11 @@
   white-space: nowrap;
 }
 
+/* Position already tells us where this specimen sits in the rail. The
+   accession number remains on the rail itself; repeating it at the far edge
+   of the specimen only creates a second competing index. */
 .project-focus-no {
-  color: var(--text-faint);
-  white-space: nowrap;
+  display: none;
 }
 
 .project-focus-body {
@@ -256,16 +258,15 @@
   padding-top: var(--space-6);
 }
 
-/* The title is the one deliberate doorway into the Desk. It behaves like
-   typography, not like a UI card/button, while remaining a real button for
-   keyboard and screen-reader users. The title, datum and metadata all use
-   the SAME shortened specimen measure. */
+/* The title is the one deliberate doorway into the Desk. It owns the FULL
+   focus pane so long names can breathe and wrap at real word boundaries.
+   The technical datum and metadata beneath it deliberately stay narrower. */
 .project-focus-title-button {
   position: relative;
   display: block;
-  width: var(--project-specimen-measure);
+  width: 100%;
   min-width: 0;
-  padding: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -278,12 +279,18 @@
   border-top-color: var(--text-primary);
 }
 
+.project-focus-title-button:hover .project-focus-datum-notch::before,
+.project-focus-title-button:hover .project-focus-datum-notch::after {
+  background: var(--text-primary);
+}
+
 .project-focus-title-button:focus-visible {
   border-radius: 0;
 }
 
 .project-focus-title {
   display: block;
+  width: 100%;
   max-width: 100%;
   font-family: var(--font-display);
   font-size: clamp(
@@ -293,32 +300,62 @@
   );
   line-height: 0.9;
   letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
-/* OPEN DESK is now technical annotation registered to the end of the datum,
-   rather than a separate layer interrupting the title hierarchy. */
+/* ENTER is a small directional ticket, not a rectangle button and not another
+   wordy instruction. Its fill is supplied inline by groundStyle(), so the
+   chosen project colour becomes the object. A paper-coloured bite in the left
+   edge and a blunt directional nose keep it closer to a deli/queue ticket than
+   to a generic arrow icon. */
 .project-focus-enter {
-  position: absolute;
-  right: 0;
-  bottom: calc(var(--space-3) + var(--space-1));
-  margin: 0;
-  color: var(--text-faint);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-6) + var(--space-6) + var(--space-6) + var(--space-5));
+  min-height: calc(var(--tap-min) + var(--space-2));
+  margin-top: var(--space-5);
+  padding: 0 var(--space-5) 0 var(--space-6);
+  border: 0;
+  color: var(--ground-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  text-transform: uppercase;
   white-space: nowrap;
+  clip-path: polygon(0 0, 70% 0, 100% 44%, 100% 56%, 70% 100%, 0 100%);
+  transition: transform var(--transition);
 }
 
-.project-focus-title-button:hover .project-focus-enter {
-  color: var(--text-primary);
+.project-focus-enter::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(0px - var(--space-3));
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  transform: translateY(-50%);
 }
 
-/* A reusable bit of Dash grammar: a datum rule with one small directional
-   notch marks a meaningful registration point. Here it is not decorative:
-   it aligns exactly with the metadata label/value division below. */
+.project-focus-enter:hover {
+  transform: translateX(var(--space-1));
+}
+
+/* A reusable bit of Dash grammar: the datum is ONE continuous hairline that
+   physically dips to a point at the metadata label/value registration line.
+   There is no separate filled triangle pasted onto it. */
 .project-focus-datum {
   position: relative;
   display: block;
-  width: 100%;
-  height: var(--space-3);
+  width: var(--project-specimen-measure);
+  height: calc(var(--space-3) + var(--space-1));
   margin-top: var(--space-5);
   border-top: 1px solid var(--border-strong);
 }
@@ -327,12 +364,32 @@
   position: absolute;
   top: calc(0px - 1px);
   left: var(--project-meta-label-w);
-  width: 0;
-  height: 0;
-  border-left: var(--space-1) solid transparent;
-  border-right: var(--space-1) solid transparent;
-  border-top: var(--space-2) solid var(--text-primary);
+  width: calc(var(--space-4) + var(--space-1));
+  height: var(--space-2);
+  background: var(--surface);
   transform: translateX(-50%);
+}
+
+.project-focus-datum-notch::before,
+.project-focus-datum-notch::after {
+  content: "";
+  position: absolute;
+  width: var(--space-3);
+  height: 1px;
+  background: var(--border-strong);
+  transform-origin: left center;
+}
+
+.project-focus-datum-notch::before {
+  left: 0;
+  top: 0;
+  transform: rotate(35deg);
+}
+
+.project-focus-datum-notch::after {
+  left: 50%;
+  top: calc(var(--space-2) - 1px);
+  transform: rotate(-35deg);
 }
 
 .project-focus-meta {
@@ -364,6 +421,13 @@
 .project-focus-empty {
   margin: var(--space-6) 0;
   color: var(--text-faint);
+}
+
+/* Canyon stays rare: project identity at specimen scale, plus the project name
+   on the individual Desk banner. Everything else on the Desk keeps the normal
+   reading serif / mono system. */
+.desk-page .pb-name {
+  font-family: var(--font-display);
 }
 
 /* The Project view is intentionally unavailable on phone-sized coarse-pointer

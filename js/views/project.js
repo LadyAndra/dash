@@ -206,7 +206,7 @@ function buildPicker(store, state, ctx) {
   const focusNo = el("span", { class: "num project-focus-no" });
   const focusPosition = el("span", { class: "num project-focus-position" });
   const focusTitle = el("span", { class: "project-focus-title" });
-  const focusEnter = el("span", { class: "lbl project-focus-enter", text: "Open desk →" });
+  const focusEnter = el("span", { class: "lbl project-focus-enter on-ground", text: "Enter", "aria-hidden": "true" });
   const focusDatum = el("span", { class: "project-focus-datum", "aria-hidden": "true" }, [
     el("span", { class: "project-focus-datum-notch" }),
   ]);
@@ -400,6 +400,12 @@ function buildPicker(store, state, ctx) {
     const titleText = it.title || "Untitled project";
     if (focusTitle.textContent !== titleText) focusTitle.textContent = titleText;
     focusTitleButton.setAttribute("aria-label", `Open ${titleText} desk`);
+
+    // The ENTER ticket is made from the project's own colour, but it remains
+    // pure interface: no stored field, no new data, just the same ground helper
+    // the rail already uses. The font itself stays local-only via tokens.css.
+    const enterStyle = groundStyle(store, it);
+    if (focusEnter.getAttribute("style") !== enterStyle) focusEnter.setAttribute("style", enterStyle);
 
     const noText = `№ ${catalogNo(store, it)}`;
     if (focusNo.textContent !== noText) focusNo.textContent = noText;
