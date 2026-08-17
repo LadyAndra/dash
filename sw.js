@@ -2,13 +2,14 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v61";
+const CACHE_VERSION = "dash-v62";
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.json",
   "./css/tokens.css",
   "./css/app.css",
+  "./css/projects.css",
   "./js/app.js",
   "./js/mobile-chrome.js",
   "./js/editor-details.js",
@@ -69,8 +70,8 @@ const SHELL = [
 // for ten minutes after a deploy, a plain fetch (even the module loader's
 // fetch for app.js) can be answered from disk without the network or this
 // file ever being consulted. Network-first below was therefore a promise the
-// worker couldn't keep: it looked like it was fetching, and it was being
-// handed a stale copy.
+// worker couldn't keep: it looked like it was fetching, and it was being handed
+// a stale copy.
 //
 // Concretely: an uploaded fix would appear live on the server and still not
 // be what the app was running, which makes a fixed bug look unfixed. Asking

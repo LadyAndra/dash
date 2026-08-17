@@ -1,7 +1,9 @@
-// Projects overview baseline after the August 16 visual rollback.
+// Projects overview: August 17 balanced colour index rail.
 //
-// Keeps the useful overview behavior while explicitly rejecting the experimental
-// book/slat markup that was not visually successful.
+// The old filename is retained so Check Dash replaces the rollback-era test
+// instead of leaving a stale test behind. This now guards the chosen design:
+// colour-rich registry on the left, quiet focus specimen on the right, tiny
+// technical metadata, and overdue/no-milestone states expressed by grammar.
 import { JSDOM } from "jsdom";
 import fs from "node:fs";
 
@@ -30,13 +32,24 @@ const ok = (name, cond, extra = "") => {
   console.log((cond ? "PASS  " : "FAIL  ") + name + (cond ? "" : "\n      " + extra));
 };
 
+function dayOffset(days) {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 const store = new Store();
-const pid = store.createItem({ title: "Dash", type: "project" });
-const mid = store.addMilestone(pid, { label: "Research", date: null });
+const activeId = store.createItem({ title: "Dash", type: "project" });
+store.addMilestone(activeId, { label: "Research", date: dayOffset(-1) });
 for (let i = 0; i < 4; i++) {
   const id = store.createItem({ title: `Item ${i}` });
-  store.assignToProject(id, pid);
+  store.assignToProject(id, activeId);
 }
+const quietId = store.createItem({ title: "Quiet project", type: "project" });
 
 const viewLocal = {};
 const host = document.getElementById("host");
@@ -48,21 +61,60 @@ const ctx = {
 const draw = () => projectView.render(null, ctx, host);
 draw();
 
-console.log("\n--- baseline overview is restored ---");
+console.log("\n--- the chosen index-rail composition is present ---");
 {
-  const spine = host.querySelector(".project-shelf .spine");
-  ok("shelf spine exists", !!spine);
-  ok("experimental project-slat class is gone", !spine.classList.contains("project-slat"));
-  ok("slat-only stage/footer structure is gone",
-     !spine.querySelector(".spine-stage") &&
-     !spine.querySelector(".spine-count") &&
-     !spine.querySelector(".spine-meta"));
-  ok("title and catalogue number remain",
-     spine.querySelector(".spine-title")?.textContent === "Dash" &&
-     /^№ \d+/.test(spine.querySelector(".spine-no")?.textContent || ""));
+  const layout = host.querySelector(".project-index-layout");
+  const rows = [...host.querySelectorAll("[data-project-index-item]")];
+  ok("one index/focus composition exists", !!layout);
+  ok("the left registry has one row per project", rows.length === 2);
+  ok("each registry row carries project colour as a filled ground",
+     rows.every(row => (row.getAttribute("style") || "").includes("background:")));
+  ok("rail rows intentionally show only catalogue number, title and overdue datum",
+     rows.every(row =>
+       !!row.querySelector(".project-index-no") &&
+       !!row.querySelector(".project-index-title") &&
+       !!row.querySelector(".project-index-overdue") &&
+       !row.querySelector(".spine-stage, .spine-count, .spine-meta, .project-index-stage, .project-index-count")));
+  ok("literal shelf/spine objects are gone from the overview",
+     !host.querySelector(".project-shelf, .spine, .project-slat"));
 }
 
-console.log("\n--- Next up remains in the banner ---");
+console.log("\n--- overdue is an integrated datum, not a badge ---");
+{
+  const activeRow = host.querySelector(`.project-index-list [data-id="${activeId}"]`);
+  const flag = activeRow.querySelector(".project-index-overdue");
+  ok("overdue project exposes the slim overdue datum", flag.hidden === false);
+  ok("there is no visible Late/Overdue badge on the rail",
+     !activeRow.textContent.toLowerCase().includes("late") &&
+     !activeRow.textContent.toLowerCase().includes("overdue"));
+  ok("the accessible label still says the truth",
+     activeRow.getAttribute("aria-label").toLowerCase().includes("overdue"));
+}
+
+console.log("\n--- the focus specimen carries identity, then tiny metadata ---");
+{
+  ok("the focused title is large-specimen content",
+     host.querySelector(".project-focus-title")?.textContent === "Dash");
+  const meta = host.querySelector(".project-focus-meta").textContent;
+  ok("stage, due date and entry count live in the technical zone",
+     meta.includes("Stage") && meta.includes("Research") && meta.includes("Next due") && meta.includes("Entries") && meta.includes("4"));
+  ok("entry count is not repeated on the colour rail",
+     !host.querySelector(`.project-index-list [data-id="${activeId}"]`).textContent.includes("4 entries"));
+}
+
+console.log("\n--- no milestones read as absence, not filler text ---");
+{
+  const quietRow = host.querySelector(`.project-index-list [data-id="${quietId}"]`);
+  quietRow.dispatchEvent(new dom.window.Event("click", { bubbles: true }));
+  ok("quiet project becomes the focus specimen", host.querySelector(".project-focus-title")?.textContent === "Quiet project");
+  const meta = host.querySelector(".project-focus-meta").textContent;
+  ok("stage and due rows are omitted", !meta.includes("Stage") && !meta.includes("Next due"));
+  ok("no explanatory placeholder is inserted",
+     !host.querySelector(".project-focus-specimen").textContent.toLowerCase().includes("no milestone"));
+  ok("ordinary project facts can remain", meta.includes("Entries"));
+}
+
+console.log("\n--- Next up and the full-bleed Projects banner are preserved ---");
 {
   const next = host.querySelector('[data-project-next="1"]');
   ok("Next up still exists", !!next);
@@ -70,11 +122,11 @@ console.log("\n--- Next up remains in the banner ---");
      host.querySelector(".project-picker-band")?.contains(next));
 }
 
-console.log("\n--- experimental stylesheet is no longer loaded ---");
+console.log("\n--- the scoped Projects stylesheet is now an active runtime asset ---");
 {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  ok("index.html does not load projects.css",
-     !html.includes('href="css/projects.css"'));
+  ok("index.html loads projects.css after the shared app stylesheet",
+     html.indexOf('href="css/projects.css"') > html.indexOf('href="css/app.css"'));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

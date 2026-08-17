@@ -36,24 +36,13 @@ export const projectView = {
 
     if (!state.projectId || !store.get(state.projectId)) {
       destroyDetail(state);
-      // THE SHELF IS KEPT, NOT REBUILT (August 16, 2026 — the spine shake).
+      // THE PROJECT INDEX IS KEPT, NOT REBUILT (August 17, 2026).
       //
-      // Every store write anywhere in Dash redraws the whole screen, and this
-      // function used to answer that by throwing the shelf away and building a
-      // brand new one. Nothing about that is visible — until you notice that a
-      // spine's tilt is a CSS transition on :hover, and that the browser
-      // resolves :hover one style pass AFTER an element is inserted. So a
-      // freshly built spine that happens to land under the pointer starts flat
-      // and animates into the tilt, all by itself; the next redraw replaces it
-      // and it starts over. That is the "spines shake, then settle" — settle
-      // being simply the moment the redraws stop.
-      //
-      // The fix is not to soften the animation, which would hide the rebuild
-      // rather than remove it. It is to stop rebuilding: the picker is built
-      // once per visit and refreshed in place, so a redraw that changes nothing
-      // about the shelf touches no spine at all, and one that adds or removes a
-      // project touches only that one. viewLocal is emptied when the view
-      // changes, so leaving Projects still discards it.
+      // The earlier spine shelf taught us an important structural lesson:
+      // every store write can redraw Dash, so the project controls themselves
+      // must survive ordinary redraws. The visual metaphor has changed from a
+      // shelf to an index rail, but that rule has not. The picker is built once
+      // per visit and refresh() reconciles rail rows by project id.
       if (!state.picker) state.picker = buildPicker(store, state, ctx);
       state.picker.refresh();
       if (state.picker.el.parentNode !== container) {
@@ -111,11 +100,8 @@ function createProject(store, ctx) {
 
 // ONE PASS over the archive for every project's member count.
 //
-// This used to be membersOf() called once per spine, and membersOf walks the
-// whole archive — so drawing twelve projects walked everything twelve times,
-// on every redraw. Same rule the desk already lives by (§12.6, "one archive
-// pass per render") and the same one the August code-health pass applied to
-// the rest of the app; the shelf had simply never been included.
+// The overview needs counts for the focused specimen and for accessible rail
+// labels. Doing this once keeps the "one archive pass per render" rule intact.
 function memberCounts(store) {
   const counts = new Map();
   for (const it of store.all()) {
@@ -131,10 +117,10 @@ function memberCounts(store) {
 // The overview answers TWO different questions, and keeping them separate is
 // intentional:
 //
-//   shelf   = what projects do I have?
+//   index   = what projects do I have?
 //   next up = which open project stage reaches me first?
 //
-// The shelf keeps Store.projects() order because it is a stable library. Next
+// The index keeps Store.projects() order because it is a stable library. Next
 // up is the dynamic register. Nothing here stores priority: the order is
 // derived from the same milestone data stageOf() already uses everywhere.
 //
@@ -142,7 +128,7 @@ function memberCounts(store) {
 //   1. overdue current stages
 //   2. dated current stages, nearest date first
 //   3. undated current stages
-// Complete projects and projects without milestones stay on the shelf but
+// Complete projects and projects without milestones stay in the index but
 // don't enter this register.
 function nextUp(items) {
   const ranked = [];
@@ -168,12 +154,14 @@ function nextUp(items) {
 }
 
 // Build the picker once, and hand back a refresh() that reconciles it in
-// place. Nothing here is rebuilt on a redraw unless it actually changed.
+// place. Nothing in the project rail is rebuilt on a redraw unless it actually
+// changed. The focus specimen is a VIEW of the selected project; its id lives
+// only in viewLocal and is never written to project data or sync.
 function buildPicker(store, state, ctx) {
   // Full-bleed only on the Projects OVERVIEW. #view-host normally carries
   // the page inset that Home wants. Rather than changing the global shell, this
   // one wrapper reaches through that inset so the dark band aligns with the
-  // List / Board bands; the shelf gets the normal inset back below it.
+  // List / Board bands; the index/focus composition starts directly below it.
   const wrap = el("div", {
     class: "project-picker-page",
     style: "margin:calc(0px - var(--space-5)) calc(0px - var(--space-6)) 0",
@@ -182,10 +170,9 @@ function buildPicker(store, state, ctx) {
   const bandCount = el("span", { class: "band-count" });
 
   // NEXT UP belongs in the Projects banner, not in a second block that steals
-  // the shelf's vertical room. It is deliberately compact: a label/summary and
-  // up to three one-line project controls in the unused horizontal space beside
-  // Search. If there are more than three active projects the summary still says
-  // how many exist; the register itself answers "what reaches me first?"
+  // the collection's vertical room. It stays exactly the compact derived
+  // register introduced on August 16: a summary and up to three immediate
+  // project controls in the unused horizontal space beside Search.
   const nextSummary = el("span", {
     class: "num",
     style: "color:var(--ink-on-mount-muted);white-space:nowrap",
@@ -213,8 +200,8 @@ function buildPicker(store, state, ctx) {
   ]);
   const band = el("div", {
     class: "project-picker-band",
-    // Match the shared catalog band's horizontal inset and remove the old
-    // below-band margin; the shelf owns its own breathing room now.
+    // Match the shared catalog band's horizontal inset. The collection begins
+    // at the seam immediately below; there is intentionally no floating panel.
     style: "padding:var(--space-4) var(--space-6);margin-bottom:0",
   }, [
     el("div", { class: "band-top" }, [
@@ -226,12 +213,43 @@ function buildPicker(store, state, ctx) {
   ]);
   wrap.appendChild(band);
 
-  const shelf = el("div", { class: "project-shelf" });
-  const shelfWrap = el("div", {
-    class: "project-shelf-wrap",
-    // Restore the ordinary page inset immediately after the full-bleed band.
-    style: "padding:var(--space-5) var(--space-6) 0",
-  }, [shelf]);
+  // ---- colour-forward project index rail ----
+  const railLabel = el("span", { class: "lbl", text: "Project index" });
+  const railList = el("div", { class: "project-index-list", "aria-label": "Project index" });
+  const railEmpty = el("p", { class: "project-index-empty", text: "No matching projects." });
+  const rail = el("section", { class: "project-index-rail" }, [
+    el("div", { class: "project-index-head" }, [railLabel]),
+    railList,
+  ]);
+
+  // ---- quiet focus specimen ----
+  // The big type carries identity. Technical metadata stays in one small zone.
+  // Clicking the title is the explicit transition into the project's Desk.
+  const focusNo = el("span", { class: "num project-focus-no" });
+  const focusTitle = el("span", { class: "project-focus-title" });
+  const focusEnter = el("span", { class: "lbl project-focus-enter", text: "Open desk →" });
+  const focusTitleButton = el("button", {
+    class: "project-focus-title-button",
+    type: "button",
+  }, [focusTitle, focusEnter]);
+  const focusColor = el("div", { class: "project-focus-color", "aria-hidden": "true" });
+  const focusMeta = el("dl", { class: "project-focus-meta" });
+  const focusEmpty = el("p", { class: "project-focus-empty", text: "No matching projects." });
+  const focus = el("section", { class: "project-focus-specimen", "data-project-focus": "1" }, [
+    el("div", { class: "project-focus-head" }, [
+      el("span", { class: "lbl", text: "Focus specimen" }),
+      focusNo,
+    ]),
+    el("div", { class: "project-focus-body" }, [
+      focusTitleButton,
+      focusColor,
+      focusMeta,
+      focusEmpty,
+    ]),
+  ]);
+
+  const layout = el("div", { class: "project-index-layout" }, [rail, focus]);
+  wrap.appendChild(layout);
 
   function openProject(id) {
     if (!id) return;
@@ -239,13 +257,21 @@ function buildPicker(store, state, ctx) {
     ctx.rerender();
   }
 
-  // ONE click handler for the whole shelf, rather than a closure per spine —
-  // which is what lets a spine be kept across a redraw without rebinding it.
-  shelf.addEventListener("click", (e) => {
-    const s = e.target.closest(".spine");
-    if (!s || !s.dataset.id) return;
-    openProject(s.dataset.id);
+  function focusProject(id) {
+    if (!id || state.focusProjectId === id) return;
+    state.focusProjectId = id;
+    draw();
+  }
+
+  // One delegated click handler for the whole index. Reconciliation can keep a
+  // row element for its entire visit without rebinding listeners on every draw.
+  railList.addEventListener("click", (e) => {
+    const button = e.target.closest("[data-project-index-item]");
+    if (!button || !railList.contains(button)) return;
+    focusProject(button.dataset.id);
   });
+
+  focusTitleButton.addEventListener("click", () => openProject(state.focusProjectId));
 
   // Next-up controls are reconciled by project id too, for the same reason:
   // ordinary redraws should not throw away the control under the pointer.
@@ -254,43 +280,48 @@ function buildPicker(store, state, ctx) {
     if (button && nextItems.contains(button)) openProject(button.dataset.id);
   });
 
-  const empty = el("p", { class: "item-body-preview", text: "No matching projects." });
+  function makeIndexItem(it) {
+    return el("button", {
+      class: "project-index-item on-ground",
+      type: "button",
+      "data-project-index-item": "1",
+      "data-id": it.id,
+      "aria-pressed": "false",
+    }, [
+      el("span", { class: "project-index-no num", "aria-hidden": "true" }),
+      el("span", { class: "project-index-title", "aria-hidden": "true" }),
+      el("span", { class: "project-index-overdue", "aria-hidden": "true" }),
+    ]);
+  }
 
-  // Everything about ONE spine that can change without the project changing.
-  // Written only when it differs: assigning an identical value to .style or
-  // .title is a needless style invalidation, and this runs on every redraw.
-  function dress(node, it, count) {
-    const stage = stageOf(it);                    // derived, never stored (§3.3)
+  function dressIndexItem(node, it, count, selected) {
+    const stage = stageOf(it); // derived, never stored (§3.3)
     const overdue = !!(stage && stage.overdue);
-    const nameParts = [it.title || "Untitled project"];
-    if (stage) nameParts.push(stage.complete ? "complete" : stage.label);
-    nameParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
-    if (overdue) nameParts.push("overdue");
-    const label = nameParts.join(", ");
+    const titleText = it.title || "Untitled project";
+    const labelParts = [titleText];
+    if (stage) labelParts.push(stage.complete ? "complete" : `current stage ${stage.label}`);
+    if (stage && stage.date) labelParts.push(overdue ? `overdue since ${formatDay(stage.date)}` : `due ${formatDay(stage.date)}`);
+    labelParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
+    const label = labelParts.join(", ");
 
-    // The project's OWN colour, via the same groundStyle() the banner uses —
-    // so a picked colour (or a custom hex) is legible here too. Width stands
-    // for how much is IN the project (css/app.css clamps it, so it never
-    // drops below --tap-min).
-    const style = `${groundStyle(store, it)};--n:${count}`;
+    const style = groundStyle(store, it);
     if (node.getAttribute("style") !== style) node.setAttribute("style", style);
     if (node.getAttribute("aria-label") !== label) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
-    // Sighted only — the accessible name above already says "overdue".
-    let flag = node.querySelector(".spine-flag");
-    if (overdue && !flag) node.prepend(el("span", { class: "spine-flag", "aria-hidden": "true" }));
-    else if (!overdue && flag) flag.remove();
+    const pressed = selected ? "true" : "false";
+    if (node.getAttribute("aria-pressed") !== pressed) node.setAttribute("aria-pressed", pressed);
 
-    const title = node.querySelector(".spine-title");
-    const wanted = it.title || "Untitled project";
-    if (title.textContent !== wanted) title.textContent = wanted;
-    // The catalogue number every item already carries — same № convention
-    // used elsewhere in Dash, not a numbering scheme just for the shelf.
-    const no = node.querySelector(".spine-no");
+    const no = node.querySelector(".project-index-no");
     const noText = `№ ${catalogNo(store, it)}`;
     if (no.textContent !== noText) no.textContent = noText;
+
+    const title = node.querySelector(".project-index-title");
+    if (title.textContent !== titleText) title.textContent = titleText;
+
+    const flag = node.querySelector(".project-index-overdue");
+    flag.hidden = !overdue;
   }
 
   function makeNextButton(it) {
@@ -335,36 +366,6 @@ function buildPicker(store, state, ctx) {
     }
   }
 
-  // A BRAND NEW SPINE IS BORN IN WHATEVER STATE THE POINTER IS ALREADY IN.
-  //
-  // The tilt is meant to describe a gesture: you move onto a spine and it
-  // leans out. But the browser resolves :hover one style pass AFTER an element
-  // is inserted, so a spine created under a pointer that never moved starts
-  // flat, discovers it is hovered, and animates — playing a gesture nobody
-  // performed. `is-fresh` turns the transition off for exactly that one frame,
-  // so the spine simply IS tilted if the pointer is on it, and is not if it
-  // isn't. Moving on and off still animates exactly as before; this removes
-  // the animation that had no gesture behind it, rather than hiding it.
-  const fresh = [];
-  function makeSpine(it) {
-    const node = el("button", { class: "spine on-ground is-fresh", "data-id": it.id }, [
-      el("span", { class: "spine-title", "aria-hidden": "true" }),
-      el("span", { class: "spine-no num", "aria-hidden": "true" }),
-    ]);
-    fresh.push(node);
-    return node;
-  }
-  function settleFresh() {
-    if (fresh.length === 0) return;
-    const batch = fresh.splice(0, fresh.length);
-    // Two frames: the first is the one in which the browser lays the spine out
-    // and works out whether the pointer is on it. Only after that has happened
-    // is it safe to hand the transition back.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      for (const node of batch) node.classList.remove("is-fresh");
-    }));
-  }
-
   function drawNext(items) {
     const ranked = nextUp(items);
     nextBand.hidden = ranked.length === 0;
@@ -381,7 +382,7 @@ function buildPicker(store, state, ctx) {
 
     // This is an AT-A-GLANCE register, not a second project list. Three is
     // enough to show the immediate queue without letting the banner become the
-    // thing that crowds the shelf.
+    // thing that crowds the index.
     const shown = ranked.slice(0, 3);
     const have = new Map();
     for (const node of nextItems.querySelectorAll("[data-project-next-item]")) {
@@ -402,43 +403,96 @@ function buildPicker(store, state, ctx) {
     });
   }
 
+  function metaRow(label, value, { overdue = false } = {}) {
+    return [
+      el("dt", { class: "lbl", text: label }),
+      el("dd", { class: overdue ? "num project-focus-overdue" : "num", text: value }),
+    ];
+  }
+
+  function drawFocus(it, count) {
+    const hasProject = !!it;
+    focusEmpty.hidden = hasProject;
+    focusTitleButton.hidden = !hasProject;
+    focusColor.hidden = !hasProject;
+    focusMeta.hidden = !hasProject;
+    focusNo.hidden = !hasProject;
+    if (!it) {
+      focusMeta.replaceChildren();
+      return;
+    }
+
+    const titleText = it.title || "Untitled project";
+    if (focusTitle.textContent !== titleText) focusTitle.textContent = titleText;
+    focusTitleButton.setAttribute("aria-label", `Open ${titleText} desk`);
+
+    const noText = `№ ${catalogNo(store, it)}`;
+    if (focusNo.textContent !== noText) focusNo.textContent = noText;
+
+    const colorStyle = groundStyle(store, it);
+    if (focusColor.getAttribute("style") !== colorStyle) focusColor.setAttribute("style", colorStyle);
+
+    const stage = stageOf(it);
+    const rows = [];
+    // No milestone filler. If stage is absent these rows simply do not exist.
+    if (stage) {
+      rows.push(...metaRow("Stage", stage.label));
+      if (stage.date) rows.push(...metaRow("Next due", formatDay(stage.date), { overdue: stage.overdue }));
+    }
+    rows.push(...metaRow("Entries", String(count)));
+    focusMeta.replaceChildren(...rows);
+  }
+
   function draw() {
     const q = search.value.toLowerCase();
     const items = store.projects().filter(i => (i.title || "").toLowerCase().includes(q));
-    const counts = memberCounts(store);           // ONE archive pass for shelf counts
+    const counts = memberCounts(store); // ONE archive pass for all overview counts
     const n = items.length === 1 ? "1 project" : `${items.length} projects`;
     if (bandCount.textContent !== n) bandCount.textContent = n;
 
     drawNext(items);
 
-    // Reconcile by project id. A spine that is still wanted is DRESSED, never
-    // replaced — which is the whole point: an element that survives a redraw
-    // keeps whatever the pointer was already doing to it.
+    // The focus selection is view-local only. Keep it if it still exists in the
+    // current search result; otherwise quietly fall to the first visible project.
+    let focused = items.find(it => it.id === state.focusProjectId) || null;
+    if (!focused && items.length) {
+      focused = items[0];
+      state.focusProjectId = focused.id;
+    }
+    if (!items.length) state.focusProjectId = null;
+
+    // Reconcile by project id. A rail item that is still wanted is DRESSED,
+    // never replaced — preserving the stable-DOM fix that removed hover shake.
     const have = new Map();
-    for (const node of shelf.querySelectorAll(".spine")) have.set(node.dataset.id, node);
+    for (const node of railList.querySelectorAll("[data-project-index-item]")) {
+      have.set(node.dataset.id, node);
+    }
 
     const wanted = [];
     for (const it of items) {
       let node = have.get(it.id);
-      if (node) have.delete(it.id); else node = makeSpine(it);
-      dress(node, it, counts.get(it.id) || 0);
+      if (node) have.delete(it.id); else node = makeIndexItem(it);
+      dressIndexItem(node, it, counts.get(it.id) || 0, it.id === state.focusProjectId);
       wanted.push(node);
     }
-    for (const [, node] of have) node.remove();   // projects that are gone or filtered out
+    for (const [, node] of have) node.remove();
 
-    // Put them in order, moving only the ones that are actually out of place.
     wanted.forEach((node, i) => {
-      if (shelf.children[i] !== node) shelf.insertBefore(node, shelf.children[i] || null);
+      if (railList.children[i] !== node) railList.insertBefore(node, railList.children[i] || null);
     });
 
-    if (items.length === 0) { if (!empty.parentNode) shelf.appendChild(empty); }
-    else if (empty.parentNode) empty.remove();
-    settleFresh();
+    if (items.length === 0) {
+      if (!railEmpty.parentNode) railList.appendChild(railEmpty);
+    } else if (railEmpty.parentNode) {
+      railEmpty.remove();
+    }
+
+    drawFocus(focused, focused ? (counts.get(focused.id) || 0) : 0);
   }
+
   search.addEventListener("input", draw);
   draw();
 
-  wrap.append(shelfWrap);
   return { el: wrap, refresh: draw };
 }
 

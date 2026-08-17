@@ -2,8 +2,8 @@
 //
 //   node tests/project-next-up.test.mjs    (needs jsdom)
 //
-// The shelf is the stable library. Next up is only the at-a-glance queue and
-// must NOT consume a second block of vertical space below the banner.
+// The colour index is the stable library. Next up is only the at-a-glance
+// queue and must NOT consume a second block of vertical space below the banner.
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', {
@@ -84,7 +84,7 @@ console.log("\n--- Next up lives INSIDE the Projects banner ---");
   const h = harness();
   const page = h.host.querySelector(".project-picker-page");
   const band = h.host.querySelector(".project-picker-band");
-  const shelfWrap = h.host.querySelector(".project-shelf-wrap");
+  const layout = h.host.querySelector(".project-index-layout");
   ok("the overview has one scoped full-bleed wrapper", !!page);
   ok("the wrapper reaches through the host's normal inset",
      page.getAttribute("style").includes("var(--space-5)") &&
@@ -92,15 +92,14 @@ console.log("\n--- Next up lives INSIDE the Projects banner ---");
   ok("the dark banner uses the shared page-band horizontal inset",
      band.getAttribute("style").includes("var(--space-6)") &&
      band.getAttribute("style").includes("margin-bottom:0"));
-  ok("the shelf gets the normal page inset back below the band",
-     shelfWrap.getAttribute("style").includes("var(--space-5)") &&
-     shelfWrap.getAttribute("style").includes("var(--space-6)"));
   ok("Next up exists", !!h.next());
   ok("Next up is a child of the dark Projects banner", band.contains(h.next()));
   ok("there is no standalone Next up panel below the banner",
      !h.host.querySelector('.panel[data-project-next], [data-project-next-panel]'));
-  ok("the shelf follows the banner directly in the overview",
-     band.nextElementSibling?.classList.contains("project-shelf-wrap"));
+  ok("the index/focus composition follows the banner directly",
+     band.nextElementSibling === layout);
+  ok("the composition contains one rail and one focus specimen",
+     !!layout.querySelector('.project-index-rail') && !!layout.querySelector('[data-project-focus="1"]'));
 }
 
 console.log("\n--- it is a compact immediate queue, not a second project list ---");
@@ -133,15 +132,17 @@ console.log("\n--- ordinary redraws keep the compact controls ---");
      h.buttons().some(b => b === before.find(x => x.dataset.id === h.ids.soon)));
 }
 
-console.log("\n--- search scopes shelf and Next up together ---");
+console.log("\n--- search scopes index and Next up together ---");
 {
   const h = harness();
   const search = h.host.querySelector('input[aria-label="Search projects"]');
   search.value = "soon";
   search.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   ok("search narrows Next up too", JSON.stringify(h.buttonTitles()) === JSON.stringify(["Soon"]));
-  ok("search narrows the shelf to the same project",
-     h.host.querySelectorAll(".project-shelf .spine").length === 1);
+  ok("search narrows the project index to the same project",
+     h.host.querySelectorAll(".project-index-list [data-project-index-item]").length === 1);
+  ok("the focus specimen follows the filtered project",
+     h.host.querySelector('.project-focus-title')?.textContent === "Soon");
 }
 
 console.log("\n--- compact controls still open projects ---");
@@ -150,7 +151,7 @@ console.log("\n--- compact controls still open projects ---");
   const first = h.buttons()[0];
   const id = first.dataset.id;
   first.dispatchEvent(new dom.window.Event("click", { bubbles: true }));
-  ok("clicking a Next up control selects that project", h.viewLocal.projectId === id);
+  ok("clicking a Next up control still enters that project", h.viewLocal.projectId === id);
 }
 
 console.log("\n--- no archive-walk regression ---");

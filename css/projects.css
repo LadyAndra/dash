@@ -1,1 +1,256 @@
-/* Inert after the August 16 Projects rollback. Kept only because normal GitHub-web uploads do not delete files. */
+/* ============================================================
+   Projects overview — balanced colour index rail (August 17, 2026)
+   ------------------------------------------------------------
+   This stylesheet is intentionally scoped to the Projects overview.
+   The app chrome, Projects banner, Desk and all stored/synced data are
+   untouched. Project colour is the rail's material; the focus specimen
+   stays quiet paper. Ember remains overdue-only.
+   ============================================================ */
+
+.project-index-layout {
+  display: grid;
+  grid-template-columns:
+    minmax(var(--index-rail-w), min(32vw, var(--panel-min)))
+    minmax(0, 1fr);
+  min-height: 62vh;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Project registry ---------- */
+.project-index-rail {
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) var(--space-6) var(--space-6);
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.project-index-head {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-min);
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.project-index-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+
+.project-index-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) var(--space-5);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--ground-ink) 24%, transparent);
+  border-radius: 0;
+  color: var(--ground-ink);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+
+.project-index-item:hover {
+  transform: translateX(var(--space-1));
+  z-index: 1;
+}
+
+.project-index-item[aria-pressed="true"] {
+  transform: translateX(var(--space-2));
+  z-index: 2;
+  box-shadow:
+    inset 0 0 0 1px var(--ground-ink),
+    0 0 0 1px var(--surface);
+}
+
+.project-index-item[aria-pressed="true"]:hover {
+  transform: translateX(var(--space-2));
+}
+
+.project-index-item:focus-visible {
+  z-index: 3;
+  border-radius: 0;
+}
+
+.project-index-no {
+  color: inherit;
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.project-index-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+/* Overdue is a datum mark cut into the row, not a badge or word label. */
+.project-index-overdue {
+  justify-self: end;
+  width: var(--space-4);
+  border-top: 2px solid var(--ember);
+}
+
+.project-index-empty {
+  margin: var(--space-5) var(--space-2);
+  color: var(--text-faint);
+}
+
+/* ---------- Focus specimen ---------- */
+.project-focus-specimen {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  min-width: 0;
+  min-height: 62vh;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  background: var(--surface);
+}
+
+.project-focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-min);
+  gap: var(--space-4);
+}
+
+.project-focus-no {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.project-focus-body {
+  min-width: 0;
+  padding-top: var(--space-6);
+}
+
+/* The title is the one deliberate doorway into the Desk. It behaves like
+   typography, not like a UI card/button, while remaining a real button for
+   keyboard and screen-reader users. */
+.project-focus-title-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-5) 0 var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-focus-title-button:hover {
+  border-bottom-color: var(--text-primary);
+}
+
+.project-focus-title-button:focus-visible {
+  border-radius: 0;
+}
+
+.project-focus-title {
+  display: block;
+  max-width: 100%;
+  font-family: var(--font-body);
+  font-size: clamp(
+    var(--text-3xl),
+    5.2vw,
+    calc(var(--text-3xl) + var(--space-6))
+  );
+  line-height: 0.94;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.project-focus-enter {
+  display: block;
+  margin-top: var(--space-4);
+  color: var(--text-faint);
+}
+
+.project-focus-title-button:hover .project-focus-enter {
+  color: var(--text-primary);
+}
+
+/* A short registration bar ties the quiet specimen back to the project's
+   colour without turning the right side into another filled object. */
+.project-focus-color {
+  width: 28%;
+  max-width: var(--rail-w);
+  height: var(--space-1);
+  margin-top: calc(0px - var(--space-1));
+}
+
+.project-focus-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-6);
+  width: min(100%, var(--panel-min));
+  margin: var(--space-6) 0 0;
+  padding: 0;
+}
+
+.project-focus-meta dt,
+.project-focus-meta dd {
+  margin: 0;
+}
+
+.project-focus-meta dd {
+  color: var(--text-primary);
+  white-space: normal;
+}
+
+.project-focus-overdue {
+  color: var(--ember) !important;
+  font-weight: 600;
+}
+
+.project-focus-empty {
+  margin: var(--space-6) 0;
+  color: var(--text-faint);
+}
+
+/* The Project view is intentionally unavailable on phone-sized coarse-pointer
+   devices. This narrow fallback is therefore mainly for split-window desktop
+   use; it preserves the same two-part composition rather than inventing a
+   second mobile Projects design. */
+@media (max-width: 760px) {
+  .project-index-layout {
+    grid-template-columns: minmax(var(--index-rail-w), 42%) minmax(0, 1fr);
+  }
+
+  .project-index-rail {
+    padding-left: var(--space-4);
+  }
+
+  .project-focus-specimen {
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
+  }
+
+  .project-focus-meta {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .project-focus-meta dd + dt {
+    margin-top: var(--space-3);
+  }
+}
