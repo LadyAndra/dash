@@ -262,30 +262,51 @@ function buildPicker(store, state, ctx) {
   function dress(node, it, count) {
     const stage = stageOf(it);                    // derived, never stored (§3.3)
     const overdue = !!(stage && stage.overdue);
-    const nameParts = [it.title || "Untitled project"];
-    if (stage) nameParts.push(stage.complete ? "complete" : stage.label);
-    nameParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
+    const stageText = stage ? stage.label : "No stage";
+    const countText = `${count} ${count === 1 ? "entry" : "entries"}`;
+    const nameParts = [it.title || "Untitled project", stageText, countText];
     if (overdue) nameParts.push("overdue");
     const label = nameParts.join(", ");
 
-    // The project's OWN colour, via the same groundStyle() the banner uses —
-    // so a picked colour (or a custom hex) is legible here too. Width stands
-    // for how much is IN the project (css/app.css clamps it, so it never
-    // drops below --tap-min).
-    const style = `${groundStyle(store, it)};--n:${count}`;
+    // The project's OWN colour, via the same groundStyle() the banner uses.
+    //
+    // Width still grows from the real entry count through --n, but the books
+    // now have a readable FLOOR as well: --tap-min + --space-5. That is enough
+    // room for a title line and a quieter stage line without inventing a new
+    // raw size outside the token system. Projects above that floor continue to
+    // thicken with their member count exactly as before.
+    const style = `${groundStyle(store, it)};--n:${count};min-width:calc(var(--tap-min) + var(--space-5));padding:var(--space-4) var(--space-2) var(--space-3)`;
     if (node.getAttribute("style") !== style) node.setAttribute("style", style);
     if (node.getAttribute("aria-label") !== label) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
-    // Sighted only — the accessible name above already says "overdue".
-    let flag = node.querySelector(".spine-flag");
-    if (overdue && !flag) node.prepend(el("span", { class: "spine-flag", "aria-hidden": "true" }));
-    else if (!overdue && flag) flag.remove();
+
+    // The old bookmark was technically correct but easy to miss at shelf
+    // scale. "Late" is still the same ember indicator — just explicit now.
+    let late = node.querySelector(".spine-late");
+    if (overdue && !late) {
+      late = el("span", {
+        class: "spine-late lbl",
+        "aria-hidden": "true",
+        text: "Late",
+        style: "position:absolute;top:var(--space-2);left:var(--space-2);padding:var(--space-1) var(--space-2);background:var(--ember);color:var(--ember-ink);z-index:1",
+      });
+      node.prepend(late);
+    } else if (!overdue && late) {
+      late.remove();
+    }
 
     const title = node.querySelector(".spine-title");
     const wanted = it.title || "Untitled project";
     if (title.textContent !== wanted) title.textContent = wanted;
+
+    const stageLabel = node.querySelector(".spine-stage");
+    if (stageLabel.textContent !== stageText) stageLabel.textContent = stageText;
+
+    const countLabel = node.querySelector(".spine-count");
+    if (countLabel.textContent !== countText) countLabel.textContent = countText;
+
     // The catalogue number every item already carries — same № convention
     // used elsewhere in Dash, not a numbering scheme just for the shelf.
     const no = node.querySelector(".spine-no");
@@ -347,10 +368,40 @@ function buildPicker(store, state, ctx) {
   // the animation that had no gesture behind it, rather than hiding it.
   const fresh = [];
   function makeSpine(it) {
-    const node = el("button", { class: "spine on-ground is-fresh", "data-id": it.id }, [
-      el("span", { class: "spine-title", "aria-hidden": "true" }),
-      el("span", { class: "spine-no num", "aria-hidden": "true" }),
+    // One BOOK, not a card: information still runs along the spine.
+    // The large serif line is identity; the smaller mono line is the current
+    // stage; count + catalogue number sit at the foot like library metadata.
+    const copy = el("span", {
+      class: "spine-copy",
+      "aria-hidden": "true",
+      style: "display:flex;align-items:flex-end;justify-content:center;gap:var(--space-2);width:100%;min-height:0;flex:1",
+    }, [
+      el("span", {
+        class: "spine-title",
+        style: "font-size:var(--text-lg);max-height:100%;margin-bottom:0",
+      }),
+      el("span", {
+        class: "spine-stage lbl",
+        style: "writing-mode:vertical-rl;transform:rotate(180deg);max-height:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ground-ink);opacity:0.72",
+      }),
     ]);
+
+    const meta = el("span", {
+      class: "spine-meta",
+      "aria-hidden": "true",
+      style: "display:flex;flex-direction:column;align-items:center;gap:var(--space-1);width:100%;padding-top:var(--space-2)",
+    }, [
+      el("span", {
+        class: "spine-count num",
+        style: "color:var(--ground-ink);opacity:0.82",
+      }),
+      el("span", {
+        class: "spine-no num",
+        style: "color:var(--ground-ink);opacity:0.72",
+      }),
+    ]);
+
+    const node = el("button", { class: "spine on-ground is-fresh", "data-id": it.id }, [copy, meta]);
     fresh.push(node);
     return node;
   }
