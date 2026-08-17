@@ -1,4 +1,7 @@
-// Projects overview — editorial slats.
+// Projects overview baseline after the August 16 visual rollback.
+//
+// Keeps the useful overview behavior while explicitly rejecting the experimental
+// book/slat markup that was not visually successful.
 import { JSDOM } from "jsdom";
 import fs from "node:fs";
 
@@ -28,27 +31,12 @@ const ok = (name, cond, extra = "") => {
 };
 
 const store = new Store();
-
-function makeProject(title, count = 0) {
-  const pid = store.createItem({ title, type: "project" });
-  for (let i = 0; i < count; i++) {
-    const id = store.createItem({ title: `${title} ${i}` });
-    store.assignToProject(id, pid);
-  }
-  return pid;
+const pid = store.createItem({ title: "Dash", type: "project" });
+const mid = store.addMilestone(pid, { label: "Research", date: null });
+for (let i = 0; i < 4; i++) {
+  const id = store.createItem({ title: `Item ${i}` });
+  store.assignToProject(id, pid);
 }
-
-const activeId = makeProject("Active project", 4);
-const activeMid = store.addMilestone(activeId, { label: "Research", date: null });
-
-const lateId = makeProject("Late project", 2);
-store.addMilestone(lateId, { label: "Launch", date: "2000-01-01" });
-
-const plainId = makeProject("Plain project", 0);
-
-const doneId = makeProject("Done project", 1);
-const doneMid = store.addMilestone(doneId, { label: "Finish", date: "2000-01-01" });
-store.setMilestoneField(doneId, doneMid, "done", new Date().toISOString());
 
 const viewLocal = {};
 const host = document.getElementById("host");
@@ -60,74 +48,33 @@ const ctx = {
 const draw = () => projectView.render(null, ctx, host);
 draw();
 
-const slat = (id) => host.querySelector(`.project-slat[data-id="${id}"]`);
-
-console.log("\n--- each project is one restrained typographic specimen ---");
+console.log("\n--- baseline overview is restored ---");
 {
-  const s = slat(activeId);
-  ok("the stable spine node also carries the editorial-slat class",
-     s?.classList.contains("spine") && s.classList.contains("project-slat"));
-  ok("project title is present once",
-     s.querySelectorAll(".spine-title").length === 1 &&
-     s.querySelector(".spine-title").textContent === "Active project");
-  ok("current stage is one optional caption",
-     s.querySelectorAll(".spine-stage").length === 1 &&
-     s.querySelector(".spine-stage").textContent === "Research" &&
-     !s.querySelector(".spine-stage").hidden);
-  ok("footer contains only count + catalogue number",
-     s.querySelectorAll(".spine-meta > *").length === 2 &&
-     s.querySelector(".spine-count").textContent === "4 entries" &&
-     /^№ \d+/.test(s.querySelector(".spine-no").textContent));
+  const spine = host.querySelector(".project-shelf .spine");
+  ok("shelf spine exists", !!spine);
+  ok("experimental project-slat class is gone", !spine.classList.contains("project-slat"));
+  ok("slat-only stage/footer structure is gone",
+     !spine.querySelector(".spine-stage") &&
+     !spine.querySelector(".spine-count") &&
+     !spine.querySelector(".spine-meta"));
+  ok("title and catalogue number remain",
+     spine.querySelector(".spine-title")?.textContent === "Dash" &&
+     /^№ \d+/.test(spine.querySelector(".spine-no")?.textContent || ""));
 }
 
-console.log("\n--- absence stays empty; overdue is a datum, not another label ---");
+console.log("\n--- Next up remains in the banner ---");
 {
-  const plain = slat(plainId);
-  ok("a project with no milestones prints no filler stage",
-     plain.querySelector(".spine-stage").hidden &&
-     plain.querySelector(".spine-stage").textContent === "" &&
-     !plain.textContent.includes("No stage"));
-
-  ok("a completed pipeline still says Complete because that is real state",
-     slat(doneId).querySelector(".spine-stage").textContent === "Complete" &&
-     !slat(doneId).querySelector(".spine-stage").hidden);
-
-  const late = slat(lateId);
-  ok("overdue is carried by the slat class",
-     late.classList.contains("is-overdue"));
-  ok("there is no Late badge or Late filler text",
-     !late.querySelector(".spine-late") &&
-     ![...late.querySelectorAll("*")].some(n => n.textContent === "Late"));
+  const next = host.querySelector('[data-project-next="1"]');
+  ok("Next up still exists", !!next);
+  ok("Next up is inside the dark Projects band",
+     host.querySelector(".project-picker-band")?.contains(next));
 }
 
-console.log("\n--- the hierarchy is encoded in the scoped stylesheet ---");
+console.log("\n--- experimental stylesheet is no longer loaded ---");
 {
-  const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
-  ok("title uses the large existing type token",
-     /\.spine-title[\s\S]*font-size:\s*var\(--text-xl\)/.test(css));
-  ok("shelf gains deliberate breathing room",
-     /\.project-shelf\s*\{[\s\S]*gap:\s*var\(--space-4\)/.test(css));
-  ok("slats have a broader token-based minimum",
-     /min-width:\s*calc\(var\(--tap-min\) \+ var\(--space-6\)\)/.test(css));
-  ok("overdue is a top-edge ember rule",
-     /\.is-overdue[\s\S]*border-top-color:\s*var\(--ember\)/.test(css));
-  ok("hover lift contains no rotation",
-     /\.project-slat:hover[\s\S]*translateY/.test(css) &&
-     !/\.project-slat:hover[\s\S]{0,180}rotate/.test(css));
-}
-
-console.log("\n--- data changes still update the same slat in place ---");
-{
-  const before = slat(activeId);
-  store.setMilestoneField(activeId, activeMid, "label", "Prototype");
-  const extra = store.createItem({ title: "One more entry" });
-  store.assignToProject(extra, activeId);
-  draw();
-
-  const after = slat(activeId);
-  ok("the same element survives the redraw", after === before);
-  ok("stage updates in place", after.querySelector(".spine-stage").textContent === "Prototype");
-  ok("entry count updates in place", after.querySelector(".spine-count").textContent === "5 entries");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  ok("index.html does not load projects.css",
+     !html.includes('href="css/projects.css"'));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

@@ -262,40 +262,32 @@ function buildPicker(store, state, ctx) {
   function dress(node, it, count) {
     const stage = stageOf(it);                    // derived, never stored (§3.3)
     const overdue = !!(stage && stage.overdue);
-    const stageText = stage ? stage.label : "";
-    const countText = `${count} ${count === 1 ? "entry" : "entries"}`;
     const nameParts = [it.title || "Untitled project"];
-    if (stageText) nameParts.push(stageText);
-    nameParts.push(countText);
+    if (stage) nameParts.push(stage.complete ? "complete" : stage.label);
+    nameParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
     if (overdue) nameParts.push("overdue");
     const label = nameParts.join(", ");
 
-    // Colour and thickness still come from the same real project facts as
-    // before. Visual hierarchy now lives in css/projects.css so this function
-    // only supplies data, not a pile of one-off layout instructions.
+    // The project's OWN colour, via the same groundStyle() the banner uses —
+    // so a picked colour (or a custom hex) is legible here too. Width stands
+    // for how much is IN the project (css/app.css clamps it, so it never
+    // drops below --tap-min).
     const style = `${groundStyle(store, it)};--n:${count}`;
     if (node.getAttribute("style") !== style) node.setAttribute("style", style);
-    node.classList.toggle("is-overdue", overdue);
-
     if (node.getAttribute("aria-label") !== label) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
+    // Sighted only — the accessible name above already says "overdue".
+    let flag = node.querySelector(".spine-flag");
+    if (overdue && !flag) node.prepend(el("span", { class: "spine-flag", "aria-hidden": "true" }));
+    else if (!overdue && flag) flag.remove();
 
     const title = node.querySelector(".spine-title");
     const wanted = it.title || "Untitled project";
     if (title.textContent !== wanted) title.textContent = wanted;
-
-    // Absence is allowed to look like absence. A project with no milestones
-    // does NOT print "No stage" just to fill space; the caption disappears.
-    // Complete is different: it is a meaningful derived stage and stays.
-    const stageLabel = node.querySelector(".spine-stage");
-    if (stageLabel.textContent !== stageText) stageLabel.textContent = stageText;
-    stageLabel.hidden = !stageText;
-
-    const countLabel = node.querySelector(".spine-count");
-    if (countLabel.textContent !== countText) countLabel.textContent = countText;
-
+    // The catalogue number every item already carries — same № convention
+    // used elsewhere in Dash, not a numbering scheme just for the shelf.
     const no = node.querySelector(".spine-no");
     const noText = `№ ${catalogNo(store, it)}`;
     if (no.textContent !== noText) no.textContent = noText;
@@ -343,33 +335,25 @@ function buildPicker(store, state, ctx) {
     }
   }
 
-  // A BRAND NEW SLAT IS BORN IN WHATEVER STATE THE POINTER IS ALREADY IN.
+  // A BRAND NEW SPINE IS BORN IN WHATEVER STATE THE POINTER IS ALREADY IN.
   //
-  // The old shelf used a literal book-like tilt. The editorial-slat pass drops
-  // the rotation and keeps only a small vertical lift, but the same browser
-  // timing rule still matters: :hover is resolved after insertion. `is-fresh`
-  // suppresses the first transition so an object never animates because it
-  // happened to be created under a stationary pointer.
+  // The tilt is meant to describe a gesture: you move onto a spine and it
+  // leans out. But the browser resolves :hover one style pass AFTER an element
+  // is inserted, so a spine created under a pointer that never moved starts
+  // flat, discovers it is hovered, and animates — playing a gesture nobody
+  // performed. `is-fresh` turns the transition off for exactly that one frame,
+  // so the spine simply IS tilted if the pointer is on it, and is not if it
+  // isn't. Moving on and off still animates exactly as before; this removes
+  // the animation that had no gesture behind it, rather than hiding it.
   const fresh = [];
   function makeSpine(it) {
-    // "Spine" remains the internal class because the shelf's reconciliation
-    // tests and interaction history already use it. Visually this is no longer
-    // trying to imitate a literal book: project-slat is a typographic specimen.
-    const node = el("button", {
-      class: "spine project-slat on-ground is-fresh",
-      "data-id": it.id,
-    }, [
-      el("span", { class: "spine-stage lbl", "aria-hidden": "true" }),
+    const node = el("button", { class: "spine on-ground is-fresh", "data-id": it.id }, [
       el("span", { class: "spine-title", "aria-hidden": "true" }),
-      el("span", { class: "spine-meta", "aria-hidden": "true" }, [
-        el("span", { class: "spine-count num" }),
-        el("span", { class: "spine-no num" }),
-      ]),
+      el("span", { class: "spine-no num", "aria-hidden": "true" }),
     ]);
     fresh.push(node);
     return node;
   }
-
   function settleFresh() {
     if (fresh.length === 0) return;
     const batch = fresh.splice(0, fresh.length);
