@@ -18,6 +18,15 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// A tiny explicit escape hatch for files that are deliberately NOT part of
+// offline Dash. Keep this list exceptional and explained. focus-debug.js is a
+// temporary diagnostic loaded only when ?focusdebug is requested; app.js says
+// normal Dash never loads it and intentionally keeps it out of SHELL.
+const ONLINE_ONLY_RUNTIME_ASSETS = new Set([
+  "./js/focus-debug.js",
+]);
+
 let failures = 0;
 let checks = 0;
 
@@ -92,10 +101,17 @@ function jsDependencies(rel, source, queue, seen) {
 
 function cssDependencies(rel, source, queue, seen) {
   const clean = source.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const match of clean.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/gi)) {
+
+  // A data: image can contain CSS-looking text of its own. Dash's sketch-paper
+  // SVG contains filter='url(%23n)'; scanning inside that quoted data URL made
+  // the first version of this test invent a file named css/%23n. Remove quoted
+  // data URLs before looking for real stylesheet dependencies.
+  const withoutDataUrls = clean.replace(/url\(\s*(["'])data:[\s\S]*?\1\s*\)/gi, "");
+
+  for (const match of withoutDataUrls.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/gi)) {
     addDependency(queue, seen, rel, match[1]);
   }
-  for (const match of clean.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
+  for (const match of withoutDataUrls.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
     addDependency(queue, seen, rel, match[1].trim());
   }
 }
@@ -189,8 +205,13 @@ else fail("every file named in SHELL exists", `Missing: ${missingShellFiles.join
 const runtimeAssets = discoverRuntimeAssets();
 const absentFromShell = [...runtimeAssets]
   .filter((rel) => rel !== "./")
+  .filter((rel) => !ONLINE_ONLY_RUNTIME_ASSETS.has(rel))
   .filter((rel) => !currentShell.has(rel));
-if (!absentFromShell.length) pass(`every active runtime asset is covered by SHELL (${runtimeAssets.size - 1} files)`);
+if (!absentFromShell.length) {
+  const requiredCount = [...runtimeAssets]
+    .filter((rel) => rel !== "./" && !ONLINE_ONLY_RUNTIME_ASSETS.has(rel)).length;
+  pass(`every required runtime asset is covered by SHELL (${requiredCount} files)`);
+}
 else {
   fail(
     "every active runtime asset is covered by SHELL",

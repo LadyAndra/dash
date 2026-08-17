@@ -58,7 +58,7 @@ One can be green while the other is red. A successful Pages deploy does **not** 
 
 If **Check Dash** is red, open that run, open the step with the red ×, and copy the bottom of the log from the first `FAIL`, `Error`, or `ReferenceError` through `Process completed with exit code 1`. Bring that text back to chat rather than trying to diagnose or edit code yourself. Warnings above the real error can be noisy; the failed step is the thing to trust.
 
-**The cache bookkeeping is now checked automatically:** `sw.js` is still intentionally maintained by hand, but `tests/release-safety.test.mjs` checks the easy-to-forget parts after every push. It fails if the offline `SHELL` names a missing file, if Dash actively loads a local asset that is not in `SHELL`, if a commit changes a cached app file without changing `sw.js`, or if `sw.js` changes without a new `CACHE_VERSION`. This is a guardrail, not a build step: whoever hands Andra a change is still responsible for getting `sw.js` right before upload; GitHub now fails loudly if that bookkeeping was missed.
+**The cache bookkeeping is now checked automatically:** `sw.js` is still intentionally maintained by hand, but `tests/release-safety.test.mjs` checks the easy-to-forget parts after every push. It fails if the offline `SHELL` names a missing file, if a required offline runtime asset is not in `SHELL`, if a commit changes a cached app file without changing `sw.js`, or if `sw.js` changes without a new `CACHE_VERSION`. This is a guardrail, not a build step: whoever hands Andra a change is still responsible for getting `sw.js` right before upload; GitHub now fails loudly if that bookkeeping was missed.
 
 ---
 

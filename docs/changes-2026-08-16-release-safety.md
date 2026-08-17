@@ -27,9 +27,9 @@ Every run checks that:
 - `sw.js` has a `CACHE_VERSION`;
 - the `SHELL` list has no duplicate paths;
 - every file named in `SHELL` actually exists; and
-- every local runtime asset that Dash actively reaches from `index.html`,
+- every required offline runtime asset that Dash reaches from `index.html`,
   `manifest.json`, CSS dependencies, and active ES-module imports is covered by
-  `SHELL`.
+  `SHELL`. Explicitly documented online-only diagnostics may be excepted.
 
 Retired/shelved modules may remain in `SHELL`. The test does not require every
 cached file to be actively imported; it only prevents an active dependency from
@@ -47,6 +47,16 @@ new commit with its parent.
 GitHub's checkout is normally shallow, so the test deepens that checkout by one
 commit only when it needs the parent. That avoids changing the workflow or
 adding a build/install step.
+
+## First-run calibration
+
+The first real CI run did exactly what a new guardrail should do: it exposed two
+parser assumptions before we trusted it. The checker initially mistook an SVG
+filter reference (`url(%23n)`) inside an embedded `data:image/svg+xml` value for
+a file, and it treated the deliberately online-only `js/focus-debug.js`
+diagnostic as an offline requirement. The parser now skips quoted data URLs and
+keeps that one diagnostic in an explicit exception set. Required app modules
+remain checked normally.
 
 ## What this deliberately does not do
 
