@@ -3476,37 +3476,61 @@ button, input, textarea, select {
   }
 }
 
-/* ---------- desktop editor: keep Done in reach (August 2026) ----------
-   The phone capture sheet proved the useful rule is not phone-specific:
-   finishing an edit should never require scrolling to the end of a long form.
-   On fine-pointer desktops, keep the existing Done button in the editor's top
-   row and make that row sticky inside the scrolling dialog. This is layout
-   only: the button still calls the same close() function in editor.js, Delete
-   stays at the long-form end, and coarse-pointer tablet presentation is left
-   alone until it can be checked on-device. */
+/* ---------- desktop editor: framed sticky cap (August 2026) ----------
+   Keeping Done in reach is useful on desktop too, but the first version left
+   the whole modal scrolling in the backdrop while only its heading row stuck.
+   That made the form visibly travel behind a floating-looking strip. Keep the
+   same Done behavior, but make the DIALOG the scroll container: its border and
+   paper stay put while the form moves inside. The top row is an opaque,
+   full-width cap, so content disappears cleanly underneath it. Phone capture
+   presentation lives in the coarse-pointer rule above and is unchanged. */
 @media (pointer: fine) {
+  .modal-scrim:has(> .modal input[aria-label="Title"]) {
+    overflow: hidden;
+  }
+
   .modal:has(input[aria-label="Title"]) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: var(--space-2);
+    max-height: calc(100dvh - var(--space-5) - var(--space-5));
+    margin-top: 0;
+    padding-top: 0;
+    overflow-y: auto;
   }
 
-  /* Every ordinary editor section remains a full-width row. The first row is
-     the exception: heading/read-aloud on the left, Done on the right. */
+  /* Ordinary editor sections remain full-width rows. The first row becomes
+     the dialog's cap: it spans both columns, owns the top padding that used to
+     belong to .modal, and reserves a lane for Done on the right. The inline
+     margin on this row comes from editor.js, so !important is used only to
+     remove that transparent gap — otherwise the title field can peek through
+     while scrolling. */
   .modal:has(input[aria-label="Title"]) > :not(.modal-actions) {
     grid-column: 1 / -1;
   }
   .modal:has(input[aria-label="Title"]) > :first-child {
-    grid-column: 1;
+    grid-column: 1 / -1;
     grid-row: 1;
     position: sticky;
     z-index: 2;
-    top: var(--space-5);
+    top: 0;
+    margin: 0 calc(-1 * var(--space-5)) var(--space-4) !important;
+    padding:
+      var(--space-5)
+      calc(var(--space-5) + 5.5rem)
+      var(--space-3)
+      var(--space-5);
     background: var(--surface-raised);
+    border-bottom: 1px solid var(--border);
+  }
+  .modal:has(input[aria-label="Title"]) > :first-child h2 {
+    padding-bottom: 0;
+    border-bottom: 0;
   }
 
   /* display:contents lets the existing action buttons participate in the
-     editor grid without cloning either action or changing editor.js. */
+     editor grid without cloning either action or changing editor.js. Done
+     overlaps the cap's reserved right lane; Delete stays at the long-form end. */
   .modal:has(input[aria-label="Title"]) > .modal-actions {
     display: contents;
   }
@@ -3520,7 +3544,7 @@ button, input, textarea, select {
     justify-self: end;
     position: sticky;
     z-index: 3;
-    top: calc(var(--space-5) + var(--space-2));
+    top: var(--space-3);
     min-height: 40px;
     padding: var(--space-1) var(--space-3);
     border-color: var(--mount);
