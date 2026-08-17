@@ -31,8 +31,6 @@ Dash has accumulated a proposal doc, a current-state doc, feature addenda, and a
 
 If an AI finds a real gap between the code and `dash-current-state.md`, closing that gap is part of the change, not a separate ask.
 
-**Known Desk exception, 16 Aug 2026:** the older D1 paragraph in `dash-current-state.md` still describes Step 5 reconciliation as future work. For that one point, the current code plus `dash-desk-addendum.md` §14.27 and `changes-2026-08-16-desk-reconciliation.md` supersede the older paragraph. Do not reopen Step 5 from the historical wording. A later current-state cleanup can remove the old history without mixing that larger rewrite into this maintenance pass.
-
 ---
 
 # Publishing a change
@@ -179,7 +177,7 @@ Then deliver complete replacement files with a short note:
 | File | What's in it |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs/dash-architecture-proposal.md`        | The original design and the non-negotiable rules — why Dash is built the way it is.                                                                      |
-| `docs/dash-current-state.md`                | Broad current-state record. Trust the code over it; the known stale Desk Step 5 paragraph is explicitly superseded above.                               |
+| `docs/dash-current-state.md`                | Broad current-state record of what is actually built now; keep it aligned with the code whenever real behavior changes.                                 |
 | `docs/deploy-runbook.md`                    | The short GitHub-web publishing routine: what to upload, what commit message to use, what the checks mean, and what to do after publishing.              |
 | `docs/dash-desk-addendum.md`                | The spec and decision history for the Desk. §14.27 records the completed in-place reconciliation work.                                                    |
 | `docs/desk-handoff-2026-08-14.md`           | Historical Desk handoff. Its old Step 5 bug is closed; it now points forward instead of acting as an open-task list.                                      |
