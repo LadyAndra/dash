@@ -1538,9 +1538,17 @@ button, input, textarea, select {
   .mount { padding: var(--space-4); }
   .mount-row { grid-template-columns: 44px 1fr auto; gap: var(--space-3); }
   /* Home collapses to one column at the same breakpoint the sidebar
-     uses. Order follows the DOM: capture, stats, then the panels in
-     registry order. */
-  .dash-grid { grid-template-columns: 1fr; }
+     uses. The desktop DOM groups the archive panel inside the left rail,
+     which would otherwise put it ahead of Due & coming up on a phone.
+     Flatten the two desktop column wrappers here and make the action-first
+     phone order explicit: capture, stats, due, then archive. */
+  .dash-grid { grid-template-columns: 1fr; gap: 0; }
+  .dash-rail, .panel-col { display: contents; }
+  .dash-rail .plate { order: 1; }
+  .dash-rail .capture { order: 2; }
+  .dash-rail .stat-strip { order: 3; }
+  .panel-col .panel { order: 4; margin-top: var(--space-5); }
+  .dash-rail .panel { order: 5; }
   /* the display size is a desktop luxury — on a phone it would eat
      the screen before you read a word of the project */
   .project-banner-title { font-size: var(--text-2xl); }
