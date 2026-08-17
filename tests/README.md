@@ -1,9 +1,15 @@
-# tests/
+# tests/ — automated checks and test support
 
-Headless tests. **Nothing in here is loaded by Dash or included in the service
-worker's `SHELL`.** Because GitHub Pages publishes this public repository from
-its root, these files can still be reached as ordinary public files; they are
-test/support material, not part of the app runtime.
+This is Dash's **authoritative test area**. GitHub's **Check Dash** workflow runs
+every `*.test.mjs` file in this folder after a push to `main`.
+
+The singular `test/` folder is different: it contains only two manual item-editor
+preview pages. Do not put automated tests there, and do not copy app source there.
+
+**Nothing in this folder is loaded by Dash or included in the service worker's
+`SHELL`.** Because GitHub Pages publishes this public repository from its root,
+these files can still be reached as ordinary public files; they are test/support
+material, not part of the app runtime.
 
     cd <repo root>
     node tests/desk-d1.test.mjs

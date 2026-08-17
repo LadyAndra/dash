@@ -85,7 +85,8 @@ If **Check Dash** is red, open that run, open the step with the red ×, and copy
 | `js/ui/`                                                            | Small reusable interface pieces (toasts, color pickers, and similar).                                                                                             |
 | `js/widgets/`                                                       | The home-screen corner widgets (weather, tide, pet). Currently switched off — see below.                                                                          |
 | `docs/`                                                             | Dash's written memory: architecture, current behavior, feature specs, and a dated note for every past change.                                                     |
-| `tests/`                                                            | Automated checks. GitHub runs every `*.test.mjs` file after each push to `main`. The app never loads them, though the public Pages site can serve them because it publishes from the repo root. |
+| `test/`                                                             | Two manual item-editor preview pages only. Not CI. Its tiny CSS/JS bridge files point back to the real root app files so no duplicate source can drift.           |
+| `tests/`                                                            | The authoritative test/support area. GitHub runs every `*.test.mjs` file here after each push to `main`; `visual-harness.html` is a manual visual aid in the same support area. |
 | `mockups/`                                                          | Throwaway design previews. Not part of the live app.                                                                                                              |
 | `icon*.png`, `icon.svg`, `logo-mark.png`                            | Dash's app icons.                                                                                                                                                 |
 
@@ -133,6 +134,7 @@ Before making a real change: read this file, read `docs/dash-current-state.md`, 
 - **Every new or renamed runtime file goes into `sw.js`'s file list, with the cache version bumped, in the same upload.** `release-safety.test.mjs` is a backstop for this rule, not a reason to leave it for CI to discover after publishing.
 - **Never commit a secret.** Passwords, Dropbox tokens, API keys — none of it belongs in this repository, ever, regardless of how the feature is framed. If something needs a secret to work, that's a sign to redesign, not to hide it in a file.
 - **Deliverables are complete files, never diffs or snippets**, with a short plain-English note — Andra doesn't read code.
+- **`test/` is manual preview material; `tests/` is the test suite.** Never copy live app source into `test/`; its bridge files must keep pointing to the authoritative root `css/` and `js/`.
 - **Don't relitigate settled decisions** in the architecture proposal or an addendum without Andra raising it first.
 
 ---
