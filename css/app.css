@@ -3147,10 +3147,30 @@ button, input, textarea, select {
 
 /* ---------- phone mode ---------- */
 /* Project is intentionally absent on phones for now. The short-side clause
-   keeps it absent after rotation while leaving iPad-sized touch devices alone. */
+   keeps it absent after rotation while leaving iPad-sized touch devices alone.
+
+   The same phone-only boundary also gives the view switcher its own row. The
+   old flex-wrap let Home / List / Board mingle with New / Read / Settings /
+   Sync according to whatever space happened to be left, so app navigation and
+   utility actions read as one undifferentiated toolbar. Keep the existing
+   controls and active underline, but make the three available destinations a
+   stable full-width strip with equal tap areas. */
 @media (pointer: coarse) and (max-width: 600px),
        (pointer: coarse) and (max-height: 600px) {
   .view-tab[data-view="project"] { display: none; }
+  .view-tabs {
+    flex: 1 0 100%;
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .view-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding-inline: var(--space-2);
+  }
 }
 
 @media (max-width: 820px) {
