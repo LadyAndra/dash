@@ -226,23 +226,28 @@ function buildPicker(store, state, ctx) {
   // The big type carries identity. Technical metadata stays in one small zone.
   // Clicking the title is the explicit transition into the project's Desk.
   const focusNo = el("span", { class: "num project-focus-no" });
+  const focusPosition = el("span", { class: "num project-focus-position" });
   const focusTitle = el("span", { class: "project-focus-title" });
   const focusEnter = el("span", { class: "lbl project-focus-enter", text: "Open desk →" });
+  const focusDatum = el("span", { class: "project-focus-datum", "aria-hidden": "true" }, [
+    el("span", { class: "project-focus-datum-notch" }),
+  ]);
   const focusTitleButton = el("button", {
     class: "project-focus-title-button",
     type: "button",
-  }, [focusTitle, focusEnter]);
-  const focusColor = el("div", { class: "project-focus-color", "aria-hidden": "true" });
+  }, [focusTitle, focusEnter, focusDatum]);
   const focusMeta = el("dl", { class: "project-focus-meta" });
   const focusEmpty = el("p", { class: "project-focus-empty", text: "No matching projects." });
   const focus = el("section", { class: "project-focus-specimen", "data-project-focus": "1" }, [
     el("div", { class: "project-focus-head" }, [
-      el("span", { class: "lbl", text: "Focus specimen" }),
+      el("div", { class: "project-focus-head-left" }, [
+        el("span", { class: "lbl", text: "Focus specimen" }),
+        focusPosition,
+      ]),
       focusNo,
     ]),
     el("div", { class: "project-focus-body" }, [
       focusTitleButton,
-      focusColor,
       focusMeta,
       focusEmpty,
     ]),
@@ -291,6 +296,7 @@ function buildPicker(store, state, ctx) {
       el("span", { class: "project-index-no num", "aria-hidden": "true" }),
       el("span", { class: "project-index-title", "aria-hidden": "true" }),
       el("span", { class: "project-index-overdue", "aria-hidden": "true" }),
+      el("span", { class: "project-index-pointer", "aria-hidden": "true" }),
     ]);
   }
 
@@ -410,15 +416,16 @@ function buildPicker(store, state, ctx) {
     ];
   }
 
-  function drawFocus(it, count) {
+  function drawFocus(it, count, position, total) {
     const hasProject = !!it;
     focusEmpty.hidden = hasProject;
     focusTitleButton.hidden = !hasProject;
-    focusColor.hidden = !hasProject;
     focusMeta.hidden = !hasProject;
     focusNo.hidden = !hasProject;
+    focusPosition.hidden = !hasProject;
     if (!it) {
       focusMeta.replaceChildren();
+      focusPosition.textContent = "";
       return;
     }
 
@@ -429,8 +436,8 @@ function buildPicker(store, state, ctx) {
     const noText = `№ ${catalogNo(store, it)}`;
     if (focusNo.textContent !== noText) focusNo.textContent = noText;
 
-    const colorStyle = groundStyle(store, it);
-    if (focusColor.getAttribute("style") !== colorStyle) focusColor.setAttribute("style", colorStyle);
+    const positionText = `${String(position).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+    if (focusPosition.textContent !== positionText) focusPosition.textContent = positionText;
 
     const stage = stageOf(it);
     const rows = [];
@@ -487,7 +494,13 @@ function buildPicker(store, state, ctx) {
       railEmpty.remove();
     }
 
-    drawFocus(focused, focused ? (counts.get(focused.id) || 0) : 0);
+    const focusedPosition = focused ? items.findIndex(it => it.id === focused.id) + 1 : 0;
+    drawFocus(
+      focused,
+      focused ? (counts.get(focused.id) || 0) : 0,
+      focusedPosition,
+      items.length
+    );
   }
 
   search.addEventListener("input", draw);

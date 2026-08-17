@@ -12,23 +12,33 @@
   grid-template-columns:
     minmax(var(--index-rail-w), min(32vw, var(--panel-min)))
     minmax(0, 1fr);
+  height: calc(100vh - var(--space-6) - var(--space-6) - var(--space-6) - var(--space-6));
   min-height: 62vh;
   border-top: 1px solid var(--border);
+  overflow: hidden;
 }
 
 /* ---------- Project registry ---------- */
 .project-index-rail {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   padding: var(--space-4) var(--space-4) var(--space-6) var(--space-6);
   border-right: 1px solid var(--border-strong);
   background: var(--surface);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .project-index-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   min-height: var(--control-min);
   padding: 0 var(--space-2) var(--space-2);
+  background: var(--surface);
 }
 
 .project-index-list {
@@ -53,7 +63,7 @@
   color: var(--ground-ink);
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   transition:
     transform var(--transition),
     box-shadow var(--transition);
@@ -67,13 +77,17 @@
 .project-index-item[aria-pressed="true"] {
   transform: translateX(var(--space-2));
   z-index: 2;
-  box-shadow:
-    inset 0 0 0 1px var(--ground-ink),
-    0 0 0 1px var(--surface);
+  box-shadow: none;
 }
 
 .project-index-item[aria-pressed="true"]:hover {
   transform: translateX(var(--space-2));
+}
+
+/* Selection itself has no outline. Keyboard focus still needs to be visible,
+   so the shared focus ring returns only while :focus-visible is true. */
+.project-index-item[aria-pressed="true"]:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .project-index-item:focus-visible {
@@ -106,6 +120,26 @@
   border-top: 2px solid var(--ember);
 }
 
+/* Selection is expressed by shape, not a generic highlight: the chosen strip
+   projects slightly from the registry and carries one small directional pointer. */
+.project-index-pointer {
+  position: absolute;
+  top: 50%;
+  right: calc(0px - var(--space-2));
+  width: 0;
+  height: 0;
+  border-top: var(--space-1) solid transparent;
+  border-bottom: var(--space-1) solid transparent;
+  border-left: var(--space-2) solid var(--ground-bg);
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-index-item[aria-pressed="true"] .project-index-pointer {
+  opacity: 1;
+}
+
 .project-index-empty {
   margin: var(--space-5) var(--space-2);
   color: var(--text-faint);
@@ -117,9 +151,11 @@
   top: 0;
   align-self: start;
   min-width: 0;
-  min-height: 62vh;
+  min-height: 0;
+  height: 100%;
   padding: var(--space-4) var(--space-6) var(--space-6);
   background: var(--surface);
+  overflow-y: auto;
 }
 
 .project-focus-head {
@@ -128,6 +164,18 @@
   justify-content: space-between;
   min-height: var(--control-min);
   gap: var(--space-4);
+}
+
+.project-focus-head-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.project-focus-position {
+  color: var(--text-faint);
+  white-space: nowrap;
 }
 
 .project-focus-no {
@@ -147,9 +195,8 @@
   display: block;
   width: 100%;
   min-width: 0;
-  padding: var(--space-5) 0 var(--space-4);
+  padding: var(--space-5) 0 0;
   border: 0;
-  border-bottom: 1px solid var(--border-strong);
   border-radius: 0;
   background: transparent;
   color: var(--text-primary);
@@ -157,8 +204,8 @@
   cursor: pointer;
 }
 
-.project-focus-title-button:hover {
-  border-bottom-color: var(--text-primary);
+.project-focus-title-button:hover .project-focus-datum {
+  border-top-color: var(--text-primary);
 }
 
 .project-focus-title-button:focus-visible {
@@ -171,8 +218,8 @@
   font-family: var(--font-body);
   font-size: clamp(
     var(--text-3xl),
-    5.2vw,
-    calc(var(--text-3xl) + var(--space-6))
+    7.2vw,
+    calc(var(--text-3xl) + var(--text-3xl))
   );
   line-height: 0.94;
   letter-spacing: -0.035em;
@@ -189,19 +236,33 @@
   color: var(--text-primary);
 }
 
-/* A short registration bar ties the quiet specimen back to the project's
-   colour without turning the right side into another filled object. */
-.project-focus-color {
-  width: 28%;
-  max-width: var(--rail-w);
-  height: var(--space-1);
-  margin-top: calc(0px - var(--space-1));
+/* A reusable bit of Dash grammar starts here: a datum rule with one small
+   directional notch marks the current point without becoming a progress bar. */
+.project-focus-datum {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: var(--space-3);
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-strong);
+}
+
+.project-focus-datum-notch {
+  position: absolute;
+  top: calc(0px - 1px);
+  left: 18%;
+  width: 0;
+  height: 0;
+  border-left: var(--space-1) solid transparent;
+  border-right: var(--space-1) solid transparent;
+  border-top: var(--space-2) solid var(--text-primary);
+  transform: translateX(-50%);
 }
 
 .project-focus-meta {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--space-2) var(--space-6);
+  gap: var(--space-3) var(--space-6);
   width: min(100%, var(--panel-min));
   margin: var(--space-6) 0 0;
   padding: 0;
@@ -213,6 +274,8 @@
 }
 
 .project-focus-meta dd {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border);
   color: var(--text-primary);
   white-space: normal;
 }
@@ -248,6 +311,11 @@
   .project-focus-meta {
     grid-template-columns: 1fr;
     gap: var(--space-1);
+  }
+
+  .project-focus-meta dd {
+    padding-left: 0;
+    border-left: 0;
   }
 
   .project-focus-meta dd + dt {

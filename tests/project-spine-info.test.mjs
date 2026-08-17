@@ -74,6 +74,7 @@ console.log("\n--- the chosen index-rail composition is present ---");
        !!row.querySelector(".project-index-no") &&
        !!row.querySelector(".project-index-title") &&
        !!row.querySelector(".project-index-overdue") &&
+       !!row.querySelector(".project-index-pointer") &&
        !row.querySelector(".spine-stage, .spine-count, .spine-meta, .project-index-stage, .project-index-count")));
   ok("literal shelf/spine objects are gone from the overview",
      !host.querySelector(".project-shelf, .spine, .project-slat"));
@@ -100,6 +101,10 @@ console.log("\n--- the focus specimen carries identity, then tiny metadata ---")
      meta.includes("Stage") && meta.includes("Research") && meta.includes("Next due") && meta.includes("Entries") && meta.includes("4"));
   ok("entry count is not repeated on the colour rail",
      !host.querySelector(`.project-index-list [data-id="${activeId}"]`).textContent.includes("4 entries"));
+  ok("the title doorway carries the new datum rule and notch",
+     !!host.querySelector(".project-focus-datum .project-focus-datum-notch"));
+  ok("the specimen includes a quiet position reference",
+     host.querySelector(".project-focus-position")?.textContent === "01 / 02");
 }
 
 console.log("\n--- no milestones read as absence, not filler text ---");
@@ -122,11 +127,18 @@ console.log("\n--- Next up and the full-bleed Projects banner are preserved ---"
      host.querySelector(".project-picker-band")?.contains(next));
 }
 
-console.log("\n--- the scoped Projects stylesheet is now an active runtime asset ---");
+console.log("\n--- the scoped Projects stylesheet carries the refinement contract ---");
 {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
   ok("index.html loads projects.css after the shared app stylesheet",
      html.indexOf('href="css/projects.css"') > html.indexOf('href="css/app.css"'));
+  ok("selected project styling no longer draws the old inset highlight",
+     /\.project-index-item\[aria-pressed="true"\][\s\S]*?box-shadow:\s*none;/.test(css));
+  ok("the rail owns vertical overflow for larger project collections",
+     /\.project-index-rail[\s\S]*?overflow-y:\s*auto;/.test(css));
+  ok("the focus rule has a directional notch",
+     css.includes(".project-focus-datum-notch"));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);

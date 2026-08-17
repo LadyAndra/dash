@@ -117,15 +117,28 @@ console.log("\n--- the rail selects a focus specimen before entering the Desk --
   second.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   ok("clicking a rail row changes the focus project", h.viewLocal.focusProjectId === h.pids[1]);
   ok("a rail selection alone does not enter the Desk", !h.viewLocal.projectId);
+  const selected = h.rows().find(r => r.dataset.id === h.pids[1]);
   ok("the selected row is exposed accessibly",
-     h.rows().find(r => r.dataset.id === h.pids[1])?.getAttribute('aria-pressed') === 'true');
+     selected?.getAttribute('aria-pressed') === 'true');
+  ok("the selected row carries the directional pointer",
+     !!selected?.querySelector('.project-index-pointer'));
   ok("the focus specimen updates to the selected project",
      h.host.querySelector('.project-focus-title')?.textContent === "Dash");
+  ok("the specimen shows its position in the current index",
+     h.host.querySelector('.project-focus-position')?.textContent === "02 / 03");
 
   h.host.querySelector('.project-focus-title-button')
     .dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   ok("the large focus title is the explicit doorway into the Desk",
      h.viewLocal.projectId === h.pids[1]);
+}
+
+console.log("\n--- a long registry stays one rail rather than becoming a new layout ---");
+{
+  const projects = Array.from({ length: 20 }, (_, i) => [`Project ${String(i + 1).padStart(2, "0")}`, i % 4]);
+  const h = harness(projects);
+  ok("twenty projects render as twenty reconciled rail rows", h.rows().length === 20);
+  ok("the focus specimen still exists beside the long registry", !!h.host.querySelector('.project-focus-specimen'));
 }
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);
