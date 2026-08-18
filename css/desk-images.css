@@ -1,0 +1,88 @@
+/* Desk reference images — spatial material, not cards. */
+.pb-acts .banner-image {
+  padding: 0;
+  min-width: var(--control-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--ground-ink, var(--text-primary)) 62%, transparent);
+  background: transparent;
+  border-color: transparent;
+}
+.pb-acts .banner-image:hover {
+  color: var(--ground-ink, var(--text-primary));
+  background: transparent;
+  border-color: transparent;
+}
+.banner-image svg { width: 22px; height: auto; display: block; }
+
+.desk-image-object {
+  position: absolute;
+  padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  transform: translate(var(--image-dx, 0px), var(--image-dy, 0px)) rotate(var(--image-rot, 0deg));
+  transform-origin: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.desk-image-object > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.desk-image-object.is-dragging { cursor: grabbing; }
+.desk-image-object:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), 0 2px 7px color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+/* A snapshot can arrive before its binary asset on another device. Keep the
+   recoverable placeholder out of sight while the runtime quietly retries; a
+   broken-image glyph is never useful reference material. */
+.desk-image-object.is-missing { visibility: hidden; }
+
+/* The old Desk empty-state only knows entries/post-its. An image is real desk
+   content too, so an image-only project must not claim the surface is empty. */
+.desk-surface:has(.desk-image-object) .desk-empty { display: none; }
+
+/* One transient corner affordance. Nothing is selected and no toolbar appears. */
+.desk-image-resize {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  pointer-events: none;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.desk-image-resize::before {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid var(--text-primary);
+  border-bottom: 1px solid var(--text-primary);
+}
+.desk-image-object:hover .desk-image-resize,
+.desk-image-object:focus-visible .desk-image-resize,
+.desk-image-object.is-resizing .desk-image-resize {
+  opacity: 1;
+  pointer-events: auto;
+}
+.desk-image-object.is-resizing { cursor: nwse-resize; }
+
+/* A file hovering over the Desk gets one quiet boundary cue. */
+.desk-viewport.is-image-drop {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ground-bg, var(--text-primary)) 55%, transparent);
+}
