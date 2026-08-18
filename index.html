@@ -16,13 +16,15 @@
        composition can evolve without perturbing the rest of Dash's chrome. -->
   <link rel="stylesheet" href="css/projects.css" />
   <link rel="stylesheet" href="css/interaction.css" />
+  <link rel="stylesheet" href="css/desk-images.css" />
 </head>
 <body>
   <div id="app"><!-- app.js builds the UI here --></div>
   <div id="toasts"></div>
 
-  <!-- No build step: the browser runs these files exactly as uploaded (§13.1). -->
-  <script type="module" src="js/app.js"></script>
+  <!-- No build step: the browser runs these files exactly as uploaded (§13.1).
+       The bootstrap starts Dash first, then adds the optional Desk-image layer. -->
+  <script type="module" src="js/desk-images-bootstrap.js"></script>
   <!-- Phone-only chrome rearrangement: keeps the core app verbs intact, but
        gives + New one designed action row and tucks utilities behind More. -->
   <script type="module" src="js/mobile-chrome.js"></script>
