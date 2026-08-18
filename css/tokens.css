@@ -210,7 +210,7 @@
      stops labels being clipped on the desktop. */
   --tap-min: 44px;
   --control-min: var(--tap-min);
-  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--ember);
+  /* Focus is interface state, not an alert. Keep ember reserved for\n     overdue/error/sync meaning and draw keyboard focus in neutral Dash ink. */\n  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);
   --transition: 140ms ease;
 }
 

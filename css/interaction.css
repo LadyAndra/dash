@@ -1,0 +1,34 @@
+/* ============================================================
+   interaction.css — neutral interface state (August 17, 2026)
+   ------------------------------------------------------------
+   Ember is meaningful in Dash: overdue, error, stale/sync trouble.
+   It should not also mean "focused", "selected", or "current view".
+
+   This file is deliberately tiny and loaded last. It corrects the few
+   interaction states that pre-date that rule without perturbing component
+   layout or semantic warning colours.
+   ============================================================ */
+
+/* Current navigation is quiet ink + weight, not an alert lamp. */
+.nav-btn[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--text-primary);
+}
+
+.view-tab[aria-current="true"] {
+  box-shadow: inset 0 -2px 0 var(--text-primary);
+}
+
+/* List/Board controls live on the mount and had their own ember focus ring,
+   bypassing --focus-ring. Keep the same two-ring accessibility treatment but
+   in mount ink instead. */
+.catalog-band .search-wrap input:focus-visible,
+.band-sel:focus-visible {
+  border-color: var(--ink-on-mount);
+  box-shadow: 0 0 0 2px var(--mount), 0 0 0 4px var(--ink-on-mount);
+  outline: none;
+}
+
+/* Clearing a filter is ordinary interface action, not a warning state. */
+.band-filter-clear:hover {
+  color: var(--ink-on-mount);
+}
