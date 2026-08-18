@@ -1,0 +1,74 @@
+/* ============================================================
+   UI cleanup — quiet utilities + lighter Projects register
+   ------------------------------------------------------------
+   This file is intentionally small and additive. It changes only the
+   visible treatment of existing controls; their real buttons and handlers
+   stay intact in app.js.
+   ============================================================ */
+
+/* Sync / Read / Settings keep generous button-sized targets, but the visible
+   boxes disappear. The shared :focus-visible ring still returns for keyboard
+   users, so "quiet" never means "unfindable". */
+.topbar .dash-utility-btn {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.topbar .dash-utility-btn:hover {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.topbar .dash-utility-btn:focus-visible {
+  border-radius: var(--radius-sm);
+}
+
+.dash-utility-mark {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1;
+  font-weight: 500;
+}
+
+/* Thirteen literal slashes are intentionally the Settings mark. Compress only
+   their drawing, not the button around them, so the click target stays easy. */
+.dash-utility-settings .dash-utility-mark {
+  transform: scaleX(0.74);
+  transform-origin: center;
+}
+
+.dash-utility-read svg {
+  display: block;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+/* Next Up items are already separated by spacing and typography. Removing the
+   inherited .band-btn border gets rid of the boxes-inside-a-box effect while
+   retaining the same click targets and hover behavior. */
+.project-next-item {
+  border: 0;
+  border-radius: 0;
+}
+
+/* One off-screen native colour input backs project-rail right-click editing.
+   It uses the browser/system picker, exactly like Dash's existing Colour field. */
+.dash-project-color-input {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: var(--space-1);
+  height: var(--space-1);
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}

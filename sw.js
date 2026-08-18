@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v70";
+const CACHE_VERSION = "dash-v71";
 const SHELL = [
   "./",
   "./index.html",
@@ -12,12 +12,14 @@ const SHELL = [
   "./css/projects.css",
   "./css/interaction.css",
   "./css/desk-images.css",
+  "./css/ui-cleanup.css",
   "./js/app.js",
   "./js/desk-images-bootstrap.js",
   "./js/desk-images-runtime.js",
   "./js/desk-images.js",
   "./js/mobile-chrome.js",
   "./js/editor-details.js",
+  "./js/ui-cleanup.js",
   "./js/store.js",
   "./js/sync.js",
   "./js/dropbox.js",

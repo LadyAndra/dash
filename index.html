@@ -17,6 +17,8 @@
   <link rel="stylesheet" href="css/projects.css" />
   <link rel="stylesheet" href="css/interaction.css" />
   <link rel="stylesheet" href="css/desk-images.css" />
+  <!-- Small additive pass: quiet desktop utilities + lighter Projects register. -->
+  <link rel="stylesheet" href="css/ui-cleanup.css" />
 </head>
 <body>
   <div id="app"><!-- app.js builds the UI here --></div>
@@ -31,6 +33,8 @@
   <!-- Shared item-editor hierarchy: quick capture first, organisational tools
        behind one native More details disclosure on phone and desktop. -->
   <script type="module" src="js/editor-details.js"></script>
+  <!-- Desktop/tablet cleanup stays additive: existing controls keep their handlers. -->
+  <script type="module" src="js/ui-cleanup.js"></script>
 
   <!-- Offline-first: register the service worker so the app shell works with
        no network (data is local anyway). (§13.2 #6) -->
