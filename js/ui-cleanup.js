@@ -1,8 +1,9 @@
 // ui-cleanup.js — surgical UI simplification (August 2026).
 // ===================================================================
-// This module deliberately MOVES NO ACTION LOGIC. Sync, Read and Settings
-// remain the real buttons app.js created, with the real handlers still on
-// them; this file only changes their visible marks on non-phone layouts.
+// This module deliberately MOVES NO ACTION LOGIC. Sync, Read, Settings,
+// Select and New remain the real buttons app.js created, with their real
+// handlers still on them; this file only changes their visible marks on
+// non-phone layouts.
 //
 // The Projects rail colour shortcut also uses Dash's existing data path:
 // Store.setField(projectId, "color", hex). That is the same scalar field the
@@ -56,11 +57,62 @@ function markButton(button, kind, label, title, content) {
   }
 }
 
+function markSelectButton() {
+  const button = document.getElementById("select-btn");
+  if (!button) return;
+
+  // app.js owns the state and rewrites the real text on every render. Leave
+  // that text in the DOM (and therefore available to assistive tech), then let
+  // CSS draw the circle over it. Only a tiny count datum is copied to a data
+  // attribute so it can remain visible beside the mark while selection is on.
+  button.dataset.dashSelect = "1";
+  const active = button.getAttribute("aria-pressed") === "true";
+  const text = (button.textContent || "").trim();
+  const countMatch = /^Done\s*\((\d+)\)$/i.exec(text);
+  const count = active && countMatch ? countMatch[1] : "";
+  if (button.dataset.dashSelectCount !== count) button.dataset.dashSelectCount = count;
+
+  const label = active
+    ? (count ? `Done selecting, ${count} selected` : "Done selecting")
+    : "Select entries";
+  if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
+  const title = active ? "Done selecting" : "Select";
+  if (button.title !== title) button.title = title;
+}
+
+function findNewButton() {
+  const marked = document.querySelector('.topbar [data-dash-new="1"]');
+  if (marked) return marked;
+  return [...document.querySelectorAll(".topbar button")].find((button) =>
+    /^\s*[+＋]?\s*New\s*$/i.test(button.textContent || "")
+  ) || null;
+}
+
+function markNewButton() {
+  const button = findNewButton();
+  if (!button) return;
+
+  button.dataset.dashNew = "1";
+  if (button.getAttribute("aria-label") !== "New item") button.setAttribute("aria-label", "New item");
+  if (button.title !== "New") button.title = "New";
+
+  if (button.dataset.dashNewContent === "ticket") return;
+  const ticket = document.createElement("span");
+  ticket.className = "dash-new-ticket";
+  ticket.setAttribute("aria-hidden", "true");
+  ticket.textContent = "+";
+  button.replaceChildren(ticket);
+  button.dataset.dashNewContent = "ticket";
+}
+
 function applyTopbarCleanup() {
-  // Phone already has a purpose-built More menu. Keep its readable action
-  // labels intact; this pass is about the desktop/tablet instrument strip.
+  // Phone already has a purpose-built More menu and designed + New row. Keep
+  // its readable action labels intact; this pass is for the desktop/tablet
+  // instrument strip shown in the Projects workspace.
   if (isPhoneUI()) return;
 
+  markSelectButton();
+  markNewButton();
   markButton(document.getElementById("sync-btn"), "sync", "Sync now", "Sync now", SYNC_MARK);
   markButton(document.querySelector('[aria-label="Settings"]'), "settings", "Settings", "Settings", SETTINGS_MARK);
   markButton(
@@ -82,6 +134,11 @@ function liveStore() {
   return globalThis.__dashDeskImages?.store || null;
 }
 
+// This is the SAME native colour input as the previous pass, but it is no
+// longer permanently anchored at (0, 0). Before opening it, contextmenu puts
+// the 2px invisible anchor directly under the pointer. Chromium positions the
+// native picker from the input's rendered box, so the picker now belongs to
+// the project you actually right-clicked instead of the browser's top-left.
 const projectColorInput = document.createElement("input");
 projectColorInput.type = "color";
 projectColorInput.className = "dash-project-color-input";
@@ -96,7 +153,15 @@ projectColorInput.addEventListener("change", () => {
   store.setField(projectColorId, "color", projectColorInput.value);
 });
 
-function openProjectColorPicker(button) {
+function anchorProjectColorPicker(clientX, clientY) {
+  const size = 2;
+  const x = Math.max(0, Math.min(window.innerWidth - size, Number(clientX) || 0));
+  const y = Math.max(0, Math.min(window.innerHeight - size, Number(clientY) || 0));
+  projectColorInput.style.left = `${x}px`;
+  projectColorInput.style.top = `${y}px`;
+}
+
+function openProjectColorPicker(button, clientX, clientY) {
   const store = liveStore();
   const project = store?.get(button?.dataset?.id);
   if (!store || !project || project.type !== "project") return false;
@@ -105,6 +170,7 @@ function openProjectColorPicker(button) {
   projectColorInput.value = resolveHex(
     project.color || store.typeDef(project.type)?.color || "green"
   );
+  anchorProjectColorPicker(clientX, clientY);
 
   try {
     if (typeof projectColorInput.showPicker === "function") projectColorInput.showPicker();
@@ -118,14 +184,17 @@ function openProjectColorPicker(button) {
 document.addEventListener("contextmenu", (event) => {
   const button = event.target?.closest?.("[data-project-index-item]");
   if (!button || !button.closest(".project-index-list")) return;
-  if (!openProjectColorPicker(button)) return;
+
+  // Suppress the browser context menu before opening the native colour picker;
+  // both are responding to the same right-click and should not compete.
   event.preventDefault();
+  openProjectColorPicker(button, event.clientX, event.clientY);
 }, true);
 
-// app.js can update Sync's visible text after this module has run, and Desk
+// app.js updates Sync text and Select state after this module has run, and Desk
 // banners are mounted only when a project is entered. One tiny observer keeps
-// both cleanups true as those existing components update; it does not render
-// anything of its own.
+// those visual adaptations true as the existing components update; it does not
+// render any app content or own any action state.
 let applying = false;
 const observer = new MutationObserver(() => {
   if (applying) return;

@@ -1,9 +1,9 @@
 /* ============================================================
-   UI cleanup — quiet utilities + lighter Projects register
+   UI cleanup — quiet topbar marks + lighter Projects register
    ------------------------------------------------------------
-   This file is intentionally small and additive. It changes only the
-   visible treatment of existing controls; their real buttons and handlers
-   stay intact in app.js.
+   This file is intentionally small and additive. Existing buttons keep
+   their real handlers and generous targets; only their visible language
+   changes here.
    ============================================================ */
 
 /* Sync / Read / Settings keep generous button-sized targets, but the visible
@@ -53,6 +53,114 @@
   height: var(--space-5);
 }
 
+/* SELECT — one open circle, then a filled circle while selection mode is on.
+   app.js still owns the real button text/state underneath. font-size:0 hides
+   that text visually without deleting it; the small selected count is copied
+   to data-dash-select-count by ui-cleanup.js and shown only when useful. */
+.topbar #select-btn[data-dash-select="1"] {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 0;
+  letter-spacing: 0;
+  text-transform: none;
+  gap: var(--space-2);
+}
+
+.topbar #select-btn[data-dash-select="1"]:hover,
+.topbar #select-btn[data-dash-select="1"].btn-primary:hover {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.topbar #select-btn[data-dash-select="1"]::before {
+  content: "";
+  display: block;
+  width: calc(var(--space-4) + var(--space-1));
+  height: calc(var(--space-4) + var(--space-1));
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+  flex: none;
+  transition: transform var(--transition), background var(--transition);
+}
+
+.topbar #select-btn[data-dash-select="1"][aria-pressed="true"]::before {
+  background: currentColor;
+}
+
+.topbar #select-btn[data-dash-select="1"]:hover::before {
+  transform: scale(1.08);
+}
+
+.topbar #select-btn[data-dash-select="1"]::after {
+  content: attr(data-dash-select-count);
+  display: block;
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+/* NEW — the one small physical object in the topbar. The button itself is
+   still invisible and easy to hit; the visible object is a compact notched
+   ticket carrying a plus, borrowing the directional-ticket grammar already
+   used by the Project specimen without copying its large ENTER treatment. */
+.topbar [data-dash-new="1"] {
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar [data-dash-new="1"]:hover,
+.topbar [data-dash-new="1"].btn-primary:hover {
+  border: 0;
+  background: transparent;
+}
+
+.dash-new-ticket {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-5) + var(--space-4));
+  height: calc(var(--space-4) + var(--space-2));
+  padding-right: var(--space-1);
+  background: var(--mount);
+  color: var(--ink-on-mount);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 1;
+  clip-path: polygon(
+    0 0,
+    72% 0,
+    100% 42%,
+    100% 58%,
+    72% 100%,
+    0 100%,
+    0 63%,
+    12% 50%,
+    0 37%
+  );
+  transition: transform var(--transition);
+}
+
+.topbar [data-dash-new="1"]:hover .dash-new-ticket {
+  transform: translateX(var(--space-1));
+}
+
 /* Next Up items are already separated by spacing and typography. Removing the
    inherited .band-btn border gets rid of the boxes-inside-a-box effect while
    retaining the same click targets and hover behavior. */
@@ -61,14 +169,19 @@
   border-radius: 0;
 }
 
-/* One off-screen native colour input backs project-rail right-click editing.
-   It uses the browser/system picker, exactly like Dash's existing Colour field. */
+/* One native colour input backs project-rail right-click editing. Its 2px
+   rendered box is moved to the pointer before showPicker() runs, which gives
+   the browser a local anchor without showing another visible control. */
 .dash-project-color-input {
   position: fixed;
-  inset: 0 auto auto 0;
-  width: var(--space-1);
-  height: var(--space-1);
-  opacity: 0;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  width: 2px;
+  height: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0.001;
   pointer-events: none;
-  clip-path: inset(50%);
 }
