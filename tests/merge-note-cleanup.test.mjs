@@ -1,10 +1,12 @@
 // Regression coverage for the August 17, 2026 merge-note cleanup.
 //
-// Two promises are tied together here:
+// Three promises are tied together here:
 //   1. Title/Notes typing becomes one meaningful Store op instead of one op
 //      per keystroke, while blur/close still save immediately.
 //   2. Old per-keystroke collision records are shown as one conflict episode,
 //      and resolving that card resolves the hidden typing drafts with it.
+//   3. Finalizing an episode stays final even if another raw draft from that
+//      same old editing episode arrives later.
 import { JSDOM } from 'jsdom';
 
 const dom = new JSDOM('<!doctype html><body></body>', {
@@ -14,6 +16,7 @@ const dom = new JSDOM('<!doctype html><body></body>', {
 for (const k of ['window','document','Node','Element','HTMLElement','SVGElement','MutationObserver','requestAnimationFrame','getComputedStyle','CustomEvent','Event','PointerEvent','MouseEvent','FileReader','Blob','URL'])
   globalThis[k] = dom.window[k];
 globalThis.localStorage = dom.window.localStorage;
+localStorage.clear();
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
 dom.window.matchMedia = () => ({ matches: false, addEventListener(){}, removeEventListener(){} });
 globalThis.confirm = () => true;
@@ -149,8 +152,34 @@ let fine = [...document.querySelectorAll('.merge-note button')].find(b => b.text
 fine.click();
 ok("That's fine resolves every hidden keystroke record", raw.length === 0 && dismissed.length === 3,
    `raw=${raw.length}, dismissed=${dismissed.join(',')}`);
+
+console.log('\n--- a late sibling from the same finalized episode stays gone ---');
+const lateSibling = {
+  ...base,
+  key: 'k4-late',
+  lostValue: 'Bowerhaus/Substac',
+  lostAt: '2026-07-29T21:53:00.450Z',
+  seenAt: '2026-08-17T21:10:00.000Z',
+};
+raw.push(lateSibling);
+ok('a late raw draft from the finalized episode does not revive the badge', mergeNoteCount(fakeStore) === 0,
+   `count=${mergeNoteCount(fakeStore)}`);
+document.querySelector('.modal-scrim')?.remove();
+openMergeNotes(fakeStore);
+ok('a late raw draft from the finalized episode does not revive the card',
+   document.querySelectorAll('.merge-note').length === 0);
 document.querySelector('.modal-scrim')?.remove();
 
+raw.push({ ...genuinelyLater });
+ok('a genuinely later conflict still appears after the older episode was finalized',
+   mergeNoteCount(fakeStore) === 1,
+   `count=${mergeNoteCount(fakeStore)}`);
+raw = [];
+
+// Isolate the restore scenario from the dismissal episode above.
+localStorage.removeItem('dash.mergeNoteEpisodesResolved');
+
+console.log('\n--- restoring also finalizes the whole episode ---');
 raw = rawEpisode.map(x => ({ ...x }));
 dismissed.length = 0;
 openMergeNotes(fakeStore);
@@ -159,6 +188,9 @@ restore.click();
 ok('restore chooses the final losing draft, not an intermediate keystroke', restored.at(-1) === 'k3',
    `restored ${restored.at(-1)}`);
 ok('restoring also clears the hidden drafts in that episode', raw.length === 0);
+raw.push({ ...lateSibling, key: 'k5-after-restore' });
+ok('a late sibling also stays gone after restore', mergeNoteCount(fakeStore) === 0,
+   `count=${mergeNoteCount(fakeStore)}`);
 document.querySelector('.modal-scrim')?.remove();
 
 console.log(fail ? `\n${fail} of ${n} FAILED` : `\nall ${n} passed`);
