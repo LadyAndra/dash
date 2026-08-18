@@ -19,8 +19,75 @@
 import { el } from "./views/shared.js";
 import { formatDay } from "./milestones.js";
 
+// Older Dash builds wrote Title and Notes once per keystroke. If that device's
+// edit later lost to another device, every intermediate draft became its own
+// collision record: "B", "Bo", "Bow"... all describing the same human edit.
+//
+// The store is append-only on purpose, so do NOT erase that history. Instead,
+// collapse only records that are provably the same conflict episode:
+//   - same item/sub-record + field
+//   - same losing device
+//   - same winning device AND exact winning timestamp
+//
+// In other words, one device made several sequential drafts and every one of
+// them lost to the very same kept edit. The latest losing draft is the useful
+// alternative; the earlier drafts are typing history, not separate decisions.
+// A later real conflict has a different keptAt and therefore remains separate.
+export function coalescedMergeNotes(notes) {
+  const groups = new Map();
+
+  for (const note of notes || []) {
+    const address = [
+      note.itemId || "",
+      note.mid || "",
+      note.vsKey || "",
+      note.coll || "",
+      note.dkId || "",
+      note.field || "",
+    ].join("\u001f");
+
+    // Very old/partial records without a winning timestamp are kept one-for-one
+    // rather than guessed at. Safety beats tidiness when we cannot prove the
+    // records belong to the same collision episode.
+    const episode = note.keptAt
+      ? [address, note.lostDevice || "", note.keptDevice || "", note.keptAt].join("\u001e")
+      : `single:${note.key}`;
+
+    let group = groups.get(episode);
+    if (!group) {
+      group = { ...note, keys: [note.key] };
+      groups.set(episode, group);
+      continue;
+    }
+
+    group.keys.push(note.key);
+
+    // Keep the final draft from the losing device. ISO timestamps sort in the
+    // same order as time here, but Date parsing makes the intent explicit and
+    // tolerates a missing/odd timestamp without throwing.
+    const oldTime = Date.parse(group.lostAt || "") || 0;
+    const newTime = Date.parse(note.lostAt || "") || 0;
+    const oldSeen = Date.parse(group.seenAt || "") || 0;
+    const newSeen = Date.parse(note.seenAt || "") || 0;
+    const latestSeenAt = newSeen > oldSeen ? note.seenAt : group.seenAt;
+    if (newTime > oldTime) {
+      const keys = group.keys;
+      Object.assign(group, note);
+      group.keys = keys;
+    }
+
+    // seenAt is UI metadata. Keep the most recent time Dash noticed any member
+    // of the group so the card still sorts where the underlying records did.
+    group.seenAt = latestSeenAt;
+  }
+
+  return [...groups.values()].sort((a, b) =>
+    (Date.parse(b.seenAt || "") || 0) - (Date.parse(a.seenAt || "") || 0)
+  );
+}
+
 export function mergeNoteCount(store) {
-  return store.collisions().length;
+  return coalescedMergeNotes(store.collisions()).length;
 }
 
 export function openMergeNotes(store, onDone = () => {}) {
@@ -33,9 +100,25 @@ export function openMergeNotes(store, onDone = () => {}) {
 
   const list = el("div", { class: "merge-list" });
 
+  function dismissWholeEpisode(n) {
+    for (const key of n.keys || [n.key]) store.dismissCollision(key);
+  }
+
+  function restoreWholeEpisode(n) {
+    const keys = n.keys || [n.key];
+    if (!store.restoreCollision(n.key)) return false;
+    // restoreCollision dismisses the representative itself. Resolve the hidden
+    // per-keystroke drafts too, otherwise the next one would simply appear as
+    // soon as the card redraws.
+    for (const key of keys) {
+      if (key !== n.key) store.dismissCollision(key);
+    }
+    return true;
+  }
+
   function draw() {
     list.innerHTML = "";
-    const notes = store.collisions();
+    const notes = coalescedMergeNotes(store.collisions());
 
     if (notes.length === 0) {
       list.appendChild(el("p", {
@@ -62,7 +145,7 @@ export function openMergeNotes(store, onDone = () => {}) {
             class: "btn",
             text: "Put the replaced one back",
             onclick: () => {
-              if (store.restoreCollision(n.key)) draw();
+              if (restoreWholeEpisode(n)) draw();
             },
           }),
           el("div", { class: "spacer" }),
@@ -70,7 +153,7 @@ export function openMergeNotes(store, onDone = () => {}) {
             class: "btn",
             text: "That's fine",
             "aria-label": `Dismiss the note about ${n.itemTitle}`,
-            onclick: () => { store.dismissCollision(n.key); draw(); },
+            onclick: () => { dismissWholeEpisode(n); draw(); },
           }),
         ]),
       ]);

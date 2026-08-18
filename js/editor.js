@@ -3,8 +3,12 @@
 // works in all of them for free — that's the "voice in everywhere" Tier 1
 // story (§8). A read-aloud button covers voice out (§10).
 //
-// Edits call store methods directly (setField / addToSet / removeFromSet),
-// so each keystroke-save is one operation and sync/merge just works (§6).
+// Most edits still write straight through to Store. Title and Notes are the
+// exception: text input arrives once per keystroke, and writing every one of
+// those drafts to the append-only log turns one human edit into a long stack
+// of merge notes if another device later wins the field. Keep the live draft
+// in the control, save after a short quiet spell, and always flush on blur or
+// close. The final value is just as durable; the log is simply meaningful.
 
 import { el, groundStyle } from "./views/shared.js";
 import { resolveHex } from "./theme.js";
@@ -14,6 +18,8 @@ import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
 import { midFromLinkLabel } from "./store.js";
+
+const TEXT_SAVE_DELAY = 900;
 
 // How a connection reads in the editor's list. Most links show as
 // "label: Other thing". A milestone attachment stores the milestone's mid in
@@ -39,6 +45,58 @@ export function openEditor(store, itemId, opts = {}) {
 
   store.touch(id);
 
+  // Title and Notes keep their draft in the DOM while the person is typing.
+  // One timer per field means ten keystrokes inside the quiet window become
+  // one Store.setField operation. Blur and close flush immediately, so moving
+  // on never leaves a draft waiting for the timer.
+  const pendingText = new Map();
+
+  function savedText(field) {
+    const current = store.get(id);
+    return field === "title" ? (current?.title || "") : (current?.body || "");
+  }
+
+  function commitText(field, value) {
+    if (value === savedText(field)) return;
+    store.setField(id, field, value);
+  }
+
+  function scheduleText(field, value) {
+    const pending = pendingText.get(field);
+    if (pending) clearTimeout(pending.timer);
+
+    if (value === savedText(field)) {
+      pendingText.delete(field);
+      return;
+    }
+
+    const rec = { value, timer: null };
+    rec.timer = setTimeout(() => {
+      if (pendingText.get(field) !== rec) return;
+      pendingText.delete(field);
+      commitText(field, rec.value);
+    }, TEXT_SAVE_DELAY);
+    pendingText.set(field, rec);
+  }
+
+  function flushText(field) {
+    const pending = pendingText.get(field);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingText.delete(field);
+    commitText(field, pending.value);
+  }
+
+  function flushTextDrafts() {
+    flushText("title");
+    flushText("body");
+  }
+
+  function cancelTextDrafts() {
+    for (const pending of pendingText.values()) clearTimeout(pending.timer);
+    pendingText.clear();
+  }
+
   // Clicking the backdrop closes the editor. Dragging to SELECT TEXT must not.
   //
   // A `click` fires on the nearest common ancestor of where the pointer went
@@ -60,7 +118,8 @@ export function openEditor(store, itemId, opts = {}) {
   const title = el("input", {
     type: "text", value: item.title, placeholder: "Title (or tap the mic on your keyboard and talk)",
     "aria-label": "Title",
-    oninput: (e) => store.setField(id, "title", e.target.value),
+    oninput: (e) => scheduleText("title", e.target.value),
+    onblur: () => flushText("title"),
   });
 
   // --- type + status selects (from the editable registry §2.2) ---
@@ -71,7 +130,8 @@ export function openEditor(store, itemId, opts = {}) {
   const body = el("textarea", {
     placeholder: "Write, or dictate with the keyboard mic…",
     "aria-label": "Notes",
-    oninput: (e) => store.setField(id, "body", e.target.value),
+    oninput: (e) => scheduleText("body", e.target.value),
+    onblur: () => flushText("body"),
   });
   body.value = item.body;
 
@@ -197,7 +257,6 @@ export function openEditor(store, itemId, opts = {}) {
     ]);
     projectWrap.appendChild(adder);
   }
-
   const isProjectItem = store.get(id)?.type === "project";
 
   // --- links (connect to another item §2.1) ---
@@ -305,12 +364,13 @@ export function openEditor(store, itemId, opts = {}) {
 
   // --- read aloud (voice out §10) ---
   const readBtn = el("button", { class: "icon-btn", "aria-label": "Read this item aloud", title: "Read aloud", text: "🔊",
-    onclick: () => readAloud(itemToSpeech(store.get(id), store)) });
+    onclick: () => { flushTextDrafts(); readAloud(itemToSpeech(store.get(id), store)); } });
 
   // --- actions ---
   const del = el("button", { class: "btn btn-danger", text: "Delete",
     onclick: () => {
       if (confirm("Delete this item? It's kept in your history and can be recovered, but it will disappear from all views.")) {
+        cancelTextDrafts();
         store.deleteItem(id); close();
       }
     } });
@@ -389,6 +449,7 @@ export function openEditor(store, itemId, opts = {}) {
     closed = true;
     document.removeEventListener("keydown", escClose);
 
+    flushTextDrafts(); // final title/notes value must never wait behind close
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter
     clearTimeout(sketchSaveTimer);
     if (sketchPad) { await saveSketch(); sketchPad.destroy(); }
