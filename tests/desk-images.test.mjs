@@ -66,7 +66,13 @@ for (const path of [
   "./js/desk-images-runtime.js",
   "./js/desk-images.js",
 ]) assert.ok(sw.includes(`"${path}"`), `${path} must be in the offline shell`);
-assert.match(sw, /CACHE_VERSION = "dash-v69"/);
+
+// This test only needs to know that Dash declares a normal cache version.
+// tests/release-safety.test.mjs owns the stronger rule that every sw.js change
+// must bump that version, so pinning this file to one literal release number
+// would make every future legitimate cache bump fail for the wrong reason.
+assert.match(sw, /CACHE_VERSION = "dash-v\d+"/);
+
 assert.ok(
   bootstrap.indexOf('await import("./app.js")') < bootstrap.indexOf('import("./desk-images-runtime.js")'),
   "Dash itself must start before the optional image runtime",
