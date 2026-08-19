@@ -593,3 +593,24 @@
 .desk-page .pb-acts > .btn:focus-visible {
   border-radius: 0;
 }
+
+
+/* PROJECT WORKSPACE — QUIET FACT LINE
+   ------------------------------------------------------------
+   The desk already repeats milestone progress in the Milestones register
+   directly below the banner. On desktop, remove that duplicate count from
+   the project fact line and keep the remaining facts on one mono baseline. */
+@media (pointer: fine) and (min-width: 900px) {
+  .desk-page .pb-f-count {
+    display: none;
+  }
+}
+
+.desk-page .pb-line {
+  align-items: baseline;
+}
+
+.desk-page .pb-line .lbl,
+.desk-page .pb-line .num {
+  line-height: 1.2;
+}
