@@ -280,3 +280,62 @@
   color: var(--text-faint);
   border-bottom-color: var(--border);
 }
+
+
+/* HOME — ACCESSION AS AN INTAKE SLIP
+   ------------------------------------------------------------
+   The capture area is one physical object, not a form containing another
+   boxed form. The outer card now owns the boundary. The writing field becomes
+   the open face of that card; secondary actions lose permanent button chrome;
+   FILE IT remains the one strong mechanical action.
+
+   No behavior changes: focus persistence, keyboard filing, voice placeholder,
+   sketch/editor actions, and the underlying create operation are untouched. */
+.sheet-page .capture {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.sheet-page .capture textarea {
+  min-height: 104px;
+  padding: var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The writing face is quiet at rest but unmistakable when it actually owns
+   focus. This is interaction state, not permanent panel chrome. */
+.sheet-page .capture textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--mount);
+}
+
+.sheet-page .capture-row {
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* FILE IT keeps the solid primary treatment. The other paths into an entry are
+   utilities written on the slip rather than four equal boxed choices. */
+.sheet-page .capture-row .btn:not(.btn-primary) {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: var(--space-2);
+}
+
+.sheet-page .capture-row .btn:not(.btn-primary):hover {
+  border-color: transparent;
+  background: var(--surface-sunken);
+}
+
+.sheet-page .capture-note {
+  flex-basis: 100%;
+  margin-left: 0;
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
