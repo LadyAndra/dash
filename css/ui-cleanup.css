@@ -1,9 +1,10 @@
 /* ============================================================
-   UI cleanup — quiet topbar marks + lighter Projects register
+   UI cleanup — quiet topbar marks + cross-view polish
    ------------------------------------------------------------
    This file is intentionally small and additive. Existing buttons keep
    their real handlers and generous targets; only their visible language
-   changes here.
+   changes here. Small visual corrections that need to sit above the base
+   component CSS also live here, without moving any behavior.
    ============================================================ */
 
 /* Sync / Read / Settings keep generous button-sized targets, but the visible
@@ -167,6 +168,16 @@
 .project-next-item {
   border: 0;
   border-radius: 0;
+}
+
+/* ALIGNMENT AUDIT — Home's two first-row section heads are peers on the same
+   daily sheet. Accession uses the plate rhythm: text first, then bottom
+   padding, then its rule. De-boxing Due & coming up left one extra top padding
+   step on its panel head, which dropped that whole right column by a small but
+   visible amount. Remove only that inherited top padding so the two labels,
+   their rules, and the first content blocks register horizontally again. */
+.sheet-page .panel[data-panel="today"] > .panel-head {
+  padding-top: 0;
 }
 
 /* One native colour input backs project-rail right-click editing. Its 2px
