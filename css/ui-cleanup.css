@@ -470,3 +470,14 @@
     transform: none;
   }
 }
+
+
+/* BOARD — QUIET THE CLOSING EDGE
+   ------------------------------------------------------------
+   The top rule already registers each specimen slip, and the accession/date
+   rule gives it an internal header. A second full-strength closing rule at the
+   bottom creates unnecessary striping across the masonry. Let spacing close
+   the slip instead. */
+.board .card {
+  border-bottom: 0;
+}
