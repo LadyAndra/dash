@@ -246,3 +246,37 @@
   margin-top: var(--space-1);
   background: var(--project-mark, var(--color-gray));
 }
+
+/* STAGE NOTATION — workflow stage is a ledger note, not a chip.
+   ------------------------------------------------------------
+   Stage used to be the one remaining boxed metadata value. That made it feel
+   like a UI badge, and its 22ch cap silently clipped real milestone names.
+   Keep stage distinct with one ruled baseline instead: no fill, no surrounding
+   rectangle, no width cap. Long labels may wrap at spaces rather than disappear.
+   Overdue keeps ember because the date has actually passed; Complete recedes. */
+.stage-chip {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 0 1px;
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  vertical-align: baseline;
+}
+.stage-chip.overdue {
+  color: var(--ember);
+  border-bottom-color: var(--ember);
+  font-weight: 600;
+}
+.stage-chip.complete {
+  color: var(--text-faint);
+  border-bottom-color: var(--border);
+}
