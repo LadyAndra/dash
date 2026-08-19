@@ -180,6 +180,18 @@
   padding-top: 0;
 }
 
+/* METADATA MARK ALIGNMENT — the dot is centred on the mono line box by the
+   flex layout, but the mono labels are uppercase and their visible cap height
+   sits a little above that mathematical centre. Nudge every semantic metadata
+   dot upward by the same font-relative amount so type/status marks share one
+   optical centreline on Home, List, Board, and the Project/Desk surfaces.
+   The drawer-specific rules only recolour these same pseudo-elements, so the
+   correction carries through there without a second exception. */
+.mk::before,
+.status-ctl::before {
+  transform: translateY(-0.08em);
+}
+
 /* One native colour input backs project-rail right-click editing. Its 2px
    rendered box is moved to the pointer before showPicker() runs, which gives
    the browser a local anchor without showing another visible control. */
