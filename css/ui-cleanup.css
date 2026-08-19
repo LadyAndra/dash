@@ -180,16 +180,35 @@
   padding-top: 0;
 }
 
-/* METADATA MARK ALIGNMENT — the dot is centred on the mono line box by the
-   flex layout, but the mono labels are uppercase and their visible cap height
-   sits a little above that mathematical centre. Nudge every semantic metadata
-   dot upward by the same font-relative amount so type/status marks share one
-   optical centreline on Home, List, Board, and the Project/Desk surfaces.
-   The drawer-specific rules only recolour these same pseudo-elements, so the
-   correction carries through there without a second exception. */
-.mk::before,
+/* METADATA GRAMMAR — one dot, one job.
+   ------------------------------------------------------------
+   Type/source labels are identity: coloured mono text, no bullet.
+   Static metadata (Reminder, Milestone, Overdue, read-only statuses) follows
+   the same quiet text grammar. The dot is reserved for the editable STATUS
+   control, where it now means both state and "you can change this here".
+
+   That removes the old run of near-identical bullets and, just as importantly,
+   leaves only ONE dot component to align across Dash. Home, List, Board, and
+   Project/Desk all inherit this without view-specific exceptions. */
+.mk::before {
+  display: none;
+}
+
+/* The surviving status dot and its word use one measured piece of spacing.
+   The select used to contribute its own left padding on top of the wrapper's
+   gap, which is why dot-to-word spacing looked different from mark to mark. */
+.status-ctl {
+  gap: 0;
+}
 .status-ctl::before {
   transform: translateY(-0.08em);
+  margin-right: var(--space-1);
+}
+.status-ctl select {
+  padding-left: 0;
+}
+.status-ctl::after {
+  margin-left: 0;
 }
 
 /* One native colour input backs project-rail right-click editing. Its 2px
