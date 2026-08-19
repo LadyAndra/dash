@@ -677,3 +677,75 @@
 .desk-page .desk-drawer .tag {
   color: var(--text-muted);
 }
+
+
+/* PROJECT WORKSPACE — MILESTONES AS A LEDGER
+   ------------------------------------------------------------
+   The drawer handle already names Milestones and carries progress, so the
+   editor's second header is redundant. Keep the native date pickers and all
+   milestone behavior, but let their resting state read as ruled notation
+   instead of a form panel full of boxes. */
+.desk-page .desk-drawer .ms-section {
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.desk-page .desk-drawer .ms-head {
+  display: none;
+}
+
+.desk-page .desk-drawer .ms-date {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  box-shadow: none;
+  padding-inline: 0;
+}
+
+.desk-page .desk-drawer .ms-date:hover,
+.desk-page .desk-drawer .ms-date:focus,
+.desk-page .desk-drawer .ms-date:focus-visible {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--text-primary);
+  box-shadow: none;
+}
+
+.desk-page .desk-drawer .ms-date-field > .mk {
+  color: var(--text-faint) !important;
+}
+
+.desk-page .desk-drawer .ms-controls .ms-move,
+.desk-page .desk-drawer .ms-entry .ms-move {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desk-page .desk-drawer .ms-controls .ms-move:hover,
+.desk-page .desk-drawer .ms-entry .ms-move:hover {
+  background: var(--surface-sunken);
+}
+
+.desk-page .desk-drawer .ms-add {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.desk-page .desk-drawer .ms-add .btn-primary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 0;
+  border-bottom: 1px solid var(--text-primary);
+  border-radius: 0;
+  box-shadow: none;
+  padding-inline: var(--space-2);
+}
+
+.desk-page .desk-drawer .ms-add .btn-primary:hover {
+  background: var(--surface-sunken);
+}
