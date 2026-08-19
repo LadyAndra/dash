@@ -1089,6 +1089,28 @@ button, input, textarea, select {
    ground — so inside a panel the hover goes the other way */
 .panel-body .item-row:hover { background: var(--surface-sunken); }
 
+/* HOME ONLY: Due & coming up is chronological information written ON the
+   daily sheet, not a pick-up-able object. Keep the Today well and the overdue
+   interruption inside it, but remove the generic panel box around the whole
+   section. Other panels — especially the Archive object — keep their chrome. */
+.sheet-page .panel[data-panel="today"] {
+  background: transparent;
+  border: 0;
+}
+.sheet-page .panel[data-panel="today"] > .panel-head {
+  padding: var(--space-2) 0;
+  background: transparent;
+  border-bottom: 1px solid var(--border-strong);
+}
+.sheet-page .panel[data-panel="today"] > .panel-body {
+  padding: var(--space-3) 0 0;
+}
+/* The overdue block used negative margins only to escape the old panel-body
+   inset. With that container gone it can align honestly with the section. */
+.sheet-page .panel[data-panel="today"] .today-band-overdue {
+  margin: 0 0 var(--space-5);
+}
+
 /* stat readouts — marginal ledger notes on the daily sheet.
    They are useful counts, not four equal dashboard objects, so the shared
    rules carry the structure and each datum stays visually open. */
