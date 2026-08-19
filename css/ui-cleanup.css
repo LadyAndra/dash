@@ -614,3 +614,32 @@
 .desk-page .pb-line .num {
   line-height: 1.2;
 }
+
+
+/* PROJECT WORKSPACE — DRAWER METADATA ON PROJECT GROUND
+   ------------------------------------------------------------
+   Shared marks carry registry colours inline, which wins over the drawer's
+   normal colour-ground rules. Inside a saturated project drawer, the words
+   should read in the measured project ink instead of becoming a second field
+   of competing colours. The state remains legible by its word/caret. */
+.desk-page .desk-drawer .mk,
+.desk-page .desk-drawer .status-ctl,
+.desk-page .desk-drawer .status-ctl select {
+  color: var(--ground-ink) !important;
+}
+
+.desk-page .desk-drawer .status-ctl::before {
+  background: var(--ground-ink);
+}
+
+.desk-page .desk-drawer .stage-chip {
+  color: var(--ground-ink);
+  border-bottom-color: color-mix(in srgb, var(--ground-ink) 55%, transparent);
+}
+
+.desk-page .desk-drawer .stage-chip.overdue {
+  color: var(--ember-ink);
+  border-bottom-color: var(--ember-ink);
+  background: var(--ember);
+  padding-inline: var(--space-1);
+}
