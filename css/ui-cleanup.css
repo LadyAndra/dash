@@ -481,3 +481,29 @@
 .board .card {
   border-bottom: 0;
 }
+
+
+/* BOARD — SKETCHES AS MOUNTED MATERIAL
+   ------------------------------------------------------------
+   Once the specimen slips lost their surrounding boxes, the old full frame
+   around a sketch preview became the strongest rectangle on the card. The
+   drawing already arrives on its own sketch-paper ground, so let that material
+   define the preview instead of outlining it like a UI thumbnail.
+
+   Board only: list thumbnails and the full sketch editor keep their existing
+   boundaries because those surfaces serve different jobs. */
+.board .card-sketch-thumb {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--sketch-paper);
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+/* Keep the drawing comfortably inside its paper without inventing tape,
+   shadows, rotation, or another decorative frame. */
+.board .card-sketch-thumb .sketch-thumb-img {
+  max-width: calc(100% - var(--space-4));
+  max-height: calc(100% - var(--space-4));
+}
