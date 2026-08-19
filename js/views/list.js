@@ -43,16 +43,26 @@ export const listView = {
       for (const item of group.items) {
         const row = itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true });
 
-        // PROJECT IDENTITY — List is the first place outside Projects where a
-        // project's own colour gets a tiny recognition mark. It lives under
-        // the accession number rather than in the metadata line: colour says
-        // "which project is this?", while the metadata grammar stays reserved
-        // for type, status, stage and date. Only project ITEMS get this first
-        // experiment; ordinary entries assigned to projects remain unchanged.
+        // PROJECT IDENTITY — List experiment, round two.
+        // A project's own colour is a tiny registration TAB beside its catalog
+        // number. The first pass used a hairline under the number, which became
+        // too faint in pale project colours and looked more like printing noise
+        // than identity. The filled vertical tab gives every colour enough area
+        // to read while staying completely out of the metadata grammar.
+        //
+        // The tab is absolutely positioned in the existing gap, so neither the
+        // accession number nor the metadata shifts. Ordinary entries still get
+        // nothing; Board still waits until this mark has earned its place here.
         if (item.type === "project") {
           const value = item.color || ctx.store.typeDef(item.type)?.color;
-          row.classList.add("list-project-identity");
-          row.style.setProperty("--project-mark", colorToken(value));
+          const no = row.querySelector(".item-no");
+          if (no) {
+            no.style.position = "relative";
+            no.appendChild(el("span", {
+              "aria-hidden": "true",
+              style: `position:absolute;left:calc(100% + var(--space-1));top:0;bottom:0;width:var(--space-1);background:${colorToken(value)};pointer-events:none`,
+            }));
+          }
         }
 
         wrap.appendChild(row);
