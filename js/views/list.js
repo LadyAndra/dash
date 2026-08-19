@@ -2,6 +2,7 @@
 // Groups can be collapsed. groupBy is chosen by the toolbar (none/type/tag/status).
 
 import { el, itemRow, emptyState } from "./shared.js";
+import { colorToken } from "../theme.js";
 
 export const listView = {
   name: "list",
@@ -39,7 +40,23 @@ export const listView = {
       }
       // statusControl: the row carries a quick status dropdown, so a status can
       // be changed without opening the editor (what Kanban used to be for).
-      for (const item of group.items) wrap.appendChild(itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
+      for (const item of group.items) {
+        const row = itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true });
+
+        // PROJECT IDENTITY — List is the first place outside Projects where a
+        // project's own colour gets a tiny recognition mark. It lives under
+        // the accession number rather than in the metadata line: colour says
+        // "which project is this?", while the metadata grammar stays reserved
+        // for type, status, stage and date. Only project ITEMS get this first
+        // experiment; ordinary entries assigned to projects remain unchanged.
+        if (item.type === "project") {
+          const value = item.color || ctx.store.typeDef(item.type)?.color;
+          row.classList.add("list-project-identity");
+          row.style.setProperty("--project-mark", colorToken(value));
+        }
+
+        wrap.appendChild(row);
+      }
       container.appendChild(wrap);
     }
   },

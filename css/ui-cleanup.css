@@ -227,3 +227,22 @@
   opacity: 0.001;
   pointer-events: none;
 }
+
+/* PROJECT IDENTITY — List experiment.
+   ------------------------------------------------------------
+   Project rows already say WHAT they are in the metadata line. This little
+   registration rule answers a different question: WHICH project is this?
+   It borrows the exact colour the project already wears in Projects, but puts
+   it under the accession number so it cannot become another metadata badge.
+
+   Nothing shifts horizontally: the accession gutter stays exactly where it
+   was, and ordinary entries reserve no new column. Board is deliberately left
+   alone until this has been judged on the calmer List surface first. */
+.item-row.list-project-identity .item-no::after {
+  content: "";
+  display: block;
+  width: calc(var(--space-4) + var(--space-1));
+  height: calc(var(--space-1) / 2);
+  margin-top: var(--space-1);
+  background: var(--project-mark, var(--color-gray));
+}
