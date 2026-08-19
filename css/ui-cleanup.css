@@ -390,3 +390,38 @@
   padding-inline: var(--space-1);
   letter-spacing: 0.11em;
 }
+
+
+/* HOME — ACCESSION ACTION LINE, FINAL
+   ------------------------------------------------------------
+   The action footer is not a wrapping toolbar. It is one deliberate row of
+   four actions, followed by the filing notation on its own line. Grid makes
+   that structure deterministic instead of depending on a few spare pixels. */
+.sheet-page .capture-row {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  align-items: center;
+  justify-content: start;
+  column-gap: var(--space-1);
+  row-gap: var(--space-1);
+}
+
+.sheet-page .capture-row .btn {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.sheet-page .capture-row .btn-primary {
+  padding-inline: var(--space-2);
+  letter-spacing: 0.12em;
+}
+
+.sheet-page .capture-row .btn:not(.btn-primary) {
+  padding-inline: var(--space-1);
+  letter-spacing: 0.08em;
+}
+
+.sheet-page .capture-note {
+  grid-column: 1 / -1;
+  width: 100%;
+}
