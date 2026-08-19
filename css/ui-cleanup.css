@@ -339,3 +339,54 @@
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
+
+
+/* HOME — TODAY AS A WORKING REGION
+   ------------------------------------------------------------
+   Overdue is the interruption; Upcoming is the ledger. Today sits between them
+   as the active work area, so it should have hierarchy without becoming a
+   generic panel again. Remove the surrounding rectangle, keep one strong top
+   rule, and use only a faint wash to hold the current-day material together. */
+.sheet-page .today-band-today {
+  background: color-mix(in srgb, var(--surface-sunken) 58%, transparent);
+  border: 0;
+  border-top: 2px solid var(--border-strong);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.sheet-page .today-band-today .today-head {
+  margin-top: 0;
+}
+
+/* Once the outer box is gone, the first row does not need to redraw a second
+   top edge immediately beneath the Today heading. */
+.sheet-page .today-band-today .today-row:first-of-type {
+  border-top: 0;
+}
+
+.sheet-page .today-band-today .item-row:hover {
+  background: var(--surface-raised);
+}
+
+/* ACCESSION — keep the four actions on one deliberate utility line.
+   ------------------------------------------------------------
+   FULL EDITOR was falling onto a line by itself because the inherited button
+   padding plus the rail width left only a few pixels too little. Tighten the
+   utility rhythm instead of making that wrap look accidental. */
+.sheet-page .capture-row {
+  gap: var(--space-1);
+}
+
+.sheet-page .capture-row .btn {
+  flex: 0 0 auto;
+}
+
+.sheet-page .capture-row .btn-primary {
+  padding-inline: var(--space-3);
+}
+
+.sheet-page .capture-row .btn:not(.btn-primary) {
+  padding-inline: var(--space-1);
+  letter-spacing: 0.11em;
+}
