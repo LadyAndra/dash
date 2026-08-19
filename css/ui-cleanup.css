@@ -545,3 +545,51 @@
   box-shadow: none;
   outline: none;
 }
+
+
+/* PROJECT WORKSPACE — ACTION GRAMMAR
+   ------------------------------------------------------------
+   The colored project band now follows the same control alphabet as the rest
+   of Dash: create/initiate is a ticket; secondary utilities are plain mono
+   actions. Mechanics and handlers are untouched. */
+.desk-page .pb-acts > .btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ground-ink, var(--text-on-accent));
+  box-shadow: none;
+  padding-inline: var(--space-2);
+}
+
+.desk-page .pb-acts > .btn:hover {
+  border: 0;
+  background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 12%, transparent);
+}
+
+/* + ENTRY is the one create action, so it gets the ticket family. */
+.desk-page .pb-acts > .btn.btn-primary {
+  min-width: calc(var(--space-6) + var(--space-6) + var(--space-4));
+  padding-inline: var(--space-4) var(--space-5);
+  background: var(--ground-ink, var(--text-on-accent));
+  color: var(--ground-bg, var(--surface));
+  clip-path: polygon(
+    0 0,
+    76% 0,
+    100% 42%,
+    100% 58%,
+    76% 100%,
+    0 100%,
+    0 64%,
+    10% 50%,
+    0 36%
+  );
+}
+
+.desk-page .pb-acts > .btn.btn-primary:hover {
+  background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 88%, transparent);
+  color: var(--ground-bg, var(--surface));
+}
+
+.desk-page .pb-acts > .btn:focus-visible {
+  border-radius: 0;
+}
