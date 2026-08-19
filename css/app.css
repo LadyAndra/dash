@@ -1089,26 +1089,39 @@ button, input, textarea, select {
    ground — so inside a panel the hover goes the other way */
 .panel-body .item-row:hover { background: var(--surface-sunken); }
 
-/* stat readouts — the counts that used to run under the masthead
-   as a text line, now blocked instruments in the rail */
+/* stat readouts — marginal ledger notes on the daily sheet.
+   They are useful counts, not four equal dashboard objects, so the shared
+   rules carry the structure and each datum stays visually open. */
 .stat-strip {
-  /* two by two, so four readouts cost two rows of rail height
-     instead of four */
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-4);
   margin-top: var(--space-4);
+  border-top: 1px solid var(--border-strong);
 }
 .stat {
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
-  padding: var(--space-2) var(--space-3);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 .stat-num {
   display: block;
-  font-family: var(--font-body); font-size: var(--text-xl); line-height: 1;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  line-height: 1;
 }
-.stat .lbl { display: block; margin-top: var(--space-1); }
+.stat .lbl {
+  display: block;
+  min-width: 0;
+  margin-top: 0;
+  line-height: 1.25;
+}
 /* the sanctioned ember: an overdue count that isn't zero */
-.stat.is-alert { border-color: var(--ember); }
 .stat.is-alert .stat-num { color: var(--ember); }
 
 /* ============================================================
