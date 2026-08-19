@@ -507,3 +507,41 @@
   max-width: calc(100% - var(--space-4));
   max-height: calc(100% - var(--space-4));
 }
+
+
+/* CATALOG BAND — INSTRUMENT CONTROLS
+   ------------------------------------------------------------
+   Search, Group, and Sort live on the mount as readouts/slots rather than
+   three conventional form boxes. Applies to the shared List + Board band. */
+.catalog-band .search-wrap input,
+.catalog-band .band-sel {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink-on-mount-muted);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.catalog-band .search-wrap input {
+  padding-inline: 0;
+}
+
+.catalog-band .band-sel {
+  padding-inline: 0;
+  margin-right: var(--space-3);
+}
+
+.catalog-band .search-wrap input:hover,
+.catalog-band .band-sel:hover {
+  border-bottom-color: var(--ink-on-mount);
+  background: transparent;
+}
+
+.catalog-band .search-wrap input:focus-visible,
+.catalog-band .band-sel:focus-visible {
+  border: 0;
+  border-bottom: 2px solid var(--ember-on-mount);
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+}
