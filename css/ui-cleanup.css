@@ -749,3 +749,37 @@
 .desk-page .desk-drawer .ms-add .btn-primary:hover {
   background: var(--surface-sunken);
 }
+
+
+/* PROJECT WORKSPACE — UNPLACED AS A LEDGER
+   ------------------------------------------------------------
+   Unplaced entries are filing rows, not little boxed buttons. Keep the drawer
+   useful for dragging while making its resting state match Filed/Milestones. */
+.desk-page .desk-drawer .desk-unplaced {
+  display: block;
+}
+
+.desk-page .desk-drawer .desk-unplaced-row {
+  width: 100%;
+  min-height: var(--control-min);
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-start;
+}
+
+.desk-page .desk-drawer .desk-unplaced-row:hover {
+  background: var(--surface-sunken);
+}
+
+.desk-page .desk-drawer .desk-unplaced-title {
+  color: var(--text-primary);
+}
+
+.desk-page .desk-drawer .desk-shelf-head + .hint {
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+}
