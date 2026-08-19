@@ -643,3 +643,37 @@
   background: var(--ember);
   padding-inline: var(--space-1);
 }
+
+
+/* PROJECT WORKSPACE — DRAWER AS A PULL-OUT SHEET
+   ------------------------------------------------------------
+   The open Peek drawer should not become a second project banner. Keep the
+   project's colour present as a faint paper tint while returning the drawer's
+   reading ink to the ordinary sheet system. */
+.desk-page .desk-drawer {
+  --ground-ink: var(--text-primary);
+  background: color-mix(in srgb, var(--ground-bg) 12%, var(--surface-raised));
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-1);
+}
+
+.desk-page .desk-drawer-inner {
+  background: transparent;
+}
+
+.desk-page .desk-drawer .desk-shelf-head,
+.desk-page .desk-drawer .item-row,
+.desk-page .desk-drawer .item-row:first-child,
+.desk-page .desk-drawer .ms-row,
+.desk-page .desk-drawer .ms-item:first-child .ms-row,
+.desk-page .desk-drawer .ms-head {
+  border-color: var(--border);
+}
+
+.desk-page .desk-drawer .hint,
+.desk-page .desk-drawer .item-no,
+.desk-page .desk-drawer .item-body-preview,
+.desk-page .desk-drawer .tag {
+  color: var(--text-muted);
+}
