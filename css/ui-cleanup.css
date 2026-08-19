@@ -425,3 +425,48 @@
   grid-column: 1 / -1;
   width: 100%;
 }
+
+
+/* BOARD — CARDS AS SPECIMEN SLIPS
+   ------------------------------------------------------------
+   Board still needs discrete pieces: the masonry metaphor falls apart if
+   entries become one continuous list. But a full four-sided border around
+   every card makes the page read as a conventional web-card grid.
+
+   Keep each entry as its own piece of paper while dropping the generic box:
+   a stronger registration edge at the top, a quiet closing rule at the
+   bottom, open sides, square paper corners, and no permanent shadow. */
+.board .card {
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface-raised);
+  transition: transform var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+/* The accession/date rule inside the slip remains useful: it reads as the
+   specimen header rather than duplicating an enclosing rectangle. */
+.board .card .card-head {
+  border-bottom-color: var(--border);
+}
+
+/* Physicality belongs to interaction, not permanent decoration. A card only
+   lifts when the pointer/focus says it is being handled. */
+.board .card:hover,
+.board .card:focus-visible {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-1);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board .card {
+    transition: none;
+  }
+  .board .card:hover,
+  .board .card:focus-visible {
+    transform: none;
+  }
+}
