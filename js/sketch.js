@@ -423,8 +423,8 @@ export function createSketchPad({ onDirty } = {}) {
     modeBtn.setAttribute("aria-pressed", String(drawing));
     modeBtn.textContent = drawing ? "✎ Drawing on" : "✎ Draw";
     modeLabel.textContent = drawing
-      ? "Drawing — the page won't scroll over the paper."
-      : "Viewing — scroll normally; tap Draw to sketch.";
+      ? "DRAWING"
+      : "VIEWING";
   }
 
   toolbar.append(

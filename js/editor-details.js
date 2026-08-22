@@ -8,12 +8,15 @@
 // New items start compact. Existing items start open so information that was
 // already recorded can never appear to have vanished behind a new UI rule.
 
+// Sketch is deliberately NOT in this list. It's part of the entry itself —
+// the same category as Title and Notes — not organising/filing metadata, so
+// it should never be tucked behind this disclosure. It stays wherever
+// editor.js put it in the DOM (right after Notes) on every screen size.
 const SECONDARY_ORDER = [
   "Projects",
   "Tags",
   "Files & images",
   "Connections",
-  "Sketch",
 ];
 
 function directFieldLabel(field) {
@@ -46,9 +49,19 @@ function enhanceEditor(modal) {
   details.className = "editor-more editor-details";
   // Existing items open by default. This is intentionally conservative: the
   // editor cannot inspect store data from this presentation-only module, so
-  // opening edits guarantees that existing projects/tags/files/links/sketches
-  // are never made to look missing. New capture gets the space-saving default.
-  details.open = !isNew;
+  // opening edits guarantees that existing projects/tags/files/links are
+  // never made to look missing. New capture gets the space-saving default.
+  //
+  // On desktop there's no vertical-space problem to solve, so the CSS at
+  // 901px+ hides the toggle entirely and this section is meant to just
+  // always be part of the right column. A native <details> only renders its
+  // content when genuinely open — CSS alone can't fake that past the
+  // browser's own closed-state hiding — so the real `open` attribute has to
+  // be true on desktop, not just visually implied. Decided once, at the
+  // moment the editor opens; resizing an already-open editor across the
+  // breakpoint is a rare enough case not to chase.
+  const desktopWide = window.matchMedia("(min-width: 901px)").matches;
+  details.open = !isNew || desktopWide;
   modal.classList.toggle("editor-expanded", details.open);
   details.addEventListener("toggle", () => {
     modal.classList.toggle("editor-expanded", details.open);
@@ -63,7 +76,7 @@ function enhanceEditor(modal) {
 
   const hint = document.createElement("span");
   hint.className = "editor-more-hint";
-  hint.textContent = "Projects · Tags · Files · Links · Sketch";
+  hint.textContent = "Projects · Tags · Files · Links";
 
   summary.append(title, hint);
 

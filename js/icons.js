@@ -38,3 +38,13 @@ export const CLIP_MARK_SVG = `
 <svg viewBox="0 0 87.19 69.01" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
   <path fill="currentColor" d="M71.03,40.5h-6.12c-5.26,0-9.52-4.26-9.52-9.52,0-1.36,1.1-2.46,2.46-2.46v-14.25c0-7.88-6.38-14.26-14.26-14.26h0c-7.88,0-14.26,6.38-14.26,14.26v14.25h0c1.36,0,2.46,1.1,2.46,2.46,0,5.26-4.26,9.52-9.52,9.52h-6.12C7.23,40.5,0,47.73,0,56.66v12.35h87.19v-12.35c0-8.92-7.23-16.16-16.16-16.16ZM43.6,17.55c-2.06,0-3.72-1.67-3.72-3.72s1.67-3.72,3.72-3.72,3.72,1.67,3.72,3.72-1.67,3.72-3.72,3.72Z"/>
 </svg>`.trim();
+
+// Project-band Add Image mark: one quiet frame, intentionally not a generic
+// upload arrow. It reads as "put a picture on this desk" and inherits the
+// banner ink exactly like the clip control beside it.
+export const IMAGE_BANNER_SVG = `
+<svg viewBox="0 0 28 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <rect x="2.5" y="3.5" width="23" height="17" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <circle cx="9" cy="9" r="2" fill="currentColor"/>
+  <path d="M5.5 18l5.6-5.4 3.6 3.2 3.4-3.1 4.4 5.3H5.5Z" fill="currentColor"/>
+</svg>`.trim();

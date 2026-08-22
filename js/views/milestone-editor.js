@@ -1,27 +1,15 @@
 // milestone-editor.js — the milestone list inside the Project view.
 // ===================================================================
-// Phase M1 of the milestones addendum. This is the ONE place a project's
+// Phase M1 of the milestones addendum. This remains the ONE place a project's
 // pipeline is edited: add, rename, date, remind, reorder, tick off, remove,
-// restore. It renders into the Project detail page (addendum §10) and owns no
-// data of its own — every control calls a store method, which emits, which
-// goes through app.js's coalesced scheduleRender like every other edit.
-// There is deliberately no private redraw loop in here.
+// restore. Controls write through Store; this module owns no saved data.
 //
-// Two rules from docs/dash-current-state.md are load-bearing and honoured
-// explicitly below, because both have bitten this codebase before:
-//
-//   1. "Blur is not proof the user left the field." A re-render detaches the
-//      focused input and Chrome fires blur on the way out. So the label boxes
-//      commit on Enter/blur rather than on every keystroke (no store emit
-//      while you type at all), AND whatever is typed is held in a draft so a
-//      background sync landing mid-word can't swallow it.
-//   2. Focus and cursor position are restored after a rebuild, the same way
-//      the Home capture box does it, using preventScroll so the page never
-//      jumps.
-//
-// Everything is drawn from theme tokens; there is not a literal colour, size
-// or font anywhere in this file. Ember appears only on an overdue date, which
-// is the indicator token doing exactly the job tokens.css reserves it for.
+// August 2026 form-language pass: dates still use native <input type="date">
+// underneath, so iOS/macOS keep doing the hard work of picking a valid date.
+// The browser field is no longer the permanent visual object, though. Dash
+// presents a compact readout and lets the native input occupy the same generous
+// hit target invisibly. That keeps YYYY-MM-DD storage exact while making the
+// resting UI belong to Dash rather than to whichever browser happens to draw it.
 
 import { el, typeChip } from "./shared.js";
 import { openEditor } from "../editor.js";
@@ -31,9 +19,6 @@ import {
   isOverdue, todayISO, formatDay, milestoneProgress,
 } from "../milestones.js";
 
-// Scratch state lives on ctx.viewLocal, which survives a re-render but is
-// wiped when you leave the view — the right lifetime for "which box had the
-// cursor" and "is the removed drawer open".
 function scratchOf(ctx) {
   if (!ctx.viewLocal.ms) {
     ctx.viewLocal.ms = { showRemoved: false, focusKey: null, focusSel: null, drafts: {}, expanded: {} };
@@ -48,22 +33,18 @@ export function renderMilestoneEditor(store, project, ctx) {
   const ms = visibleMilestones(project);
   const removed = removedMilestones(project);
   const progress = milestoneProgress(project);
-
-  // Which entries are on which phase — ONE scan of the archive for the whole
-  // section, not one per milestone. (Standing rule in the current-state doc:
-  // assume any new store scanner has the per-item-scan bug until checked.)
   const membership = store.milestoneMembership(project.id);
 
   const section = el("section", { class: "ms-section", "aria-label": "Milestones" });
 
-  // Remember which box has the cursor so the next rebuild can hand it back.
+  // A rebuild is not proof the person left a field. Remember the active field
+  // and restore it after the store-triggered render, cursor included for text.
   section.addEventListener("focusin", (e) => {
     const k = e.target && e.target.getAttribute ? e.target.getAttribute("data-fkey") : null;
     s.focusKey = k || null;
     s.focusSel = null;
   });
 
-  // ---- header ----
   section.appendChild(el("div", { class: "ms-head" }, [
     el("span", { class: "mk", text: "Milestones" }),
     el("span", {
@@ -72,7 +53,6 @@ export function renderMilestoneEditor(store, project, ctx) {
     }),
   ]));
 
-  // ---- the list ----
   if (ms.length === 0) {
     section.appendChild(el("p", {
       class: "hint",
@@ -88,10 +68,8 @@ export function renderMilestoneEditor(store, project, ctx) {
     section.appendChild(list);
   }
 
-  // ---- add ----
   section.appendChild(addRow(store, project, ctx, s));
 
-  // ---- the removed drawer (nothing is ever hard-deleted — §13.2 #8) ----
   if (removed.length) {
     section.appendChild(el("button", {
       class: "btn ms-removed-toggle",
@@ -99,6 +77,7 @@ export function renderMilestoneEditor(store, project, ctx) {
       text: `${s.showRemoved ? "▾" : "▸"} Removed milestones (${removed.length})`,
       onclick: () => { s.showRemoved = !s.showRemoved; ctx.rerender(); },
     }));
+
     if (s.showRemoved) {
       const drawer = el("div", { class: "ms-removed" });
       for (const m of removed) {
@@ -122,15 +101,11 @@ export function renderMilestoneEditor(store, project, ctx) {
 }
 
 // ===================================================================
-//  ONE MILESTONE — the editing row, plus its (collapsed) entry list
+//  ONE MILESTONE
 // ===================================================================
-// The row and the entry panel are siblings inside a wrapper rather than the
-// panel living inside the row, because the ROW is the draggable thing. Nesting
-// a list of buttons inside a draggable element makes both harder to use.
 function milestoneBlock(store, project, ctx, s, list, m, index, today, entries) {
   const block = el("div", { class: "ms-item", role: "listitem" });
   const open = !!s.expanded[m.mid];
-
   block.appendChild(milestoneRow(store, project, ctx, s, list, m, index, today, entries, open));
   if (open) block.appendChild(entryPanel(store, project, ctx, s, m, entries));
   return block;
@@ -145,23 +120,15 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     "data-mid": m.mid,
   });
 
-  // --- done toggle ---
-  // A real button with a real pressed state, so it reads correctly aloud and
-  // is a 44px target. Writes a timestamp rather than a boolean (addendum
-  // §2.1): free history, and un-ticking is just clearing it back to null.
-  const toggle = el("button", {
-    class: "ms-tick" + (done ? " on" : ""),
+  const doneToggle = el("button", {
+    class: "ms-done-toggle" + (done ? " is-done" : ""),
     type: "button",
     "aria-pressed": String(done),
     "aria-label": `${done ? "Mark not done" : "Mark done"}: ${m.label || "untitled milestone"}`,
-    text: done ? "✓" : "",
+    text: done ? "✓ Done" : "Mark done",
     onclick: () => store.setMilestoneField(project.id, m.mid, "done", done ? null : new Date().toISOString()),
   });
 
-  // --- drag handle ---
-  // Drag is the fast path on a trackpad. It is NOT the only path: the up/down
-  // buttons below are the touch affordance, per the addendum's §3.2 note that
-  // drag alone is a poor sole affordance.
   const handle = el("span", {
     class: "ms-grip",
     "aria-hidden": "true",
@@ -169,9 +136,8 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     text: "⠿",
   });
 
-  // --- label ---
-  // Commits on Enter and on blur, never on keystroke, so typing a name never
-  // emits a store change and therefore never triggers a re-render mid-word.
+  // Label commits on Enter/blur, not on each keystroke. The draft survives a
+  // surprise render so sync cannot eat a half-typed milestone name.
   const draftKey = m.mid;
   const labelInput = el("input", {
     type: "text",
@@ -182,7 +148,7 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     "data-fkey": `label:${m.mid}`,
   });
   labelInput.addEventListener("input", () => {
-    s.drafts[draftKey] = labelInput.value;       // survives an unexpected rebuild
+    s.drafts[draftKey] = labelInput.value;
     s.focusSel = [labelInput.selectionStart, labelInput.selectionEnd];
   });
   const commitLabel = () => {
@@ -195,29 +161,23 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     if (e.key === "Enter") { e.preventDefault(); commitLabel(); labelInput.blur(); }
   });
 
-  // --- dates ---
-  // Native date inputs: they hand back "YYYY-MM-DD" directly, which is exactly
-  // the shape milestone dates are stored in (addendum §2.1), so there is no
-  // parsing, no timezone conversion, and nothing that can drift by a day.
-  const dateInput = el("input", {
-    type: "date",
-    class: "ms-date",
+  // The visible part is Dash's readout; the real native date input is laid over
+  // it at full tap-target size. No parsing or timezone conversion is introduced.
+  const dueField = dateField({
+    label: "Due",
     value: m.date || "",
-    "aria-label": `Date for ${m.label || "this milestone"}`,
-    "data-fkey": `date:${m.mid}`,
-    onchange: (e) => store.setMilestoneField(project.id, m.mid, "date", e.target.value || null),
+    fkey: `date:${m.mid}`,
+    ariaLabel: `Date for ${m.label || "this milestone"}`,
+    onChange: (value) => store.setMilestoneField(project.id, m.mid, "date", value || null),
   });
-
-  const remindInput = el("input", {
-    type: "date",
-    class: "ms-date",
+  const remindField = dateField({
+    label: "Remind",
     value: m.remind || "",
-    "aria-label": `Reminder for ${m.label || "this milestone"}`,
-    "data-fkey": `remind:${m.mid}`,
-    onchange: (e) => store.setMilestoneField(project.id, m.mid, "remind", e.target.value || null),
+    fkey: `remind:${m.mid}`,
+    ariaLabel: `Reminder for ${m.label || "this milestone"}`,
+    onChange: (value) => store.setMilestoneField(project.id, m.mid, "remind", value || null),
   });
 
-  // --- move / remove ---
   const up = el("button", {
     class: "ms-move", type: "button", text: "↑",
     disabled: index === 0 ? "" : null,
@@ -236,11 +196,6 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     onclick: () => store.removeMilestone(project.id, m.mid),
   });
 
-  // --- the entries disclosure ---
-  // A separate button rather than "tap the row", because the row's biggest
-  // target is the name box and tapping that has to keep meaning "edit the
-  // name". This is always present, including when the phase is empty, so
-  // there's an obvious way in to attach the first thing.
   const count = entries.length;
   const disclose = el("button", {
     class: "ms-entries-toggle",
@@ -250,7 +205,7 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     onclick: () => {
       if (open) delete s.expanded[m.mid];
       else s.expanded[m.mid] = true;
-      ctx.rerender();                      // UI-only: nothing is written to the store
+      ctx.rerender();
     },
   }, [
     el("span", { class: "caret", text: open ? "▾" : "▸" }),
@@ -259,12 +214,12 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
 
   row.append(
     handle,
-    toggle,
     el("div", { class: "ms-main" }, [
       labelInput,
       el("div", { class: "ms-dates" }, [
-        el("label", { class: "ms-date-field" }, [el("span", { class: "mk", text: "Due" }), dateInput]),
-        el("label", { class: "ms-date-field" }, [el("span", { class: "mk", text: "Remind" }), remindInput]),
+        dueField,
+        remindField,
+        doneToggle,
         overdue ? el("span", { class: "mk mk-ember ms-overdue", text: `Overdue · ${formatDay(m.date)}` }) : null,
       ]),
       disclose,
@@ -276,17 +231,31 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
   return row;
 }
 
+// One date control, everywhere: the real native input is both the visible
+// control and the picker trigger. That keeps desktop and iPhone on the same
+// interaction contract now, and gives the future Calendar one component
+// boundary to replace later instead of several page/device-specific systems.
+function dateField({ label, value, fkey, ariaLabel, onChange }) {
+  const input = el("input", {
+    type: "date",
+    class: "ms-date dash-date",
+    value: value || "",
+    "aria-label": ariaLabel,
+    "data-fkey": fkey,
+    onchange: (e) => onChange(e.target.value || ""),
+  });
+
+  return el("div", { class: "ms-date-field" }, [
+    el("span", { class: "mk", text: label }),
+    input,
+  ]);
+}
+
 // ===================================================================
-//  THE ENTRIES ON A PHASE
+//  ENTRIES ON A PHASE
 // ===================================================================
-// Attaching is a link on the ENTRY (store.attachToMilestone), so it merges
-// with the same set semantics tags and project membership already use — no new
-// op kind, no format change. Detaching takes the entry off the phase but
-// leaves it in the project: those are two different things, and guessing
-// otherwise would silently lose a project assignment.
 function entryPanel(store, project, ctx, s, m, entries) {
   const panel = el("div", { class: "ms-entries" });
-
   if (entries.length === 0) {
     panel.appendChild(el("p", {
       class: "hint",
@@ -310,14 +279,9 @@ function entryPanel(store, project, ctx, s, m, entries) {
       },
     }),
   ]));
-
   return panel;
 }
 
-// One attached entry: enough to recognise it, a way in, and a way off.
-// Deliberately NOT the full specimen row from the list view — this is a
-// sub-list inside an editor, and a full row here would swamp the milestone
-// it belongs to.
 function entryRow(store, project, ctx, m, it) {
   const open = () => ctx.onOpen(it.id);
   return el("div", { class: "ms-entry" }, [
@@ -337,10 +301,6 @@ function entryRow(store, project, ctx, m, it) {
   ]);
 }
 
-// Pick something to attach. Entries already in the project come first, because
-// that's nearly always what's wanted; anything else in the archive is still
-// reachable underneath, and attaching one of those adds it to the project too
-// (being on a phase implies being in the project).
 function openPhasePicker(store, project, m, ctx) {
   const onPhase = new Set(
     (store.milestoneMembership(project.id).get(m.mid) || []).map(i => i.id)
@@ -349,7 +309,6 @@ function openPhasePicker(store, project, m, ctx) {
     store.all().filter(i => i.id !== project.id &&
       i.links.some(l => l.target === project.id && l.label === "in project")).map(i => i.id)
   );
-
   const candidates = store.all().filter(i =>
     i.id !== project.id && i.type !== "project" && !onPhase.has(i.id));
 
@@ -366,7 +325,6 @@ function openPhasePicker(store, project, m, ctx) {
     const matches = candidates.filter(i => (i.title || "").toLowerCase().includes(q));
     const mine = matches.filter(i => inProject.has(i.id)).slice(0, 40);
     const others = matches.filter(i => !inProject.has(i.id)).slice(0, 20);
-
     const add = (it, alsoJoins) => el("button", {
       class: "btn pick-row", type: "button",
       onclick: () => { store.attachToMilestone(it.id, project.id, m.mid); scrim.remove(); },
@@ -387,15 +345,16 @@ function openPhasePicker(store, project, m, ctx) {
       list.appendChild(el("p", { class: "hint", text: "Nothing left to attach." }));
     }
   }
+
   search.addEventListener("input", draw);
   draw();
-
   const modal = el("div", {
     class: "modal", role: "dialog", "aria-modal": "true",
     "aria-label": `Add an entry to ${m.label || "this milestone"}`,
   }, [
     el("h2", { text: `Add to “${m.label || "this milestone"}”` }),
-    search, list,
+    search,
+    list,
     el("div", { class: "modal-actions" }, [
       el("div", { class: "spacer" }),
       el("button", { class: "btn", text: "Close", onclick: () => scrim.remove() }),
@@ -428,7 +387,7 @@ function addRow(store, project, ctx, s) {
     if (!label) { input.focus({ preventScroll: true }); return; }
     input.value = "";
     delete s.drafts.__add;
-    s.focusKey = "add";            // keep the cursor here so you can add several
+    s.focusKey = "add";
     s.focusSel = null;
     store.addMilestone(project.id, { label });
   };
@@ -436,7 +395,6 @@ function addRow(store, project, ctx, s) {
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); go(); }
   });
-
   return el("div", { class: "ms-add" }, [
     input,
     el("button", { class: "btn btn-primary", type: "button", text: "＋ Add", onclick: go }),
@@ -446,17 +404,10 @@ function addRow(store, project, ctx, s) {
 // ===================================================================
 //  REORDER
 // ===================================================================
-// A move is ONE `set` op on ONE milestone's order field (addendum §3.2). The
-// neighbours are never renumbered — which is precisely what lets a reorder on
-// one device and a label edit on another merge without touching each other.
 function move(store, project, list, index, delta) {
   const target = index + delta;
   if (target < 0 || target >= list.length) return;
   const m = list[index];
-
-  // Where the milestone lands: between the two entries it will sit between
-  // once it has moved. Walking the array rather than doing arithmetic on
-  // orders keeps this readable and correct at both ends of the list.
   const without = list.filter((_, i) => i !== index);
   const before = without[target - 1] || null;
   const after = without[target] || null;
@@ -465,11 +416,6 @@ function move(store, project, list, index, delta) {
   repairIfNeeded(store, project);
 }
 
-// Fractional ordering has a real (if distant) floor: about fifty consecutive
-// midpoint splits into the same gap and the halves stop being distinguishable.
-// When that happens the whole list is re-spaced once, emitting one set per
-// milestone. Rare, legal, self-healing (addendum §3.2) — and deliberately not
-// what an ordinary move does.
 function repairIfNeeded(store, project) {
   const fresh = store.get(project.id);
   if (!fresh) return;
@@ -479,13 +425,8 @@ function repairIfNeeded(store, project) {
   store.renumberMilestones(project.id, renumbered(all));
 }
 
-// ---- drag to reorder (pointer devices) ----
-// HTML5 drag-and-drop, the same mechanism the kanban view uses, so there is
-// one drag idiom in the app. It does nothing on touch, which is exactly why
-// the up/down buttons exist.
 function attachDrag(row, store, project, list, m, index) {
   row.draggable = true;
-
   row.addEventListener("dragstart", (e) => {
     row.classList.add("dragging");
     e.dataTransfer.setData("text/plain", m.mid);
@@ -495,7 +436,6 @@ function attachDrag(row, store, project, list, m, index) {
     row.classList.remove("dragging");
     row.classList.remove("drop-before", "drop-after");
   });
-
   row.addEventListener("dragover", (e) => {
     e.preventDefault();
     const rect = row.getBoundingClientRect();
@@ -504,7 +444,6 @@ function attachDrag(row, store, project, list, m, index) {
     row.classList.toggle("drop-before", !after);
   });
   row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
-
   row.addEventListener("drop", (e) => {
     e.preventDefault();
     const droppedAfter = row.classList.contains("drop-after");
@@ -514,7 +453,6 @@ function attachDrag(row, store, project, list, m, index) {
 
     const from = list.findIndex(x => x.mid === draggedMid);
     if (from < 0) return;
-
     const without = list.filter(x => x.mid !== draggedMid);
     let at = without.findIndex(x => x.mid === m.mid);
     if (droppedAfter) at += 1;
@@ -529,18 +467,13 @@ function attachDrag(row, store, project, list, m, index) {
 // ===================================================================
 //  FOCUS RESTORE
 // ===================================================================
-// Same rule as the Home capture box: a rebuild is not the user leaving the
-// field. If a box in this section had the cursor before the rebuild, it gets
-// it back on the next frame, cursor position included, with preventScroll so
-// the page never jumps under her.
 function restoreFocus(section, s) {
   if (!s.focusKey) return;
   const key = s.focusKey;
   const sel = s.focusSel;
   requestAnimationFrame(() => {
-    if (!document.contains(section)) return;             // the render pass moved on
+    if (!document.contains(section)) return;
     const active = document.activeElement;
-    // Don't steal focus from somewhere the person deliberately went.
     if (active && active !== document.body && !section.contains(active)) return;
     if (active && section.contains(active) && active.getAttribute("data-fkey") === key) return;
     const node = section.querySelector(`[data-fkey="${escapeAttr(key)}"]`);
@@ -552,10 +485,6 @@ function restoreFocus(section, s) {
   });
 }
 
-// The key goes inside a QUOTED attribute selector, so only a quote or a
-// backslash could break it. (Our keys are "label:<ULID>" and friends, which
-// contain neither — this is belt and braces so a future key shape can't
-// silently produce a selector that throws.)
 function escapeAttr(v) {
   return String(v).replace(/["\\]/g, "\\$&");
 }

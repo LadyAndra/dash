@@ -19,8 +19,147 @@
 import { el } from "./views/shared.js";
 import { formatDay } from "./milestones.js";
 
+// A visible merge-note card can represent several raw collision records from
+// one human editing episode. Store already remembers exact raw note keys that
+// were resolved. This second, UI-level record remembers the EPISODE itself.
+//
+// Why both are needed: an older device may have written one operation per
+// keystroke. If only part of that old log has arrived when the person presses
+// "That's fine", a later tail can contain another draft from the SAME episode.
+// Its raw collision key is new, so Store quite correctly sees a new record.
+// To the person, though, it is the merge note they already finalized.
+//
+// Episode tombstones are per-device UI state, just like the merge-note inbox.
+// They never alter or delete the append-only data logs.
+const MERGE_EPISODES_KEY = "dash.mergeNoteEpisodesResolved";
+const MERGE_EPISODES_MAX = 1000;
+
+export function mergeNoteEpisodeKey(note) {
+  if (!note?.keptAt) return null;
+
+  const address = [
+    note.itemId || "",
+    note.mid || "",
+    note.vsKey || "",
+    note.coll || "",
+    note.dkId || "",
+    note.field || "",
+  ].join("\u001f");
+
+  return [
+    address,
+    note.lostDevice || "",
+    note.keptDevice || "",
+    note.keptAt,
+  ].join("\u001e");
+}
+
+function loadResolvedEpisodes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MERGE_EPISODES_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.filter(k => typeof k === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveResolvedEpisodes(set) {
+  try {
+    localStorage.setItem(MERGE_EPISODES_KEY, JSON.stringify([...set]));
+  } catch {
+    // If localStorage is blocked/full, Store's exact-key tombstones still work.
+    // Only the extra protection against a later sibling record is unavailable.
+  }
+}
+
+function rememberResolvedEpisodes(set, notes) {
+  let changed = false;
+
+  for (const note of notes || []) {
+    const key = mergeNoteEpisodeKey(note);
+    if (!key || set.has(key)) continue;
+    set.add(key);
+    changed = true;
+  }
+
+  if (set.size > MERGE_EPISODES_MAX) {
+    const keep = [...set].slice(-MERGE_EPISODES_MAX);
+    set.clear();
+    for (const key of keep) set.add(key);
+    changed = true;
+  }
+
+  if (changed) saveResolvedEpisodes(set);
+}
+
+// Older Dash builds wrote Title and Notes once per keystroke. If that device's
+// edit later lost to another device, every intermediate draft became its own
+// collision record: "B", "Bo", "Bow"... all describing the same human edit.
+//
+// The store is append-only on purpose, so do NOT erase that history. Instead,
+// collapse only records that are provably the same conflict episode:
+//   - same item/sub-record + field
+//   - same losing device
+//   - same winning device AND exact winning timestamp
+//
+// In other words, one device made several sequential drafts and every one of
+// them lost to the very same kept edit. The latest losing draft is the useful
+// alternative; the earlier drafts are typing history, not separate decisions.
+// A later real conflict has a different keptAt and therefore remains separate.
+//
+// `resolvedEpisodes` is optional so this function stays useful as a pure
+// grouping helper in tests and diagnostics. The actual UI/count passes this
+// device's remembered episode set.
+export function coalescedMergeNotes(notes, resolvedEpisodes = null) {
+  const groups = new Map();
+
+  for (const note of notes || []) {
+    const episodeKey = mergeNoteEpisodeKey(note);
+
+    // If the person already finalized this whole conflict episode, a raw note
+    // that arrives later from the same old log must not resurrect the card.
+    if (episodeKey && resolvedEpisodes?.has(episodeKey)) continue;
+
+    // Very old/partial records without a winning timestamp are kept one-for-one
+    // rather than guessed at. Safety beats tidiness when we cannot prove the
+    // records belong to the same collision episode.
+    const episode = episodeKey || `single:${note.key}`;
+
+    let group = groups.get(episode);
+    if (!group) {
+      group = { ...note, keys: [note.key] };
+      groups.set(episode, group);
+      continue;
+    }
+
+    group.keys.push(note.key);
+
+    // Keep the final draft from the losing device. ISO timestamps sort in the
+    // same order as time here, but Date parsing makes the intent explicit and
+    // tolerates a missing/odd timestamp without throwing.
+    const oldTime = Date.parse(group.lostAt || "") || 0;
+    const newTime = Date.parse(note.lostAt || "") || 0;
+    const oldSeen = Date.parse(group.seenAt || "") || 0;
+    const newSeen = Date.parse(note.seenAt || "") || 0;
+    const latestSeenAt = newSeen > oldSeen ? note.seenAt : group.seenAt;
+    if (newTime > oldTime) {
+      const keys = group.keys;
+      Object.assign(group, note);
+      group.keys = keys;
+    }
+
+    // seenAt is UI metadata. Keep the most recent time Dash noticed any member
+    // of the group so the card still sorts where the underlying records did.
+    group.seenAt = latestSeenAt;
+  }
+
+  return [...groups.values()].sort((a, b) =>
+    (Date.parse(b.seenAt || "") || 0) - (Date.parse(a.seenAt || "") || 0)
+  );
+}
+
 export function mergeNoteCount(store) {
-  return store.collisions().length;
+  return coalescedMergeNotes(store.collisions(), loadResolvedEpisodes()).length;
 }
 
 export function openMergeNotes(store, onDone = () => {}) {
@@ -32,10 +171,36 @@ export function openMergeNotes(store, onDone = () => {}) {
   function close() { scrim.remove(); onDone(); }
 
   const list = el("div", { class: "merge-list" });
+  const resolvedEpisodes = loadResolvedEpisodes();
+
+  function dismissWholeEpisode(n) {
+    // Remember the human decision BEFORE shortening the visible raw list. That
+    // way a sibling record from the same old edit can arrive later and still
+    // be recognized as already handled.
+    rememberResolvedEpisodes(resolvedEpisodes, [n]);
+    for (const key of n.keys || [n.key]) store.dismissCollision(key);
+  }
+
+  function restoreWholeEpisode(n) {
+    const keys = n.keys || [n.key];
+    if (!store.restoreCollision(n.key)) return false;
+
+    // Restoring is also a final decision about this episode. A late historical
+    // draft from the same losing edit must not open the card again afterward.
+    rememberResolvedEpisodes(resolvedEpisodes, [n]);
+
+    // restoreCollision dismisses the representative itself. Resolve the hidden
+    // per-keystroke drafts too, otherwise the next one would simply appear as
+    // soon as the card redraws.
+    for (const key of keys) {
+      if (key !== n.key) store.dismissCollision(key);
+    }
+    return true;
+  }
 
   function draw() {
     list.innerHTML = "";
-    const notes = store.collisions();
+    const notes = coalescedMergeNotes(store.collisions(), resolvedEpisodes);
 
     if (notes.length === 0) {
       list.appendChild(el("p", {
@@ -62,7 +227,7 @@ export function openMergeNotes(store, onDone = () => {}) {
             class: "btn",
             text: "Put the replaced one back",
             onclick: () => {
-              if (store.restoreCollision(n.key)) draw();
+              if (restoreWholeEpisode(n)) draw();
             },
           }),
           el("div", { class: "spacer" }),
@@ -70,7 +235,7 @@ export function openMergeNotes(store, onDone = () => {}) {
             class: "btn",
             text: "That's fine",
             "aria-label": `Dismiss the note about ${n.itemTitle}`,
-            onclick: () => { store.dismissCollision(n.key); draw(); },
+            onclick: () => { dismissWholeEpisode(n); draw(); },
           }),
         ]),
       ]);
@@ -94,7 +259,16 @@ export function openMergeNotes(store, onDone = () => {}) {
     el("div", { class: "modal-actions" }, [
       el("button", {
         class: "btn", text: "Clear the list",
-        onclick: () => { store.clearCollisions(); draw(); },
+        onclick: () => {
+          // Clearing means every currently visible episode is finalized too,
+          // not merely the raw records that have arrived at this instant.
+          rememberResolvedEpisodes(
+            resolvedEpisodes,
+            coalescedMergeNotes(store.collisions(), resolvedEpisodes)
+          );
+          store.clearCollisions();
+          draw();
+        },
       }),
       el("div", { class: "spacer" }),
       el("button", { class: "btn btn-primary", text: "Close", onclick: close }),
