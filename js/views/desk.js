@@ -22,7 +22,7 @@
 //
 // The rules this file must keep, all of which have bitten already:
 //
-//   - ONE archive pass per refresh. deskData() is the only thing that walks
+//   - ONE archive pass per render. deskData() is the only thing that walks
 //     store.all(); the drawers read the same result (§12.6).
 //   - Drags commit ON DROP, never per frame (§8.34). Pointer-move is local
 //     state. A background sync landing mid-drag must not steal the card, so
@@ -67,115 +67,50 @@ export function supportsDesk() {
 // ===================================================================
 //  ENTRY POINT
 // ===================================================================
-export function createProjectPageController(store, project, ctx, actions) {
-  const hasDesk = supportsDesk();
-  const state = hasDesk ? deskState(ctx) : null;
-  const runtime = {
-    store, project, ctx, actions,
-    data: null, stage: null, prog: null,
-    placedById: new Map(), clipByCid: new Map(), noteByNid: new Map(), clipOfCard: new Map(),
-  };
-
-  const page = el("div", { class: "desk-page" });
-  const clipMode = hasDesk ? clipModeControl(runtime, state) : null;
-  const bannerCtl = banner(runtime, state, clipMode);
-  page.appendChild(bannerCtl.el);
-
-  let drawer = null;
-  let surf = null;
-  let peek = null;
-  if (hasDesk) {
-    drawer = drawers(runtime, state);
-    page.appendChild(drawer.handles);
-    surf = surface(runtime, state, drawer, bannerCtl.glanceBtn);
-    page.appendChild(surf.el);
-  } else {
-    peek = el("div", {});
-    page.appendChild(peek);
-  }
-
-  let destroyed = false;
-  const controller = {
-    el: page,
-    projectId: project.id,
-    _drawer: drawer,
-    _surface: surf,
-    mount() {
-      if (destroyed) return;
-      if (drawer) drawer.mount();
-      if (surf) surf.mount();
-    },
-    refresh(nextProject, nextCtx, nextActions = runtime.actions) {
-      if (destroyed || !nextProject || nextProject.id !== controller.projectId) return false;
-      runtime.project = nextProject;
-      runtime.ctx = nextCtx;
-      runtime.actions = nextActions;
-      refreshRuntime(runtime);
-
-      const style = groundStyle(runtime.store, runtime.project);
-      if (page.getAttribute("style") !== style) page.setAttribute("style", style);
-      bannerCtl.refresh();
-      if (drawer) drawer.refresh();
-      if (surf) surf.refresh();
-      else {
-        const next = peekPage(runtime.store, runtime.project, runtime.ctx, runtime.data);
-        peek.replaceChildren(...next.childNodes);
-        peek.className = next.className;
-      }
-      return true;
-    },
-    destroy() {
-      if (destroyed) return;
-      destroyed = true;
-      observer.disconnect();
-      if (drawer) drawer.destroy();
-      if (surf) surf.destroy();
-      closeDeskMenu();
-    },
-  };
-
-  // Compatibility with the existing direct renderer tests/callers. Project view
-  // owns the controller itself; older direct callers still receive the page.
-  page._deskController = controller;
-  // The legacy mount hook belongs only to a real Desk. Peek-only pages never
-  // had anything to mount, and the existing phone contract deliberately
-  // exposes no hook there. projectView owns controller.mount() directly.
-  if (hasDesk) page._deskMount = () => controller.mount();
-  page._deskRefresh = (nextProject, nextCtx, nextActions) => controller.refresh(nextProject, nextCtx, nextActions);
-  page._deskDestroy = () => controller.destroy();
-
-  // A Project-tab switch drops viewLocal before projectView can call destroy().
-  // Keep one observer for the CONTROLLER lifetime as the safety net for that
-  // route only. Ordinary refreshes mutate descendants while page stays connected
-  // and therefore do not tear anything down.
-  const observer = new MutationObserver(() => {
-    if (!page.isConnected) controller.destroy();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  controller.refresh(project, ctx, actions);
-  return controller;
-}
-
 export function renderProjectPage(store, project, ctx, actions) {
-  return createProjectPageController(store, project, ctx, actions).el;
+  // THE one archive pass. Everything below reads this result.
+  const data = D.deskData(store.all(), project.id, PROJECT_LINK);
+  const stage = stageOf(project);
+  const prog = milestoneProgress(project);
+
+  const page = el("div", {
+    class: "desk-page",
+    style: groundStyle(store, project),            // --ground-bg / --ground-ink for the whole page
+  });
+
+  const hasDesk = supportsDesk();
+  // The state has to exist before the banner is built, because the clip button
+  // is a view of it (pressed or not) as well as a control over it.
+  const state = hasDesk ? deskState(ctx) : null;
+  page.appendChild(banner(store, project, stage, prog, data, actions,
+    hasDesk ? clipModeControl(store, project, ctx, state) : null));
+
+  if (!hasDesk) {
+    // Phone (and today's iPad): no desk, no unplaced shelf — there is nothing
+    // to be unplaced FROM. Peek content directly, full width (§7).
+    page.appendChild(peekPage(store, project, ctx, data));
+    return page;
+  }
+  const drawer = drawers(store, project, ctx, data, state);
+  const glanceBtn = page.querySelector(".banner-glance");
+  // NOTE: the drawer body is NOT appended here. It already lives inside
+  // drawer.handles, which is `position: relative` and therefore the thing its
+  // `top: 100%` resolves against. Appending it to the page as a sibling moved
+  // it out of that containing block, so it opened a full viewport height down
+  // — off screen, looking exactly like "the drawers don't open". A layout bug,
+  // which is why the jsdom render test sailed past it: jsdom has no layout.
+  page.appendChild(drawer.handles);
+  const surf = surface(store, project, ctx, data, state, drawer, glanceBtn);
+  page.appendChild(surf);
+  // The page is still detached here, so the desk cannot size or scroll itself
+  // yet. Whoever attaches it calls this the instant it lands in the document —
+  // see the note on `restore` in surface() for why "the instant" matters.
+  page._deskMount = surf._deskMount;
+  return page;
 }
 
-function refreshRuntime(runtime) {
-  // THE one archive pass per refresh. The shell survives; the derived model is
-  // replaced wholesale so the one persistent gesture wiring always reads NOW.
-  runtime.data = D.deskData(runtime.store.all(), runtime.project.id, PROJECT_LINK);
-  runtime.stage = stageOf(runtime.project);
-  runtime.prog = milestoneProgress(runtime.project);
-  runtime.placedById = new Map(runtime.data.placed.map(p => [p.id, p]));
-  runtime.clipByCid = new Map(runtime.data.clips.map(c => [c.cid, c]));
-  runtime.noteByNid = new Map(runtime.data.notes.map(n => [n.nid, n]));
-  runtime.clipOfCard = new Map();
-  for (const c of runtime.data.clips) for (const m of c.members) runtime.clipOfCard.set(m.id, c);
-}
-
-// Desk UI state lives in ctx.viewLocal so it survives controller refreshes and
-// genuine project remounts. It is chrome, not content: which drawer is open
+// Desk UI state lives in ctx.viewLocal so it survives the full re-render that
+// every store write triggers. It is chrome, not content: which drawer is open
 // and where you have scrolled are not facts about the project (§8.19 — the
 // ARRANGEMENT syncs; the furniture around it does not).
 function deskState(ctx) {
@@ -234,27 +169,27 @@ function deskState(ctx) {
 // This is deliberately NOT the app's existing multi-select. That one is for
 // list rows and stays off on the desk surface (§12.6); this one is desk-only,
 // lives in view-local state, and has one outcome instead of a toolbar.
-function clipModeControl(runtime, state) {
+function clipModeControl(store, project, ctx, state) {
   return {
     get active() { return !!state.clipping; },
     get count() { return state.clipping ? state.clipping.picked.length : 0; },
     cancel() {
       if (!state.clipping) return false;
       state.clipping = null;
-      runtime.ctx.rerender();
+      ctx.rerender();
       return true;
     },
     toggle() {
-      if (!state.clipping) { state.clipping = { picked: [] }; runtime.ctx.rerender(); return; }
+      if (!state.clipping) { state.clipping = { picked: [] }; ctx.rerender(); return; }
       const picked = state.clipping.picked.slice();
       state.clipping = null;
       if (picked.length >= 2) {
         // ONE clip record, then one membership op per card — the split across
         // the two floors that §12.2 describes, written in the order it reads.
-        const cid = runtime.store.addClip(runtime.project.id);
-        for (const id of picked) runtime.store.setDeskField(id, runtime.project.id, "clip", cid);
+        const cid = store.addClip(project.id);
+        for (const id of picked) store.setDeskField(id, project.id, "clip", cid);
       }
-      runtime.ctx.rerender();
+      ctx.rerender();
     },
   };
 }
@@ -265,94 +200,74 @@ function clipModeControl(runtime, state) {
 // Same content the tall banner carried; a third of the height. The name owns
 // the top line whatever its length, and the facts collapse into one thin
 // ruled line beneath it, closer to texture than to data you read.
-function banner(runtime, state, clipMode) {
-  const name = el("h2", { class: "pb-name" });
-  const catalogFact = el("span", { class: "lbl" });
-  const stageLabel = document.createTextNode("");
-  const stageSpace = document.createTextNode("");
-  const stageCount = el("span", { class: "num pb-f-count" });
-  const stageCell = el("span", { class: "lbl pb-f-stage" }, [stageLabel, stageSpace, stageCount]);
-  const memberFact = el("span", { class: "lbl" });
-  const nextStrong = el("span", { class: "pb-f-strong" });
-  const nextSpace = document.createTextNode("");
-  const nextDate = el("span", { class: "num" });
-  const nextFact = el("span", { class: "lbl" }, [
-    document.createTextNode("Next — "), nextStrong, nextSpace, nextDate,
-  ]);
-  const overdueFact = el("span", { class: "lbl banner-late", text: "Overdue" });
-  const facts = el("div", { class: "pb-line" }, [
-    catalogFact, stageCell, memberFact, nextFact, overdueFact,
-  ]);
+function banner(store, project, stage, prog, data, actions, clipMode) {
+  const facts = el("div", { class: "pb-line" });
+  const fact = (text, cls) => el("span", { class: "lbl" + (cls ? " " + cls : ""), text });
 
-  const clipBtn = clipMode ? el("button", {
-    class: "btn banner-clip",
-    html: CLIP_BANNER_SVG,
-    onclick: () => clipMode.toggle(),
-  }) : null;
-  const glanceBtn = el("button", {
-    class: "btn banner-glance", text: "✧",
-    title: "Hold to see the whole desk",
-    "aria-label": "Hold to see the whole desk",
-  });
-  const root = el("div", { class: "pb pb-a on-ground" }, [
+  facts.appendChild(fact(`№ ${catalogNo(store, project)}`));
+  // stage and its fraction are ONE fact, so they share a cell — no rule
+  // between them (§14.19)
+  const stageCell = el("span", { class: "lbl pb-f-stage" }, [
+    document.createTextNode(stage ? (stage.complete ? "Complete" : stage.label) : "No milestones yet"),
+  ]);
+  if (prog.total) {
+    stageCell.appendChild(document.createTextNode(" "));
+    stageCell.appendChild(el("span", {
+      class: "num pb-f-count",
+      text: `${String(prog.done).padStart(2, "0")} / ${String(prog.total).padStart(2, "0")}`,
+    }));
+  }
+  facts.appendChild(stageCell);
+  facts.appendChild(fact(`${data.members.length} ${data.members.length === 1 ? "entry" : "entries"}`));
+
+  const next = stage && !stage.complete ? stage : null;
+  if (next) {
+    const cell = el("span", { class: "lbl" }, [
+      document.createTextNode("Next — "),
+      el("span", { class: "pb-f-strong", text: next.label }),
+    ]);
+    if (next.date) {
+      cell.appendChild(document.createTextNode(" "));
+      cell.appendChild(el("span", { class: "num", text: formatDay(next.date) }));
+    }
+    facts.appendChild(cell);
+  }
+  // the one ember on the banner, unchanged from the block it replaces
+  if (stage && stage.overdue) facts.appendChild(fact("Overdue", "banner-late"));
+
+  return el("div", { class: "pb pb-a on-ground" }, [
     el("div", { class: "pb-head" }, [
-      name,
+      el("h2", { class: "pb-name", text: project.title || "Untitled" }),
       el("div", { class: "pb-acts" }, [
-        el("button", { class: "btn banner-new-entry", text: "+", title: "New entry in this project", "aria-label": "New entry in this project", onclick: () => runtime.actions.onNew(), }),
+        el("button", { class: "btn btn-primary", text: "＋ Entry", onclick: actions.onNew }),
+        el("button", { class: "btn", text: "＋ Existing", onclick: actions.onAdd }),
+        el("button", { class: "btn", text: "Edit", onclick: actions.onEdit }),
+        el("button", { class: "btn", text: "← All", onclick: actions.onBack }),
+        // THE CLIP (§5.4). Desk platforms only — there is nothing to clip on
+        // the phone's Peek page. It is Andra's own drawing, inlined as SVG and
+        // filled with currentColor, so it comes out in --ground-ink and
+        // re-colours with the project for free.
+        clipMode ? el("button", {
+          class: "btn banner-clip" + (clipMode.active ? " is-on" : ""),
+          "aria-pressed": String(clipMode.active),
+          title: clipMode.active
+            ? "Click the cards you want together, then press this again"
+            : "Clip cards together",
+          "aria-label": clipMode.active ? "Finish clipping" : "Clip cards together",
+          html: CLIP_BANNER_SVG,
+          onclick: () => clipMode.toggle(),
+        }) : null,
+        // Held, not pressed — so it is a mark rather than a labelled button
+        // (§14.8). It keeps a real accessible name and the full control height.
         el("button", {
-          class: "btn dash-utility-settings",
-          "aria-label": "Project settings",
-          title: "Project settings",
-          onclick: () => runtime.actions.onEdit(),
-        }, [el("span", { class: "dash-utility-mark", "aria-hidden": "true", text: "/////" })]),
-        el("button", { class: "btn", text: "← All", onclick: () => runtime.actions.onBack() }),
-        clipBtn,
-        glanceBtn,
+          class: "btn banner-glance", text: "✧",
+          title: "Hold to see the whole desk",
+          "aria-label": "Hold to see the whole desk",
+        }),
       ]),
     ]),
     facts,
   ]);
-
-  function refresh() {
-    const { store, project, stage, prog, data } = runtime;
-    name.textContent = project.title || "Untitled";
-    catalogFact.textContent = `№ ${catalogNo(store, project)}`;
-    stageLabel.data = stage ? (stage.complete ? "Complete" : stage.label) : "No milestones yet";
-    if (prog.total) {
-      stageSpace.data = " ";
-      stageCount.hidden = false;
-      stageCount.textContent = `${String(prog.done).padStart(2, "0")} / ${String(prog.total).padStart(2, "0")}`;
-    } else {
-      stageSpace.data = "";
-      stageCount.hidden = true;
-      stageCount.textContent = "";
-    }
-    memberFact.textContent = `${data.members.length} ${data.members.length === 1 ? "entry" : "entries"}`;
-
-    const next = stage && !stage.complete ? stage : null;
-    nextFact.hidden = !next;
-    if (next) {
-      nextStrong.textContent = next.label;
-      nextSpace.data = next.date ? " " : "";
-      nextDate.textContent = next.date ? formatDay(next.date) : "";
-    } else {
-      nextStrong.textContent = "";
-      nextSpace.data = "";
-      nextDate.textContent = "";
-    }
-    overdueFact.hidden = !(stage && stage.overdue);
-
-    if (clipBtn) {
-      clipBtn.className = "btn banner-clip" + (clipMode.active ? " is-on" : "");
-      clipBtn.setAttribute("aria-pressed", String(clipMode.active));
-      clipBtn.title = clipMode.active
-        ? "Click the cards you want together, then press this again"
-        : "Clip cards together";
-      clipBtn.setAttribute("aria-label", clipMode.active ? "Finish clipping" : "Clip cards together");
-    }
-  }
-
-  return { el: root, refresh, glanceBtn, clipBtn };
 }
 
 // ===================================================================
@@ -361,11 +276,11 @@ function banner(runtime, state, clipMode) {
 // Each shelf gets its own handle in a row along the banner's bottom edge, and
 // opens as a column under ITS OWN handle, only as tall as its contents need.
 // The handles wear the project's colour; so does the drawer (§14.17).
-function drawers(runtime, state) {
+function drawers(store, project, ctx, data, state) {
   const shelves = [
-    { key: "unplaced",   label: "Unplaced" },
-    { key: "filed",      label: "Filed" },
-    { key: "milestones", label: "Milestones" },
+    { key: "unplaced",   label: "Unplaced",   count: String(data.unplaced.length) },
+    { key: "filed",      label: "Filed",      count: String(data.members.length) },
+    { key: "milestones", label: "Milestones", count: milestoneCount(project) },
   ];
 
   const body = el("div", { class: "desk-drawer", role: "region", "aria-label": "Peek" });
@@ -374,62 +289,42 @@ function drawers(runtime, state) {
 
   const handles = el("div", { class: "desk-handles", role: "group", "aria-label": "Peek drawers" });
   const handleEls = new Map();
-  const countEls = new Map();
-  let closeTimer = null;
-  let mounted = false;
-  let transitionCount = 0;
 
   for (const sh of shelves) {
-    const count = el("span", { class: "desk-handle-count", text: "0" });
     const h = el("button", {
       class: "desk-handle",
       "data-shelf": sh.key,
       "aria-expanded": String(state.drawer === sh.key),
       onclick: () => setDrawer(sh.key === state.drawer ? null : sh.key),
-    }, [document.createTextNode(sh.label + " "), count]);
+    }, [
+      document.createTextNode(sh.label + " "),
+      el("span", { class: "desk-handle-count", text: sh.count }),
+    ]);
     handles.appendChild(h);
     handleEls.set(sh.key, h);
-    countEls.set(sh.key, count);
   }
   handles.appendChild(body);          // the drawer hangs off the handle row
 
   function shelfContent(name) {
-    if (name === "unplaced") return unplacedShelf(runtime.store, runtime.project, runtime.ctx, runtime.data);
-    if (name === "filed") return filedShelf(runtime.store, runtime.ctx, runtime.data);
-    if (name === "milestones") return milestonesShelf(runtime.store, runtime.project, runtime.ctx);
+    if (name === "unplaced") return unplacedShelf(store, project, ctx, data);
+    if (name === "filed")    return filedShelf(store, ctx, data);
+    if (name === "milestones") return milestonesShelf(store, project, ctx);
     return null;
   }
 
-  function cancelClose() {
-    if (closeTimer == null) return;
-    window.clearTimeout(closeTimer);
-    closeTimer = null;
-  }
-
-  function replaceShelf(name) {
-    const content = shelfContent(name);
-    inner.innerHTML = "";
-    if (content) inner.appendChild(content);
-  }
-
   function setDrawer(name) {
-    cancelClose();
-    const previous = state.drawer;
     state.drawer = name;
     for (const [k, h] of handleEls) h.setAttribute("aria-expanded", String(k === name));
     if (!name) {
       body.style.maxHeight = "0px";
-      // Keep the contents mounted for exactly as long as the slide lasts. The
-      // timer belongs to this controller and is cancelled by a fast reopen.
-      closeTimer = window.setTimeout(() => {
-        closeTimer = null;
-        if (!state.drawer) inner.innerHTML = "";
-      }, motionMs());
+      // keep the contents mounted for exactly as long as the slide lasts,
+      // then unmount — unmounting in the same tick was the round-2 "blink"
+      window.setTimeout(() => { if (!state.drawer) inner.innerHTML = ""; }, motionMs());
       return;
     }
-    if (name !== previous) transitionCount++;
-    replaceShelf(name);
-    if (mounted) placeDrawer(name);
+    inner.innerHTML = "";
+    inner.appendChild(shelfContent(name));
+    placeDrawer(name);
   }
 
   function placeDrawer(name) {
@@ -443,36 +338,13 @@ function drawers(runtime, state) {
     body.style.maxHeight = Math.min(inner.scrollHeight, Math.round(window.innerHeight * 0.56)) + "px";
   }
 
-  function refresh() {
-    countEls.get("unplaced").textContent = String(runtime.data.unplaced.length);
-    countEls.get("filed").textContent = String(runtime.data.members.length);
-    countEls.get("milestones").textContent = milestoneCount(runtime.project);
-    for (const [k, h] of handleEls) h.setAttribute("aria-expanded", String(k === state.drawer));
-
-    // A store write while a shelf is already open changes CONTENT, not drawer
-    // state. Replace only the shelf body and leave the open/close transition
-    // completely alone.
-    if (state.drawer) {
-      cancelClose();
-      replaceShelf(state.drawer);
-      if (mounted) placeDrawer(state.drawer);
-    }
+  // restore whatever was open before the re-render
+  if (state.drawer) {
+    inner.appendChild(shelfContent(state.drawer));
+    requestAnimationFrame(() => placeDrawer(state.drawer));
   }
 
-  function mount() {
-    if (mounted) return;
-    mounted = true;
-    if (state.drawer) placeDrawer(state.drawer);
-  }
-
-  function destroy() {
-    cancelClose();
-  }
-
-  return {
-    handles, body, inner, setDrawer, handleEls, refresh, mount, destroy,
-    get transitionCount() { return transitionCount; },
-  };
+  return { handles, body, setDrawer, handleEls };
 }
 
 function milestoneCount(project) {
@@ -544,9 +416,24 @@ function milestonesShelf(store, project, ctx) {
 // ===================================================================
 //  THE DESK SURFACE
 // ===================================================================
-function surface(runtime, state, drawer, glanceBtn) {
+function surface(store, project, ctx, data, state, drawer, glanceBtn) {
   const view = el("div", { class: "desk-viewport" });
-  // THE SIZER. It owns the fixed scrollable area and never gets transformed.
+  // THE SIZER. It is the thing that is 4400 x 2900, and it is never
+  // transformed — so the scrollable area is a constant, whatever the glance is
+  // doing to the surface inside it.
+  //
+  // This is the second attempt at the glance, and it is a different KIND of
+  // fix. The first tried to put the scroll position back after the zoom-out
+  // finished, which meant getting a piece of timing right against a CSS
+  // transition — and it still landed in the corner. A scaled element
+  // contributes its SCALED box to the scrollable overflow, so while the desk
+  // was small there was almost nothing to scroll and any write got clamped;
+  // every attempt to restore was a race against that.
+  //
+  // With a sizer, the glance never touches the scroll position at all. It is
+  // purely a transform, the current scroll offset is folded into that
+  // transform, and letting go just removes it. There is nothing to restore, so
+  // there is no timing to get right and nothing left to race.
   const sizer = el("div", { class: "desk-sizer" });
   const deskEl = el("div", {
     class: "desk-surface",
@@ -555,277 +442,204 @@ function surface(runtime, state, drawer, glanceBtn) {
   sizer.appendChild(deskEl);
   view.appendChild(sizer);
 
-  // Decorative and invariant for the lifetime of this desk. Refresh never
-  // touches this node or its ~50 paths.
-  const matEl = mat();
-  deskEl.appendChild(matEl);
+  // the mat: decorative, inert, fixed footprint, centred (§14.12, §14.13)
+  deskEl.appendChild(mat());
 
-  const guard = { hold: true };
-  const dom = {
-    view, deskEl, drawer, glanceBtn, guard,
-    clipHint: null, anchors: new Map(),
-    // Round 2: the visible desk objects keep their identity by stored id. Card
-    // CONTENT is still rebuilt inside its retained outer node on refresh; the
-    // finer-grained dirty-region work remains a later pass.
-    cards: new Map(), clipMarks: new Map(), notes: new Map(),
-  };
-  // Pile weight is derived only from LOOSE-card membership + x/y geometry. A
-  // title/status edit, z raise, drawer edit, note change, etc. must not pay the
-  // O(n²) distance scan again. Keep an ephemeral geometry snapshot beside the
-  // derived Map; it dies with this Desk controller and is never stored/synced.
-  let pileGeometry = new Map();
-  let pileWeights = new Map();
-  let pileWeightRuns = 0;
-  let openUnits = [];
-  let mounted = false;
-  let mountFrame = null;
-  let guardFrame = null;
-  let noteFocusFrame = null;
-  let emptyEl = null;
-  let destroyed = false;
+  // PILE WEIGHT is computed over the LOOSE cards only. A clipped card doesn't
+  // draw at its stored position any more — it draws in its clip's stack — so
+  // feeding those positions in would thicken cards next to a spot where
+  // nothing is visibly sitting (§12.5: weight is a render effect, and it has
+  // to be computed from what is actually rendered).
+  const w = D.weights(data.loose);
 
-  function cardNode(id) {
-    let node = dom.cards.get(id);
-    if (!node) {
-      node = el("div", { class: "dcard", "data-id": id, tabindex: "0" });
-      dom.cards.set(id, node);
+  // ONE ordering pass over everything that occupies the desk, so a clip and a
+  // loose card interleave honestly in the stacking order. Without this, clips
+  // would always paint over cards simply because they were appended later.
+  // A clip rides at its topmost member's z; ties break by id, exactly like
+  // compareZ, so two devices agree with no conversation.
+  const units = [];
+  for (const p of data.loose) units.push({ z: p.z, id: p.id, kind: "card", p });
+  for (const c of data.clips) {
+    if (c.members.length === 0) continue;   // a clip with nothing in it draws nothing
+    units.push({ z: c.z, id: c.cid, kind: "clip", c });
+  }
+  units.sort((a, b) => (a.z - b.z) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  // THE ANCHOR POINT each clip's attached post-its are measured from. It is
+  // the clip's derived anchor while closed, and its open grid's origin while
+  // open — one map, written here and rewritten by the measured relayout below,
+  // so the render and the drop logic can never disagree about what an
+  // `offset` is an offset FROM.
+  const anchors = new Map();
+  const openUnits = [];
+
+  for (const u of units) {
+    if (u.kind === "card") {
+      deskEl.appendChild(card(store, project, ctx, u.p, w.get(u.p.id) || 0, state, u.p.pos, null));
+      continue;
     }
-    return node;
+    const c = u.c;
+    const open = state.clipOpen === c.cid;
+    // A PROVISIONAL open grid, from nominal box sizes. Nothing paints between
+    // here and the measured pass in relayoutOpen() — that runs synchronously
+    // the moment the page lands in the document, the same hook the flicker fix
+    // uses (§14.24) — so this is never seen. It exists so that every element
+    // has a real position before anything measures it.
+    const grid = open
+      ? D.openGrid(c.anchor, c.members.map(() => ({ w: D.CARD_MAX_W, h: 180 })))
+      : null;
+    // The members. Closed, they draw as a tight sheaf pinned at the RIGHT and
+    // at their own angles; open, they lie flat in a reading grid. Either way
+    // their STORED positions are untouched — which is what makes unclipping
+    // need no repositioning.
+    c.members.forEach((p, i) => {
+      const at = open ? grid.at[i] : D.stackSlot(c.anchor, i);
+      deskEl.appendChild(card(store, project, ctx, p, 0, state, at, { clip: c, open, index: i }));
+    });
+    const anchor = open ? grid.origin : c.anchor;
+    anchors.set(c.cid, anchor);
+    deskEl.appendChild(clipMark(c, open,
+      open ? D.markSlotOpen(grid.origin, grid.pitchX - D.OPEN_GAP_X)
+           : D.markSlot(c.anchor, c.members.length)));
+    // An attached post-it sits where it was DROPPED, at its own offset from
+    // the anchor above — so it rides the stack for free (the anchor is derived
+    // from the same members the stack is) while still being a placement Andra
+    // made rather than a spot the code chose (§12.3, August 2026).
+    for (const n of c.notes) {
+      deskEl.appendChild(postIt(store, project, ctx, state, n,
+        D.noteAt(anchor, n.offset), c.cid, u.z));
+    }
+    if (open) openUnits.push(c);
   }
 
-  function markNode(cid) {
-    let node = dom.clipMarks.get(cid);
-    if (!node) {
-      node = el("div", { class: "dclip-mark", "data-cid": cid, html: CLIP_MARK_SVG });
-      dom.clipMarks.set(cid, node);
-    }
-    return node;
+  // Free-floating post-its: their own position, their own business (§5.6).
+  for (const n of data.freeNotes) {
+    deskEl.appendChild(postIt(store, project, ctx, state, n, n.pos || { x: D.ORIGIN, y: D.ORIGIN }, null, null));
   }
 
-  function noteController(nid) {
-    let ctl = dom.notes.get(nid);
-    if (!ctl) {
-      ctl = createPostItController(runtime, state, nid);
-      dom.notes.set(nid, ctl);
-    }
-    return ctl;
-  }
-
-  function relayoutOpen() {
+  // THE MEASURED RELAYOUT (August 2026 fix).
+  //
+  // A card sizes itself on its own title and snippet, between CARD_MIN_W and
+  // CARD_MAX_W — so a grid built on a fixed column pitch overlapped every card
+  // wider than that pitch and showed only part of it. There is no way around
+  // measuring: the width is the browser's answer, not ours.
+  //
+  // It runs from the mount hook, in the same task as the appendChild and
+  // before the browser paints, which is exactly why the provisional layout
+  // above is never visible. Measuring is valid there precisely BECAUSE the
+  // element is in the document by then — it cannot be hoisted into the render,
+  // where the desk is still detached and has no size at all.
+  const relayoutOpen = () => {
     if (openUnits.length === 0) return;
     for (const c of openUnits) {
-      const nodes = c.members.map(m => dom.cards.get(m.id) || null);
+      const nodes = c.members.map(m => deskEl.querySelector(`.dcard[data-id="${cssId(m.id)}"]`));
+      // An expanded member is deliberately left OUT of the pitch: it is
+      // temporarily 460px wide and would push every column apart for as long
+      // as it was open. It overlaps its neighbours instead, and rides above
+      // them — which is what expanding a card in a grid should look like.
       const sizes = nodes.map(n => (n && !n.classList.contains("is-expanded"))
         ? { w: n.offsetWidth, h: n.offsetHeight } : null);
       const g = D.openGrid(c.anchor, sizes, { room: view.clientWidth || undefined });
       nodes.forEach((n, i) => { if (n) placeAt(n, g.at[i]); });
-      dom.anchors.set(c.cid, g.origin);
-      const mark = dom.clipMarks.get(c.cid);
+      anchors.set(c.cid, g.origin);
+      const mark = deskEl.querySelector(`.dclip-mark[data-cid="${cssId(c.cid)}"]`);
       if (mark) placeAt(mark, D.markSlotOpen(g.origin, g.pitchX - D.OPEN_GAP_X));
       for (const n of c.notes) {
-        const ctl = dom.notes.get(n.nid);
-        if (ctl) placeAt(ctl.node, D.noteAt(g.origin, n.offset));
+        const nd = deskEl.querySelector(`.dnote[data-nid="${cssId(n.nid)}"]`);
+        if (nd) placeAt(nd, D.noteAt(g.origin, n.offset));
       }
     }
-  }
+  };
 
-  function fit() {
-    const top = view.getBoundingClientRect().top;
-    const h = Math.max(320, Math.round(window.innerHeight - top)) + "px";
-    if (view.style.height !== h) view.style.height = h;
-    relayoutOpen();
-  }
-
-  function weightsFor(loose) {
-    let changed = pileGeometry.size !== loose.length;
-    if (!changed) {
-      for (const p of loose) {
-        const prev = pileGeometry.get(p.id);
-        if (!prev || prev.x !== p.pos.x || prev.y !== p.pos.y) { changed = true; break; }
-      }
-    }
-    if (changed) {
-      pileWeights = D.weights(loose);
-      pileGeometry = new Map(loose.map(p => [p.id, { x: p.pos.x, y: p.pos.y }]));
-      pileWeightRuns++;
-    }
-    return pileWeights;
-  }
-
-  function refresh() {
-    if (destroyed) return;
-    const { store, project, ctx, data } = runtime;
-
-    const w = weightsFor(data.loose);
-    const units = [];
-    for (const p of data.loose) units.push({ z: p.z, id: p.id, kind: "card", p });
-    for (const c of data.clips) {
-      if (c.members.length === 0) continue;
-      units.push({ z: c.z, id: c.cid, kind: "clip", c });
-    }
-    units.sort((a, b) => (a.z - b.z) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-
-    const liveCards = new Set();
-    const liveMarks = new Set();
-    const liveNotes = new Set();
-    const order = [];
-    dom.anchors = new Map();
-    openUnits = [];
-
-    for (const u of units) {
-      if (u.kind === "card") {
-        const node = cardNode(u.p.id);
-        liveCards.add(u.p.id);
-        refreshCard(node, store, project, ctx, u.p, w.get(u.p.id) || 0, state, u.p.pos, null);
-        order.push(node);
-        continue;
-      }
-
-      const c = u.c;
-      const open = state.clipOpen === c.cid;
-      const grid = open
-        ? D.openGrid(c.anchor, c.members.map(() => ({ w: D.CARD_MAX_W, h: 180 })))
-        : null;
-      c.members.forEach((p, i) => {
-        const at = open ? grid.at[i] : D.stackSlot(c.anchor, i);
-        const node = cardNode(p.id);
-        liveCards.add(p.id);
-        refreshCard(node, store, project, ctx, p, 0, state, at, { clip: c, open, index: i });
-        order.push(node);
-      });
-
-      const anchor = open ? grid.origin : c.anchor;
-      dom.anchors.set(c.cid, anchor);
-      const mark = markNode(c.cid);
-      liveMarks.add(c.cid);
-      refreshClipMark(mark, c, open,
-        open ? D.markSlotOpen(grid.origin, grid.pitchX - D.OPEN_GAP_X)
-             : D.markSlot(c.anchor, c.members.length));
-      order.push(mark);
-
-      for (const n of c.notes) {
-        const ctl = noteController(n.nid);
-        liveNotes.add(n.nid);
-        ctl.refresh(n, D.noteAt(anchor, n.offset), c.cid, u.z);
-        order.push(ctl.node);
-      }
-      if (open) openUnits.push(c);
-    }
-
-    for (const n of data.freeNotes) {
-      const ctl = noteController(n.nid);
-      liveNotes.add(n.nid);
-      ctl.refresh(n, n.pos || { x: D.ORIGIN, y: D.ORIGIN }, null, null);
-      order.push(ctl.node);
-    }
-
-    // Remove only objects that genuinely disappeared. A card changing from
-    // loose → clipped, or a note changing from free → attached, keeps the same
-    // node because the same id remains live in the matching map.
-    for (const [id, node] of [...dom.cards]) {
-      if (liveCards.has(id)) continue;
-      node.remove();
-      dom.cards.delete(id);
-    }
-    for (const [cid, node] of [...dom.clipMarks]) {
-      if (liveMarks.has(cid)) continue;
-      node.remove();
-      dom.clipMarks.delete(cid);
-    }
-    for (const [nid, ctl] of [...dom.notes]) {
-      if (liveNotes.has(nid)) continue;
-      ctl.node.remove();
-      dom.notes.delete(nid);
-    }
-
-    // Reconcile DOM order WITHOUT moving a node that is already where it
-    // belongs. Re-appending every retained post-it would technically keep the
-    // same element but can still disturb a live textarea in some browsers. The
-    // cursor walks forward and only inserts when ordering genuinely changed.
-    let cursor = matEl.nextSibling;
-    for (const node of order) {
-      if (node === cursor) { cursor = cursor.nextSibling; continue; }
-      deskEl.insertBefore(node, cursor);
-    }
-
-    if (data.placed.length === 0 && data.notes.length === 0) {
-      if (!emptyEl) emptyEl = el("p", { class: "desk-empty hint" });
-      emptyEl.textContent = data.unplaced.length
+  if (data.placed.length === 0 && data.notes.length === 0) {
+    deskEl.appendChild(el("p", { class: "desk-empty hint" }, [
+      data.unplaced.length
         ? "Open the Unplaced drawer above and drag something out here."
-        : "Nothing in this project yet. Use ＋ Entry to start.";
-      deskEl.appendChild(emptyEl);
-    } else if (emptyEl) {
-      emptyEl.remove();
-    }
-
-    if (dom.clipHint) { dom.clipHint.remove(); dom.clipHint = null; }
-    if (state.clipping) {
-      dom.clipHint = el("div", { class: "desk-clip-hint", role: "status" });
-      view.appendChild(dom.clipHint);
-    }
-    interactions.paintClipHint();
-
-    // A retained textarea normally needs no focus repair at all. Keep the old
-    // fallback for the two cases that still create a textarea: a brand-new note
-    // and a genuine project remount.
-    if (noteFocusFrame != null) window.cancelAnimationFrame(noteFocusFrame);
-    noteFocusFrame = restoreNoteFocus(deskEl, state);
-    if (mounted) fit();
+        : "Nothing in this project yet. Use ＋ Entry to start.",
+    ]));
   }
 
-  const onFocusIn = (e) => {
+  // Restoring is a WRITE to scrollLeft/Top, which fires a scroll event — and
+  // the listener below would happily record the half-restored value as the new
+  // truth. The guard is what keeps a restore from overwriting what it is
+  // restoring, which is how the view kept jumping to the corner after an edit.
+  //
+  // It is an object rather than a local so the glance can hold it too: while
+  // the desk is scaled down, its scrollable area is a few hundred pixels and
+  // the browser clamps any scroll to about zero. Recording THAT was how the
+  // glance silently corrupted the saved position (§14.23).
+  const guard = { hold: true };
+
+  // The one piece of chrome select-to-clip needs: a line saying what to do and
+  // how many are picked. It sits over the viewport rather than in the desk's
+  // coordinate space, so panning doesn't carry it away.
+  const clipHint = state.clipping ? el("div", { class: "desk-clip-hint", role: "status" }) : null;
+  if (clipHint) view.appendChild(clipHint);
+
+  // Remember which post-it had the cursor, so the next rebuild can hand it
+  // back. Same mechanism, same reasoning, as the milestone editor's.
+  deskEl.addEventListener("focusin", (e) => {
     const k = e.target && e.target.getAttribute ? e.target.getAttribute("data-fkey") : null;
     state.noteFocus = k || null;
     state.noteSel = null;
+  });
+
+  wireDesk(store, project, ctx, data, state, { view, deskEl, drawer, glanceBtn, guard, clipHint, anchors });
+  restoreNoteFocus(deskEl, state);
+
+  // The window IS the viewport: the desk takes whatever height is left under
+  // the banner and the handles, rather than a guessed vh. Measured, because
+  // the chrome above it is not a fixed height (a long project name wraps).
+  const fit = () => {
+    const top = view.getBoundingClientRect().top;
+    const h = Math.max(320, Math.round(window.innerHeight - top)) + "px";
+    if (view.style.height !== h) view.style.height = h;   // idempotent: no needless reflow
+    // How many columns an open clip gets depends on how wide the window is, so
+    // a resize has to re-ask. Cheap, and only does anything if a clip is open.
+    relayoutOpen();
   };
-  deskEl.addEventListener("focusin", onFocusIn);
 
-  const interactions = wireDesk(runtime, state, dom);
-
-  function mount() {
-    if (destroyed || mounted) return;
+  // THE FLICKER FIX (§14.24). This used to run inside requestAnimationFrame,
+  // and that one frame of delay WAS the flicker.
+  //
+  // Every store write rebuilds this page from scratch, and the editor saves on
+  // every keystroke, so typing a title rebuilt the desk once per character. A
+  // brand new scroll container starts at (0, 0), and restoring on the next
+  // animation frame meant the browser had already painted a frame of the desk's
+  // top-left corner before the restore landed. One corner-flash per keystroke.
+  //
+  // So it does not wait for a frame any more. `_deskMount` is called by whoever
+  // attaches the page, synchronously, in the same task as the appendChild —
+  // which is before the browser paints anything at all. The corner is never
+  // drawn, so there is nothing to flash. Measuring here is safe and correct
+  // precisely BECAUSE the element is already in the document by then.
+  //
+  // The rAF below stays as a safety net for any future caller that forgets to
+  // call _deskMount; `mounted` makes sure the work happens exactly once.
+  let mounted = false;
+  const restore = () => {
+    if (mounted) return;
     mounted = true;
-    if (mountFrame != null) { window.cancelAnimationFrame(mountFrame); mountFrame = null; }
-    fit();
+    fit();                                 // fit() runs relayoutOpen() for us
     if (state.scrollX == null) {
       state.scrollX = Math.max(0, Math.round((view.scrollWidth - view.clientWidth) / 2));
       state.scrollY = Math.max(0, Math.round((view.scrollHeight - view.clientHeight) / 2));
     }
     view.scrollLeft = state.scrollX;
     view.scrollTop = state.scrollY;
-    if (guardFrame != null) window.cancelAnimationFrame(guardFrame);
-    guardFrame = requestAnimationFrame(() => { guardFrame = null; guard.hold = false; });
-  }
-
-  // Safety net for direct callers. project.js calls mount synchronously.
-  mountFrame = requestAnimationFrame(mount);
+    requestAnimationFrame(() => { guard.hold = false; });
+  };
+  view._deskMount = restore;
+  requestAnimationFrame(restore);
   window.addEventListener("resize", fit);
+  view._deskFit = fit;                     // so teardown can take it off again
 
-  const onScroll = () => {
+  view.addEventListener("scroll", () => {
     if (guard.hold) return;
     state.scrollX = view.scrollLeft;
     state.scrollY = view.scrollTop;
-  };
-  view.addEventListener("scroll", onScroll);
-
-  function destroy() {
-    if (destroyed) return;
-    destroyed = true;
-    if (mountFrame != null) window.cancelAnimationFrame(mountFrame);
-    if (guardFrame != null) window.cancelAnimationFrame(guardFrame);
-    if (noteFocusFrame != null) window.cancelAnimationFrame(noteFocusFrame);
-    window.removeEventListener("resize", fit);
-    interactions.destroy();
-  }
-
-  view._deskMount = mount;
-  view._deskFit = fit;
-  return {
-    el: view, refresh, mount, destroy,
-    // Private diagnostic used by the headless regression test: lets the suite
-    // prove content-only refreshes did not pay the O(n²) scan again.
-    get weightRuns() { return pileWeightRuns; },
-  };
+  });
+  return view;
 }
 
 function mat() {
@@ -878,7 +692,7 @@ function cssId(v) { return String(v).replace(/["\\]/g, "\\$&"); }
 // clipped card draws in its clip's stack or grid while keeping its own
 // position untouched underneath. `inClip` is null for a loose card, or
 // { clip, open, index } for a member.
-function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
+function card(store, project, ctx, p, weight, state, at, inClip) {
   const it = p.item;
   const clipped = !!inClip;
   const open = clipped && inClip.open;
@@ -891,31 +705,35 @@ function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
   // shape says at most one clip per desk, so the UI says so too (§12.2).
   const spoken = clipped ? ", in a clip" : "";
 
-  node.className = "dcard"
-    + (overdue ? " flag" : "")
-    + (expanded ? " is-expanded" : "")
-    + (clipped ? " is-clipped" : "")
-    + (open ? " is-clip-open" : "")
-    + (picked ? " is-clip-picked" : "");
-  node.dataset.id = it.id;
-  node.dataset.w = String(clipped ? 0 : weight);
-  if (clipped) node.dataset.clip = inClip.clip.cid;
-  else node.removeAttribute("data-clip");
-  node.tabIndex = 0;
-  node.setAttribute("aria-label", `${it.title || "Untitled"}${overdue ? ", overdue" : ""}${spoken}`);
-  // A clipped card takes its CLIP's height, so the whole sheaf stays together
-  // in the stacking order. An expanded card sits in its own band.
-  node.style.zIndex = String(expanded ? D.Z_EXPANDED : 10 + (clipped ? inClip.clip.z : p.z));
-  // These used to disappear because a drop rebuilt the node. Persistent keyed
-  // nodes have to clear gesture-only offsets deliberately.
-  node.style.removeProperty("--dx");
-  node.style.removeProperty("--dy");
+  const node = el("div", {
+    class: "dcard"
+      + (overdue ? " flag" : "")
+      + (expanded ? " is-expanded" : "")
+      + (clipped ? " is-clipped" : "")
+      + (open ? " is-clip-open" : "")
+      + (picked ? " is-clip-picked" : ""),
+    "data-id": it.id,
+    "data-w": String(clipped ? 0 : weight),
+    "data-clip": clipped ? inClip.clip.cid : null,
+    tabindex: "0",
+    "aria-label": `${it.title || "Untitled"}${overdue ? ", overdue" : ""}${spoken}`,
+    // A clipped card takes its CLIP's height, so the whole sheaf stays
+    // together in the stacking order; DOM order then decides which sheet is
+    // on top within it. An EXPANDED card leaves that argument entirely and
+    // sits in its own band, so it can never be half-covered by a neighbour it
+    // happens to share a z with — which is precisely what open-grid members do.
+    style: `z-index:${expanded ? D.Z_EXPANDED : 10 + (clipped ? inClip.clip.z : p.z)};`,
+  });
   placeAt(node, at);
+  // the wobble: derived, static, never stored (§12.1). Off while expanded, and
+  // off while the clip is open — an open clip is for reading, and reading is
+  // the one time the handmade angle gets in the way (the same treatment an
+  // individually expanded card already gets).
   node.style.setProperty("--rot", (expanded || open ? 0 : p.rot).toFixed(3) + "deg");
 
-  // Round 2 keeps the OUTER card node by id. Its interior still follows the old
-  // renderer wholesale; deciding which individual text/metadata regions are
-  // dirty is the next optimization pass, not this one.
+  // The header is the drag handle when the card is expanded, and simply the
+  // top of the card when it isn't. Marking it rather than the whole card is
+  // what lets an open card be both draggable and readable (§14.21).
   const head = el("div", { class: "dcard-drag" }, [
     el("div", { class: "dcard-meta" }, [
       expanded ? el("span", { class: "dcard-grip", "aria-hidden": "true", text: "⠿" }) : null,
@@ -924,10 +742,11 @@ function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
     ]),
     el("h3", { class: "dcard-title", text: it.title || "Untitled" }),
   ]);
-  const children = [head];
-  if (it.body) children.push(el("p", { class: "dcard-body", text: it.body }));
+  node.appendChild(head);
+  if (it.body) node.appendChild(el("p", { class: "dcard-body", text: it.body }));
 
   if (expanded) {
+    // Expanded in place (§14.5): the whole entry, where it sits, not a modal.
     const full = el("div", { class: "dcard-full" });
     if (it.body) full.appendChild(el("p", {}, linkify(it.body)));
     if (it.tags.length) full.appendChild(el("div", { class: "item-foot" }, tagChips(it)));
@@ -947,36 +766,42 @@ function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
         },
       }),
     ]));
-    children.push(full);
+    node.appendChild(full);
   }
 
-  children.push(el("div", { class: "dcard-foot" }, [
+  node.appendChild(el("div", { class: "dcard-foot" }, [
     overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : statusChip(store, it),
     el("span", { class: "num", text: shortDate(it) }),
   ]));
-  node.replaceChildren(...children);
   return node;
 }
 
 // ===================================================================
 //  THE PAPERCLIP MARK (§5.4)
 // ===================================================================
-// The mark itself is invariant SVG; only its clip-derived state changes. Keeping
-// the node means an unrelated write cannot make the clip blink out and back in.
-function refreshClipMark(node, c, open, at) {
+// The clip's only visible body. It is a bigger render of the same drawing the
+// banner button wears, sitting on the corner of the top card, at an angle
+// derived from the clip's own id.
+//
+// It carries no text and never will: "wordless" is enforced by the data shape
+// (a clip record has nowhere to put a word), and the "why" behind a grouping
+// belongs on a post-it, which is a different object (§5.6).
+function clipMark(c, open, at) {
   const n = c.members.length;
-  node.className = "dclip-mark" + (open ? " is-open" : "");
-  node.dataset.cid = c.cid;
-  node.setAttribute("role", "button");
-  node.tabIndex = 0;
-  node.setAttribute("aria-label", `Clip holding ${n} ${n === 1 ? "card" : "cards"}. `
-    + `Double-click to ${open ? "close it" : "open it"}; right-click to unclip.`);
-  node.title = open ? "Double-click to close · right-click to unclip"
-                    : "Drag to move the whole clip · double-click to open · right-click to unclip";
-  node.style.zIndex = String(10 + c.z + 1);
-  node.style.removeProperty("--dx");
-  node.style.removeProperty("--dy");
+  const node = el("div", {
+    class: "dclip-mark" + (open ? " is-open" : ""),
+    "data-cid": c.cid,
+    role: "button",
+    tabindex: "0",
+    "aria-label": `Clip holding ${n} ${n === 1 ? "card" : "cards"}. `
+      + `Double-click to ${open ? "close it" : "open it"}; right-click to unclip.`,
+    title: open ? "Double-click to close · right-click to unclip"
+                : "Drag to move the whole clip · double-click to open · right-click to unclip",
+    style: `z-index:${10 + c.z + 1};`,
+    html: CLIP_MARK_SVG,
+  });
   placeAt(node, at);
+  // The tilt is applied HERE, not in the artwork — see the note in js/icons.js.
   node.style.setProperty("--rot", (open ? 0 : c.rot).toFixed(3) + "deg");
   return node;
 }
@@ -984,19 +809,43 @@ function refreshClipMark(node, c, open, at) {
 // ===================================================================
 //  A POST-IT (§5.6)
 // ===================================================================
-// The post-it keeps BOTH its outer node and its textarea for as long as its nid
-// exists on this desk. That is more than a performance detail: a store write no
-// longer has to destroy the field, blur it, rebuild it, and put the cursor back.
-// Draft bookkeeping stays because it still protects deferred commits and sync
-// conflicts; it is simply no longer doing emergency focus restoration on every
-// unrelated redraw.
-function createPostItController(runtime, state, nid) {
+// In-view editable text, no title, no status. The editing is the full
+// deferred-commit trio the rest of the app already uses, and for the same
+// reason it exists everywhere else: a background sync (or a keystroke
+// somewhere else in the app) rebuilds this page, which detaches the textarea,
+// which fires blur — so blur is NOT proof that the person left the field.
+//
+//   - nothing is written while you type; the words go to a draft
+//   - the draft survives a rebuild, so a mid-word sync can't swallow it
+//   - focus and cursor come back afterwards, with preventScroll
+//
+// `at` is where it draws: its own `pos` when free, or its clip's derived
+// anchor when attached. `attachedTo` is the cid or null.
+function postIt(store, project, ctx, state, rec, at, attachedTo, clipZ) {
   const drafts = state.noteDrafts;
   const typed = state.noteTyped;
+  const nid = rec.nid;
   const fkey = `note:${nid}`;
 
-  const node = el("div", { class: "dnote", "data-nid": nid });
-  const grip = el("div", { class: "dnote-drag", "aria-hidden": "true" });
+  const node = el("div", {
+    class: "dnote" + (attachedTo ? " is-attached" : ""),
+    "data-nid": nid,
+    "data-clip": attachedTo || null,
+    style: clipZ != null ? `z-index:${10 + clipZ + 2};` : "",
+  });
+  placeAt(node, at);
+
+  // The grip is the only draggable part, because the rest of the post-it is a
+  // text field and both gestures want the same pixels — the same two-surfaces
+  // arrangement an expanded card already uses for its header.
+  node.appendChild(el("div", {
+    class: "dnote-drag",
+    "aria-hidden": "true",
+    title: attachedTo
+      ? "Drag onto open desk to take it off the clip"
+      : "Drag onto a clip to attach it",
+  }));
+
   const ta = el("textarea", {
     class: "dnote-text",
     rows: "3",
@@ -1004,112 +853,79 @@ function createPostItController(runtime, state, nid) {
     "aria-label": "Post-it",
     "data-fkey": fkey,
   });
-  node.appendChild(grip);
-  node.appendChild(ta);
-
-  const currentRec = () => runtime.noteByNid.get(nid) || null;
-  const currentText = () => {
-    const rec = currentRec();
-    return rec ? (rec.text || "") : "";
-  };
-
-  const fitText = () => {
-    const styles = getComputedStyle(ta);
-    const paddingTop = parseFloat(styles.paddingTop) || 0;
-    const paddingBottom = parseFloat(styles.paddingBottom) || 0;
-    const paddingLeft = styles.paddingLeft;
-    const paddingRight = styles.paddingRight;
-
-    ta.style.paddingTop = `${paddingTop}px`;
-    ta.style.paddingBottom = `${paddingBottom}px`;
-    ta.style.paddingLeft = paddingLeft;
-    ta.style.paddingRight = paddingRight;
-
-    for (let fontSize = 40; fontSize >= 16; fontSize -= 1) {
-      ta.style.fontSize = `${fontSize}px`;
-      if (ta.scrollHeight <= ta.clientHeight && ta.scrollWidth <= ta.clientWidth) break;
-    }
-
-    const fieldHeight = ta.clientHeight;
-    const flex = ta.style.flex;
-    ta.style.flex = "none";
-    ta.style.height = "0px";
-    const contentHeight = ta.scrollHeight - paddingTop - paddingBottom;
-    ta.style.height = "";
-    ta.style.flex = flex;
-    const extraHeight = Math.max(0, fieldHeight - contentHeight - paddingTop - paddingBottom);
-    ta.style.paddingTop = `${paddingTop + extraHeight / 2}px`;
-    ta.style.paddingBottom = `${paddingBottom + extraHeight / 2}px`;
-  };
+  ta.value = drafts[nid] !== undefined ? drafts[nid] : (rec.text || "");
 
   ta.addEventListener("input", () => {
-    drafts[nid] = ta.value;
-    typed[nid] = true;
+    drafts[nid] = ta.value;                       // survives an unexpected rebuild
+    typed[nid] = true;                            // ...and so does "I started this"
     state.noteSel = [ta.selectionStart, ta.selectionEnd];
-    fitText();
   });
 
-  const hadWords = () => currentText().trim() !== "" || !!typed[nid];
-  const isLive = () => runtime.store.notes(runtime.project.id).some(n => n.nid === nid);
+  // HAD IT ANYTHING TO LOSE? — the fix for "my words vanished" (August 2026).
+  //
+  // "Emptying a post-it throws it away" was implemented as "it is empty when
+  // it loses the cursor, so throw it away", and those are not the same
+  // sentence: a post-it you have never typed into is empty BY DEFINITION, from
+  // the instant it is made. So anything that took the cursor away before the
+  // first keystroke — and on this desk the commonest is pressing on bare desk
+  // to nudge the view, i.e. the pointer simply moving — quietly tombstoned it.
+  // Renders are held for the life of that gesture, so the scrap stayed on
+  // screen looking alive; the words then went into a record that was already
+  // dead, and disappeared at the next repaint.
+  //
+  // The isConnected guard below is still right and stays: it tells a blur
+  // caused by a REBUILD from a blur caused by the person leaving. What it
+  // could never tell is a post-it that was emptied from one that was never
+  // filled. You cannot empty something that was never filled — so that is now
+  // the actual test, and `typed` (view-local, like the drafts beside it) is
+  // how a rebuild mid-word doesn't forget the answer.
+  const hadWords = () => (rec.text || "").trim() !== "" || !!typed[nid];
+  const isLive = () => store.notes(project.id).some(n => n.nid === nid);
 
   const commit = () => {
     const v = ta.value;
-    const before = currentText();
     delete drafts[nid];
-    if (v !== before) {
-      // If a remote/accidental route tombstoned a scrap while somebody was
-      // actively writing, the words still win — the same never-delete guard the
-      // original renderer carried.
-      if (v.trim() !== "" && !isLive()) runtime.store.setNoteField(runtime.project.id, nid, "removed", null);
-      runtime.store.setNoteField(runtime.project.id, nid, "text", v);
+    if (v !== (rec.text || "")) {
+      // BELT AND BRACES for the same class of loss. If this scrap has been
+      // thrown away by any route while words were being typed into it, the
+      // words win: never-delete means the record is still there to un-tombstone
+      // (§12.3), and silently writing into a dead one would be exactly the bug
+      // above wearing a different coat.
+      if (v.trim() !== "" && !isLive()) store.setNoteField(project.id, nid, "removed", null);
+      store.setNoteField(project.id, nid, "text", v);
     }
     if (v.trim() === "" && ta.isConnected && hadWords()) {
       delete typed[nid];
-      runtime.store.removeNote(runtime.project.id, nid);
+      store.removeNote(project.id, nid);
     }
   };
 
+  // A blank scrap you never wrote on is thrown away by ESCAPE, which is what
+  // clicking away used to do by accident. An accidental double-click still
+  // costs exactly one keystroke to undo; it just no longer costs a real note
+  // the same keystroke by mistake. (Right-click → "Throw this away" and
+  // emptying one that had words both still work.)
   const discardIfBlank = () => {
     if (ta.value.trim() !== "" || hadWords()) return false;
     delete drafts[nid];
     delete typed[nid];
-    runtime.store.removeNote(runtime.project.id, nid);
-    runtime.ctx.rerender();
+    store.removeNote(project.id, nid);
+    ctx.rerender();
     return true;
   };
 
   ta.addEventListener("blur", commit);
   ta.addEventListener("keydown", (e) => {
+    // Enter commits, Shift+Enter is a new line. A post-it is a sentence or
+    // two, so committing is the common case and gets the plain key.
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commit(); ta.blur(); }
+    // Escape here would otherwise bubble to the desk's own handler and start
+    // closing surfaces out from under a half-typed note.
     if (e.key === "Escape") { e.stopPropagation(); if (!discardIfBlank()) ta.blur(); }
   });
 
-  function refresh(rec, at, attachedTo, clipZ) {
-    node.className = "dnote" + (attachedTo ? " is-attached" : "");
-    node.dataset.nid = nid;
-    if (attachedTo) node.dataset.clip = attachedTo;
-    else node.removeAttribute("data-clip");
-    node.style.zIndex = clipZ != null ? String(10 + clipZ + 2) : "";
-    node.style.removeProperty("--dx");
-    node.style.removeProperty("--dy");
-    placeAt(node, at);
-
-    grip.title = attachedTo
-      ? "Drag onto open desk to take it off the clip"
-      : "Drag onto a clip to attach it";
-
-    const nextValue = drafts[nid] !== undefined ? drafts[nid] : (rec.text || "");
-    // Never rewrite a dirty, focused textarea from underneath the cursor. If it
-    // is focused but untouched, there is no draft and an external text update
-    // is allowed to arrive normally.
-    if (document.activeElement !== ta || drafts[nid] === undefined) {
-      if (ta.value !== nextValue) ta.value = nextValue;
-    }
-    if (node.isConnected) fitText();
-    else requestAnimationFrame(fitText);
-  }
-
-  return { node, textarea: ta, refresh };
+  node.appendChild(ta);
+  return node;
 }
 
 // The mirror of the milestone editor's restoreFocus, and deliberately the same
@@ -1117,9 +933,9 @@ function createPostItController(runtime, state, nid) {
 // the cursor gets it back on the next frame, cursor position included.
 function restoreNoteFocus(deskEl, state) {
   const key = state.noteFocus;
-  if (!key) return null;
+  if (!key) return;
   const sel = state.noteSel;
-  return requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
     if (!deskEl.isConnected) return;                     // the render pass moved on
     const active = document.activeElement;
     if (active && active !== document.body && !deskEl.contains(active)) return;
@@ -1164,16 +980,20 @@ function isOverdueEntry(it) {
 // ===================================================================
 // Everything here is local until the pointer comes up. One op batch on
 // release, and no store write — therefore no re-render — before then.
-function wireDesk(runtime, state, dom) {
+function wireDesk(store, project, ctx, data, state, dom) {
   const { view, deskEl, drawer } = dom;
   const TAP_SLOP = 5;                        // movement still counted as a click
   const DBL_MS = 420;                        // how long a second click has to arrive
   let drag = null;
   let release = null;                      // set while a gesture holds renders
-  let drawerDrag = null;
-  let glanceTimer = null;
 
   const nodeOf = (id) => deskEl.querySelector(`.dcard[data-id="${id}"]`);
+  const placedById = new Map(data.placed.map(p => [p.id, p]));
+  // D2 lookups, built once per render from the single archive pass.
+  const clipByCid = new Map(data.clips.map(c => [c.cid, c]));
+  const noteByNid = new Map(data.notes.map(n => [n.nid, n]));
+  const clipOfCard = new Map();
+  for (const c of data.clips) for (const m of c.members) clipOfCard.set(m.id, c);
 
   // Every element a clip drags as one: its member cards, its mark, and any
   // post-it attached to it. Collected by selector because the whole cluster is
@@ -1205,7 +1025,7 @@ function wireDesk(runtime, state, dom) {
       deskEl.classList.add("is-panning");
       deskEl.setPointerCapture(e.pointerId);
       if (release) release();
-      release = runtime.ctx.holdRenders ? runtime.ctx.holdRenders() : null;
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
       return;
     }
 
@@ -1214,7 +1034,7 @@ function wireDesk(runtime, state, dom) {
     // is left entirely to the browser.
     if (noteNode) {
       if (!e.target.closest(".dnote-drag")) return;
-      const rec = runtime.noteByNid.get(noteNode.dataset.nid);
+      const rec = noteByNid.get(noteNode.dataset.nid);
       if (!rec) return;
       drag = {
         kind: "note", rec, node: noteNode, x0: e.clientX, y0: e.clientY,
@@ -1223,7 +1043,7 @@ function wireDesk(runtime, state, dom) {
       noteNode.classList.add("is-dragging");
       deskEl.setPointerCapture(e.pointerId);
       if (release) release();
-      release = runtime.ctx.holdRenders ? runtime.ctx.holdRenders() : null;
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
       return;
     }
 
@@ -1234,7 +1054,7 @@ function wireDesk(runtime, state, dom) {
     // never be mistaken for an unclip, and vice versa.
     const cid = markNode ? markNode.dataset.cid
       : (cardNode ? cardNode.dataset.clip : null);
-    const clip = cid ? runtime.clipByCid.get(cid) : null;
+    const clip = cid ? clipByCid.get(cid) : null;
     // The MARK always drives the whole clip — closed or open, it is the clip's
     // handle. A member CARD only does so while the clip is closed; once it is
     // open, that card is a card again and dragging it out is the unclip
@@ -1257,7 +1077,7 @@ function wireDesk(runtime, state, dom) {
       for (const nd of drag.nodes) nd.classList.add("is-dragging");
       deskEl.setPointerCapture(e.pointerId);
       if (release) release();
-      release = runtime.ctx.holdRenders ? runtime.ctx.holdRenders() : null;
+      release = ctx.holdRenders ? ctx.holdRenders() : null;
       return;
     }
 
@@ -1268,14 +1088,14 @@ function wireDesk(runtime, state, dom) {
       // header is left entirely to the browser — no capture, no preventDefault
       // — which is what makes selection and links work at all.
       if (!e.target.closest(".dcard-drag")) return;
-      const p = runtime.placedById.get(cardNode.dataset.id);
+      const p = placedById.get(cardNode.dataset.id);
       drag = p
         ? { kind: "card", p, node: cardNode, x0: e.clientX, y0: e.clientY, pendingZ: null,
             wasExpanded: true, base: basePosOf(cardNode, p), unclip: !!cardNode.dataset.clip }
         : { kind: "tap", id: cardNode.dataset.id, x0: e.clientX, y0: e.clientY };
       if (p) cardNode.classList.add("is-dragging");
     } else if (cardNode) {
-      const p = runtime.placedById.get(cardNode.dataset.id);
+      const p = placedById.get(cardNode.dataset.id);
       if (!p) return;
       // A member of an OPEN clip. Dragging one out of the grid is the only way
       // to unclip a single card, and it is deliberately the only way: the
@@ -1296,12 +1116,10 @@ function wireDesk(runtime, state, dom) {
     }
     deskEl.setPointerCapture(e.pointerId);
     // Nothing anywhere in the app may redraw until this gesture ends — not a
-    // sync pull, not an editor keystroke, not a status change. Round 2 keeps
-    // the node itself, but a refresh can still re-dress/reposition it or remove
-    // it because external data changed; a live pointer gesture still owns the
-    // geometry until release.
+    // sync pull, not an editor keystroke, not a status change. A redraw
+    // rebuilds the page and destroys the element the pointer just captured.
     if (release) release();                // paranoia: never leak a hold
-    release = runtime.ctx.holdRenders ? runtime.ctx.holdRenders() : null;
+    release = ctx.holdRenders ? ctx.holdRenders() : null;
     // NOTE: deliberately no preventDefault — it suppresses the browser's
     // compatibility mouse events and takes double-click with them.
   });
@@ -1374,17 +1192,10 @@ function wireDesk(runtime, state, dom) {
 
     if (kind === "pan") {
       deskEl.classList.remove("is-panning");
-      if (!moved && state.clipOpen) {
-        state.clipOpen = null;
-        state.expanded = null;
-        state.lastTapId = null;
-        runtime.ctx.rerender();
-        return;
-      }
       // A DOUBLE-CLICK ON BARE DESK MAKES A POST-IT (§5.6). It reuses the same
       // tap memory the cards use, under a reserved id, so a click on a card
       // and a click on the desk can't be mistaken for one double-click.
-      if (!moved && !state.clipping && isSecondTap("\0desk")) newPostIt(e);
+      if (!moved && !state.clipping && isSecondTap(" desk")) newPostIt(e);
       return;
     }
 
@@ -1398,12 +1209,12 @@ function wireDesk(runtime, state, dom) {
           state.clipOpen = state.clipOpen === d.clip.cid ? null : d.clip.cid;
           state.expanded = null;                 // a card expanded inside it comes back down
           for (const nd of d.nodes) { nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy"); }
-          runtime.ctx.rerender();
+          ctx.rerender();
           return;
         }
         for (const nd of d.nodes) { nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy"); }
         // tap-to-raise, extended to every member (§8.9)
-        if (d.pendingZ) { commitClipRaise(d.clip, d.pendingZ); runtime.ctx.rerender(); }
+        if (d.pendingZ) { commitClipRaise(d.clip, d.pendingZ); ctx.rerender(); }
         return;
       }
       // A DROP. One ordinary position op per member — the bulk-edit rule, and
@@ -1419,10 +1230,10 @@ function wireDesk(runtime, state, dom) {
       // clip exists to hold. The clip hits the edge as one object instead.
       const k = D.clampDelta(d.clip.members.map(m => m.pos), dx, dy, cw, ch);
       for (const m of d.clip.members) {
-        runtime.store.setDeskField(m.id, runtime.project.id, "pos", { x: m.pos.x + k.dx, y: m.pos.y + k.dy });
+        store.setDeskField(m.id, project.id, "pos", { x: m.pos.x + k.dx, y: m.pos.y + k.dy });
       }
       if (d.pendingZ) commitClipRaise(d.clip, d.pendingZ);
-      runtime.ctx.rerender();
+      ctx.rerender();
       return;
     }
 
@@ -1449,19 +1260,19 @@ function wireDesk(runtime, state, dom) {
         || (d.from && withinClipBounds(e, d.from) ? d.from : null);
       if (onto) {
         const anchor = anchorOf(onto);
-        if (onto !== d.from) runtime.store.setNoteField(runtime.project.id, d.rec.nid, "clip", onto);
-        runtime.store.setNoteField(runtime.project.id, d.rec.nid, "offset", D.noteOffset(anchor, pos));
-        runtime.ctx.rerender();
+        if (onto !== d.from) store.setNoteField(project.id, d.rec.nid, "clip", onto);
+        store.setNoteField(project.id, d.rec.nid, "offset", D.noteOffset(anchor, pos));
+        ctx.rerender();
         return;
       }
       if (d.from) {
         // Coming off a clip drops the offset and picks up a real position from
         // the drop point — the attach/detach mirror symbols already use.
-        runtime.store.setNoteField(runtime.project.id, d.rec.nid, "clip", null);
-        runtime.store.setNoteField(runtime.project.id, d.rec.nid, "offset", null);
+        store.setNoteField(project.id, d.rec.nid, "clip", null);
+        store.setNoteField(project.id, d.rec.nid, "offset", null);
       }
-      runtime.store.setNoteField(runtime.project.id, d.rec.nid, "pos", pos);
-      runtime.ctx.rerender();
+      store.setNoteField(project.id, d.rec.nid, "pos", pos);
+      ctx.rerender();
       return;
     }
 
@@ -1471,14 +1282,14 @@ function wireDesk(runtime, state, dom) {
       const second = isSecondTap(id);
       if (second) {                                        // double-click expands / collapses
         state.expanded = state.expanded === id ? null : id;
-        runtime.ctx.rerender();
+        ctx.rerender();
       } else if (kind === "card") {
         d.node.style.removeProperty("--dx");
         d.node.style.removeProperty("--dy");
         // a plain tap: commit the raise, if it actually changed anything
         if (d.pendingZ != null) {
-          runtime.store.setDeskField(d.p.id, runtime.project.id, "z", d.pendingZ);
-          runtime.ctx.rerender();
+          store.setDeskField(d.p.id, project.id, "z", d.pendingZ);
+          ctx.rerender();
         }
       }
       return;
@@ -1487,8 +1298,8 @@ function wireDesk(runtime, state, dom) {
     // A DROP. One position write, now, for this one card (§8.34).
     for (const [, h] of drawer.handleEls) h.classList.remove("is-drop-target");
     if (overUnplacedHandle(e)) {
-      runtime.store.unplaceFromDesk(d.p.id, runtime.project.id);
-      runtime.ctx.rerender();
+      store.unplaceFromDesk(d.p.id, project.id);
+      ctx.rerender();
       return;
     }
     // The base is where the card was DRAWING, not where it was stored — the
@@ -1499,13 +1310,13 @@ function wireDesk(runtime, state, dom) {
       { x: d.base.x + dx, y: d.base.y + dy },
       d.node.offsetWidth, d.node.offsetHeight);
     // all the writes for this card, together, on release — never before
-    if (d.pendingZ != null) runtime.store.setDeskField(d.p.id, runtime.project.id, "z", d.pendingZ);
+    if (d.pendingZ != null) store.setDeskField(d.p.id, project.id, "z", d.pendingZ);
     // Dragging a card out of an open clip unclips it, in the same batch as the
     // position it lands at (§5.4). Nobody else has to be repositioned: the
     // remaining members are still wherever the last cluster drag left them.
-    if (d.unclip) runtime.store.setDeskField(d.p.id, runtime.project.id, "clip", null);
-    runtime.store.setDeskField(d.p.id, runtime.project.id, "pos", pos);
-    runtime.ctx.rerender();
+    if (d.unclip) store.setDeskField(d.p.id, project.id, "clip", null);
+    store.setDeskField(d.p.id, project.id, "pos", pos);
+    ctx.rerender();
   });
 
   // ===================================================================
@@ -1546,7 +1357,7 @@ function wireDesk(runtime, state, dom) {
   function anchorOf(cid) {
     const a = dom.anchors && dom.anchors.get(cid);
     if (a) return a;
-    const c = runtime.clipByCid.get(cid);
+    const c = clipByCid.get(cid);
     return (c && c.anchor) || { x: 0, y: 0 };
   }
 
@@ -1592,8 +1403,8 @@ function wireDesk(runtime, state, dom) {
   // Raise the whole sheaf, VISUALLY, with no store write — the single-card
   // rule (§8.34) applied to a cluster. The commit happens on release.
   function raiseClipLocally(clip) {
-    if (clip.z >= runtime.data.maxZ) return null;                   // already on top
-    let z = runtime.data.maxZ;
+    if (clip.z >= data.maxZ) return null;                   // already on top
+    let z = data.maxZ;
     const out = [];
     for (const m of clip.members) out.push({ id: m.id, z: ++z });
     // An expanded member keeps its own band — raising the sheaf must not pull
@@ -1607,15 +1418,15 @@ function wireDesk(runtime, state, dom) {
   // One z op per member, in member order, so their relative arrangement inside
   // the stack survives being raised.
   function commitClipRaise(clip, pending) {
-    for (const { id, z } of pending) runtime.store.setDeskField(id, runtime.project.id, "z", z);
+    for (const { id, z } of pending) store.setDeskField(id, project.id, "z", z);
   }
 
   // ---- select-to-clip ----
   function togglePick(node) {
     const id = node.dataset.id;
-    const p = runtime.placedById.get(id);
+    const p = placedById.get(id);
     if (!p) return;
-    if (runtime.clipOfCard.has(id)) { toast("That card is already in a clip.", "info", 2600); return; }
+    if (clipOfCard.has(id)) { toast("That card is already in a clip.", "info", 2600); return; }
     const picked = state.clipping.picked;
     const i = picked.indexOf(id);
     if (i >= 0) { picked.splice(i, 1); node.classList.remove("is-clip-picked"); }
@@ -1643,10 +1454,10 @@ function wireDesk(runtime, state, dom) {
       x: e.clientX - r.left + view.scrollLeft - D.NOTE_W / 2,
       y: e.clientY - r.top + view.scrollTop - 20,
     }, D.NOTE_W, D.NOTE_H);
-    const nid = runtime.store.addNote(runtime.project.id, { pos });
+    const nid = store.addNote(project.id, { pos });
     state.noteFocus = `note:${nid}`;             // land with the cursor in it
     state.noteSel = null;
-    runtime.ctx.rerender();
+    ctx.rerender();
   }
 
   // ---- right-click: unclip, or throw a post-it away (§5.4) ----
@@ -1658,7 +1469,7 @@ function wireDesk(runtime, state, dom) {
     if (!mark && !note) return;
     e.preventDefault();
     if (mark) {
-      const clip = runtime.clipByCid.get(mark.dataset.cid);
+      const clip = clipByCid.get(mark.dataset.cid);
       if (!clip) return;
       deskMenu(e, [{
         label: "Unclip",
@@ -1666,7 +1477,7 @@ function wireDesk(runtime, state, dom) {
           // Both floors, in one batch: the clip record is tombstoned and every
           // member's membership is cleared. No CARD is repositioned — they are
           // already sitting wherever the last cluster drag left them (§12.2).
-          for (const m of clip.members) runtime.store.setDeskField(m.id, runtime.project.id, "clip", null);
+          for (const m of clip.members) store.setDeskField(m.id, project.id, "clip", null);
           // A post-it is the one thing that does need a position handed to it,
           // because its offset was only ever meaningful against the clip that
           // is now gone. This is the same detach it would get by being dragged
@@ -1681,29 +1492,29 @@ function wireDesk(runtime, state, dom) {
           // the clip yet — is still just quietly treated as free by deskData,
           // and still never repaired by a write. That rule is unchanged.)
           for (const nt of clip.notes) {
-            runtime.store.setNoteField(runtime.project.id, nt.nid, "pos",
+            store.setNoteField(project.id, nt.nid, "pos",
               D.clampPos(D.noteAt(anchor, nt.offset), D.NOTE_W, D.NOTE_H));
-            runtime.store.setNoteField(runtime.project.id, nt.nid, "offset", null);
-            runtime.store.setNoteField(runtime.project.id, nt.nid, "clip", null);
+            store.setNoteField(project.id, nt.nid, "offset", null);
+            store.setNoteField(project.id, nt.nid, "clip", null);
           }
-          runtime.store.removeClip(runtime.project.id, clip.cid);
+          store.removeClip(project.id, clip.cid);
           if (state.clipOpen === clip.cid) state.clipOpen = null;
-          runtime.ctx.rerender();
+          ctx.rerender();
         },
       }]);
       return;
     }
-    const rec = runtime.noteByNid.get(note.dataset.nid);
+    const rec = noteByNid.get(note.dataset.nid);
     if (!rec) return;
     deskMenu(e, [{
-      label: "Delete",
+      label: "Throw this away",
       run: () => {
         delete state.noteDrafts[rec.nid];
         delete state.noteTyped[rec.nid];
-        runtime.store.removeNote(runtime.project.id, rec.nid);
-        runtime.ctx.rerender();
+        store.removeNote(project.id, rec.nid);
+        ctx.rerender();
       },
-    }], { deleteOnly: true });
+    }]);
   });
 
   // Touching a card brings it to the top (§8.9) — VISUALLY, right now, with no
@@ -1718,8 +1529,8 @@ function wireDesk(runtime, state, dom) {
   // one place: NOTHING may write to the store between pointerdown and
   // pointerup (§8.34).
   function raiseLocally(p, node) {
-    if (p.z >= runtime.data.maxZ) return null;             // already on top: nothing to do
-    const z = runtime.data.maxZ + 1;
+    if (p.z >= data.maxZ) return null;             // already on top: nothing to do
+    const z = data.maxZ + 1;
     node.style.zIndex = String(10 + z);
     return z;                                      // caller commits this on drop
   }
@@ -1732,41 +1543,33 @@ function wireDesk(runtime, state, dom) {
   }
 
   // ---- drag a row out of the Unplaced drawer onto the desk ----
-  const cancelDrawerDrag = () => {
-    if (!drawerDrag) return;
-    const d = drawerDrag;
-    drawerDrag = null;
-    window.removeEventListener("pointermove", d.move);
-    window.removeEventListener("pointerup", d.up);
-    window.removeEventListener("pointercancel", d.up);
-    d.ghost.remove();
-    if (d.release) d.release();
-  };
   drawer.body.addEventListener("pointerdown", (e) => {
     const row = e.target.closest(".desk-unplaced-row");
     if (!row) return;
-    cancelDrawerDrag();
     const ghost = row.cloneNode(true);
     ghost.classList.add("desk-ghost");
     document.body.appendChild(ghost);
-    const releaseGhost = runtime.ctx.holdRenders ? runtime.ctx.holdRenders() : null;
+    const releaseGhost = ctx.holdRenders ? ctx.holdRenders() : null;
     const move = (ev) => { ghost.style.left = (ev.clientX - 40) + "px"; ghost.style.top = (ev.clientY - 18) + "px"; };
+    move(e);
     const up = (ev) => {
-      const rowId = row.dataset.id;
-      cancelDrawerDrag();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      ghost.remove();
+      if (releaseGhost) releaseGhost();
       const r = view.getBoundingClientRect();
       const inside = ev.clientX > r.left && ev.clientX < r.right && ev.clientY > r.top && ev.clientY < r.bottom;
       if (!inside) return;
+      // surface coordinates, so the current pan is added back in
       const pos = D.clampPos({
         x: ev.clientX - r.left + view.scrollLeft - D.ORIGIN - D.CARD_MIN_W / 2,
         y: ev.clientY - r.top + view.scrollTop - D.ORIGIN - 24,
       });
-      runtime.store.placeOnDesk(rowId, runtime.project.id, pos, runtime.data.maxZ + 1);
+      store.placeOnDesk(row.dataset.id, project.id, pos, data.maxZ + 1);
       drawer.setDrawer(null);
-      runtime.ctx.rerender();
+      ctx.rerender();
     };
-    drawerDrag = { ghost, release: releaseGhost, move, up };
-    move(e);
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
@@ -1787,7 +1590,7 @@ function wireDesk(runtime, state, dom) {
   const guard = dom.guard;
   const glanceOn = () => {
     if (glance) return;
-    const boxes = [...deskEl.querySelectorAll(".dcard, .dnote, .desk-image-object, .dclip-mark")].map(n => ({
+    const boxes = [...deskEl.querySelectorAll(".dcard")].map(n => ({
       x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight,
     }));
     const f = D.glanceFrame(D.contentBounds(boxes), view.clientWidth, view.clientHeight);
@@ -1813,12 +1616,8 @@ function wireDesk(runtime, state, dom) {
     glance = null;
     deskEl.style.transform = "";
     const ms = motionMs(GLANCE_MS);
-    if (glanceTimer != null) { window.clearTimeout(glanceTimer); glanceTimer = null; }
     if (ms <= 0) { view.classList.remove("is-glancing"); return; }
-    glanceTimer = window.setTimeout(() => {
-      glanceTimer = null;
-      if (!glance) view.classList.remove("is-glancing");
-    }, ms);
+    setTimeout(() => { if (!glance) view.classList.remove("is-glancing"); }, ms);
   };
   // Passed in, not looked up: wireDesk runs while the surface is still
   // detached from the page, so closest(".desk-page") was null and the banner's
@@ -1908,9 +1707,9 @@ function wireDesk(runtime, state, dom) {
       // "the thing most recently put in front of you comes off first":
       //   a little menu → a mode → an expanded card → an open clip → a drawer.
       if (closeDeskMenu()) return;
-      if (state.clipping) { state.clipping = null; runtime.ctx.rerender(); return; }
-      if (state.expanded) { state.expanded = null; runtime.ctx.rerender(); return; }
-      if (state.clipOpen) { state.clipOpen = null; runtime.ctx.rerender(); return; }
+      if (state.clipping) { state.clipping = null; ctx.rerender(); return; }
+      if (state.expanded) { state.expanded = null; ctx.rerender(); return; }
+      if (state.clipOpen) { state.clipOpen = null; ctx.rerender(); return; }
       if (state.drawer) { drawer.setDrawer(null); return; }
       return;
     }
@@ -1921,36 +1720,26 @@ function wireDesk(runtime, state, dom) {
   document.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", glanceOff);
 
-  // Global listeners live for exactly one Desk controller lifetime. The Desk
-  // shell no longer dies on a store write, so cleanup is explicit rather than
-  // inferred from every redraw.
-  return {
-    paintClipHint,
-    destroy() {
-      document.removeEventListener("pointerdown", onDocDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("keyup", onKeyUp);
-      document.removeEventListener("selectionchange", onSelectionChange);
-      window.removeEventListener("blur", glanceOff);
-      window.removeEventListener("pointerup", endGlanceHold);
-      window.removeEventListener("pointercancel", endGlanceHold);
-      window.removeEventListener("blur", endGesture);
-      cancelDrawerDrag();
-      if (drag && drag.node) drag.node.classList.remove("is-dragging");
-      if (drag && drag.nodes) for (const nd of drag.nodes) {
-        nd.classList.remove("is-dragging");
-        nd.style.removeProperty("--dx"); nd.style.removeProperty("--dy");
-      }
-      drag = null;
-      deskEl.classList.remove("is-panning");
-      endGesture();
-      endGlanceHold();
-      if (glanceTimer != null) window.clearTimeout(glanceTimer);
-      glanceTimer = null;
-      view.classList.remove("is-glancing");
-      closeDeskMenu();
-    },
-  };
+  // The view is torn down and rebuilt on every store write, so the listeners
+  // this function hung on `document` and `window` must come off with it or
+  // they accumulate one set per render. MutationObserver is the only honest
+  // signal available: the desk itself leaving the page.
+  const obs = new MutationObserver(() => {
+    if (deskEl.isConnected) return;
+    document.removeEventListener("pointerdown", onDocDown, true);
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("keyup", onKeyUp);
+    document.removeEventListener("selectionchange", onSelectionChange);
+    window.removeEventListener("blur", glanceOff);
+    window.removeEventListener("pointerup", endGlanceHold);      // a desk torn
+    window.removeEventListener("pointercancel", endGlanceHold);  // down mid-hold
+    if (view._deskFit) window.removeEventListener("resize", view._deskFit);
+    window.removeEventListener("blur", endGesture);
+    endGesture();                          // a desk torn down mid-drag must not leak its hold
+    closeDeskMenu();                       // ...and must not leave a menu behind either
+    obs.disconnect();
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
 }
 
 function isTyping(el2) {
@@ -1968,36 +1757,25 @@ function isTyping(el2) {
 // inside the desk so it isn't clipped by the viewport's overflow or dragged
 // away by a pan mid-decision.
 let openMenu = null;
-let openMenuAway = null;
-let openMenuTimer = null;
 
 function closeDeskMenu() {
-  if (openMenuTimer != null) { window.clearTimeout(openMenuTimer); openMenuTimer = null; }
-  if (openMenuAway) {
-    document.removeEventListener("pointerdown", openMenuAway, true);
-    openMenuAway = null;
-  }
   if (!openMenu) return false;
   openMenu.remove();
   openMenu = null;
   return true;
 }
 
-function deskMenu(e, entries, options = {}) {
+function deskMenu(e, entries) {
   closeDeskMenu();
-  const deleteOnly = options.deleteOnly === true;
-  const box = el("div", {
-    class: deleteOnly ? "desk-menu desk-menu-delete-only" : "desk-menu",
-    role: "menu",
-  });
+  const box = el("div", { class: "desk-menu", role: "menu" });
   for (const entry of entries) {
     box.appendChild(el("button", {
-      class: deleteOnly ? "desk-menu-item desk-menu-delete" : "desk-menu-item",
-      role: "menuitem",
-      ...(deleteOnly ? { "aria-label": entry.label, title: entry.label } : { text: entry.label }),
+      class: "desk-menu-item", role: "menuitem", text: entry.label,
       onclick: (ev) => { ev.stopPropagation(); closeDeskMenu(); entry.run(); },
     }));
   }
+  // Placed at the pointer, then nudged back inside the window if it would
+  // otherwise hang off the right or bottom edge.
   box.style.left = "0px"; box.style.top = "0px";
   document.body.appendChild(box);
   const w = box.offsetWidth || 180, h = box.offsetHeight || 48;
@@ -2005,13 +1783,15 @@ function deskMenu(e, entries, options = {}) {
   box.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)) + "px";
   openMenu = box;
 
-  openMenuTimer = window.setTimeout(() => {
-    openMenuTimer = null;
-    openMenuAway = (ev) => {
+  // One shot, on the NEXT press anywhere — added a tick late so the press that
+  // opened the menu can't also be the press that closes it.
+  setTimeout(() => {
+    const away = (ev) => {
       if (openMenu && openMenu.contains(ev.target)) return;
+      document.removeEventListener("pointerdown", away, true);
       closeDeskMenu();
     };
-    document.addEventListener("pointerdown", openMenuAway, true);
+    document.addEventListener("pointerdown", away, true);
   }, 0);
   const first = box.querySelector("button");
   if (first) first.focus({ preventScroll: true });

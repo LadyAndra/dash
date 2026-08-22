@@ -13,13 +13,6 @@
 
 const IDB_NAME = "dash-blobs";
 const STORE = "blobs";
-const DESK_IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp"]);
-const DESK_IMAGE_MIMES = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-};
 
 function idb() {
   return new Promise((resolve, reject) => {
@@ -69,18 +62,6 @@ export async function hasBlob(hash) {
   return (await getBlob(hash)) !== null;
 }
 
-// Local garbage collection uses this only after the model has proved that no
-// live object still references the hash. Content-addressed blobs may be shared,
-// so callers — never this low-level helper — own that decision.
-export async function deleteBlob(hash) {
-  const db = await idb();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(STORE, "readwrite").objectStore(STORE).delete(hash);
-    tx.onsuccess = () => res();
-    tx.onerror = () => rej(tx.error);
-  });
-}
-
 // Reads a File from an <input type=file>, hashes it, stores it, and
 // returns the attachment record ready for store.addToSet(id, "attachments", …).
 export async function ingestFile(file) {
@@ -89,71 +70,6 @@ export async function ingestFile(file) {
   const ext = extOf(file.name);
   await putBlob(hash, buf, file.type);
   return { hash, ext, role: roleForExt(ext), name: file.name, size: file.size };
-}
-
-// The Desk's image picker is deliberately narrower than general attachments:
-// JPEG/JPG, PNG and WebP only. Decode BEFORE writing the blob: a renamed or
-// corrupt file must fail visibly without leaving either a phantom desk record
-// or unreachable bytes behind.
-export async function ingestDeskImage(file) {
-  const ext = extOf(file && file.name);
-  if (!DESK_IMAGE_EXTS.has(ext)) {
-    throw new Error("Desk images must be JPEG, PNG, or WebP.");
-  }
-  const expectedMime = DESK_IMAGE_MIMES[ext];
-  const suppliedMime = String(file.type || "").toLowerCase();
-  const jpegAlias = (ext === "jpg" || ext === "jpeg") && suppliedMime === "image/jpg";
-  if (suppliedMime && suppliedMime !== expectedMime && !jpegAlias) {
-    throw new Error("That file doesn't match its image format.");
-  }
-
-  const dims = await decodeDeskImage(file);
-  const buf = await file.arrayBuffer();
-  const hash = await sha256Hex(buf);
-  // Normalize the old image/jpg alias so previews/sync always carry the
-  // standards spelling even if the OS supplied the historical one.
-  const mime = expectedMime;
-  await putBlob(hash, buf, mime);
-  return {
-    hash,
-    ext,
-    mime,
-    width: dims.width,
-    height: dims.height,
-    size: file.size,
-  };
-}
-
-async function decodeDeskImage(file) {
-  if (typeof createImageBitmap === "function") {
-    try {
-      const bitmap = await createImageBitmap(file);
-      const out = { width: bitmap.width, height: bitmap.height };
-      if (typeof bitmap.close === "function") bitmap.close();
-      if (out.width > 0 && out.height > 0) return out;
-    } catch { /* Safari/browser fallback below gives the same yes/no answer */ }
-  }
-
-  if (typeof Image !== "undefined" && typeof URL !== "undefined" && URL.createObjectURL) {
-    const url = URL.createObjectURL(file);
-    try {
-      return await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const width = img.naturalWidth || img.width || 0;
-          const height = img.naturalHeight || img.height || 0;
-          if (width > 0 && height > 0) resolve({ width, height });
-          else reject(new Error("That image couldn't be read."));
-        };
-        img.onerror = () => reject(new Error("That image couldn't be read."));
-        img.src = url;
-      });
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-
-  throw new Error("That image couldn't be read.");
 }
 
 // Same idea as ingestFile, but for bytes that didn't come from a file picker —

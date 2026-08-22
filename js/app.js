@@ -5,7 +5,7 @@
 import { Store } from "./store.js";
 import { Sync } from "./sync.js";
 import { query } from "./query.js";
-import { loadSavedTheme, loadThemeFromFolder, colorToken } from "./theme.js";
+import { loadSavedTheme, loadThemeFromFolder } from "./theme.js";
 import { installGlobalErrorBanner, toast } from "./ui/toast.js";
 import { readAloud } from "./ui/readaloud.js";
 import { el } from "./views/shared.js";
@@ -48,22 +48,6 @@ import { projectView } from "./views/project.js";
 
 const VIEWS = [homeView, listView, boardView, projectView];
 
-// Phone mode is intentionally capture-first for now. Project/Desk is a large
-// workspace feature and is deliberately not offered on a phone while its
-// mobile information architecture is unresolved. Use the SHORT side rather
-// than viewport width so rotating an iPhone cannot accidentally turn Project
-// back on; iPad-sized coarse-pointer devices remain eligible.
-const PHONE_SHORT_SIDE_MAX = 600;
-function isPhoneUI() {
-  try {
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
-    return coarse && shortSide <= PHONE_SHORT_SIDE_MAX;
-  } catch {
-    return false;
-  }
-}
-
 // The Home tab shows this paw print instead of its text label — the word
 // "Home" was getting lost among the other tabs on narrow mobile screens, and
 // the paw doubles as a nod to Dash (the dog the app and Andra's queen-Victoria
@@ -94,6 +78,18 @@ const state = {
   collapsed: new Set(JSON.parse(localStorage.getItem("dash.collapsed") || "[]")),
   viewLocal: {},       // scratch space for the active view (e.g. project selection)
 };
+
+// Whether the user likes the index rail open. Per device, and only the band's
+// toggle changes it — separate from whether the CURRENT VIEW has a rail at all.
+// See applyCatalogChrome() below for why those are two different things.
+// Declared here rather than next to that function because boot() runs first.
+//
+// Deliberately a NEW key rather than the old dash.sidebar: that key meant "the
+// drawer I open occasionally" and defaulted to closed. The rail is now where
+// filtering lives on List and Board, so it defaults to OPEN — and inheriting a
+// stale "0" from the old meaning would have hidden the thing this pass was
+// about. dash.sidebar is left behind on purpose; nothing reads it any more.
+let railOpen = localStorage.getItem("dash.rail") !== "0";
 
 const store = new Store();
 const sync = new Sync(store);
@@ -224,41 +220,11 @@ function buildChrome() {
   //
   // Group and Sort do NOT live here; they're in the catalog band (below), with
   // Search, because those three are one thought: "what am I looking at."
-  const catalogLayout = el("div", { class: "catalog-layout", id: "catalog-layout" });
   const sidebar = el("aside", { class: "sidebar", id: "sidebar" });
+  sidebar.appendChild(el("div", { class: "brand" }, [el("img", { class: "brand-mark", src: "logo-mark.png", alt: "" }), "Dash"]));
+
   const nav = el("div", { class: "sidebar-section", id: "nav-filters" });
-  nav.addEventListener("pointerover", (e) => {
-    const button = e.target.closest(".nav-btn");
-    if (!button || !nav.contains(button)) return;
-
-    if (e.relatedTarget && button.contains(e.relatedTarget)) return;
-
-    positionSidebarNotch(button);
-  });
-  nav.addEventListener("pointerleave", () => {
-    positionSidebarNotch(activeSidebarFilter(nav));
-  });
-  nav.addEventListener("focusin", (e) => {
-    const button = e.target.closest(".nav-btn");
-    if (!button || !nav.contains(button)) return;
-
-    positionSidebarNotch(button);
-  });
-  nav.addEventListener("focusout", () => {
-    requestAnimationFrame(() => {
-      const focused = document.activeElement?.closest?.(".nav-btn");
-
-      if (focused && nav.contains(focused)) {
-        positionSidebarNotch(focused);
-        return;
-      }
-
-      positionSidebarNotch(activeSidebarFilter(nav));
-    });
-  });
   sidebar.appendChild(nav);
-  const viewHost = el("div", { id: "view-host" });
-  catalogLayout.append(sidebar, viewHost);
 
   // ---- main ----
   const main = el("main", { class: "main" });
@@ -321,14 +287,14 @@ function buildChrome() {
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
-  viewport.append(buildCatalogBand(), catalogLayout);
+  viewport.append(buildCatalogBand(), el("div", { id: "view-host" }));
 
   // Where the bulk-action bar lives when select mode is on. Kept outside the
   // scrolling viewport so it stays put under your thumb while you scroll.
   const selectBarHost = el("div", { id: "select-bar-host" });
 
   main.append(topbar, viewport, selectBarHost);
-  app.append(main);
+  app.append(sidebar, main);
 
   sync.onStatus(updateSyncUI);
   updateSyncUI(sync.status);
@@ -351,8 +317,13 @@ function buildChrome() {
 // Built ONCE, like the rest of the chrome, and updated in render(). A select
 // that got rebuilt on every store change would close itself mid-choice.
 function buildCatalogBand() {
+  const railBtn = el("button", {
+    class: "band-btn", id: "rail-btn", "aria-controls": "sidebar",
+    onclick: () => setRail(!railOpen),
+  });
+
   const search = el("input", {
-    type: "search", id: "band-search", placeholder: "Search…", "aria-label": "Search",
+    type: "search", id: "band-search", placeholder: "Search everything…", "aria-label": "Search",
     oninput: (e) => { state.filter.text = e.target.value.trim() || undefined; render(); },
   });
 
@@ -381,24 +352,34 @@ function buildCatalogBand() {
   ]);
 
   return el("div", { class: "catalog-band", id: "catalog-band" }, [
-    el("div", { class: "band-controls band-top" }, [
-      el("div", { class: "search-wrap" }, [search]),
+    el("div", { class: "band-top" }, [
+      railBtn,
+      el("span", { class: "band-title", id: "band-title" }),
+      // The active filter, said in words, with an ✕. The rail already shows it
+      // as a current item, but the rail can be closed and the list can be
+      // scrolled — and "why is half my archive missing" is a genuinely
+      // confusing five minutes. One chip removes the whole category of bug.
       el("span", { class: "band-filter", id: "band-filter", style: "display:none" }),
-      groupSel,
-      sortSel,
       el("span", { class: "band-count num", id: "band-count" }),
+    ]),
+    el("div", { class: "band-controls" }, [
+      el("div", { class: "search-wrap" }, [search]),
+      groupSel, sortSel,
     ]),
   ]);
 }
 
 // Keep the band's readouts in step with what's actually on screen.
 function updateCatalogBand(view, result) {
+  const title = document.getElementById("band-title");
   const count = document.getElementById("band-count");
   const chip = document.getElementById("band-filter");
   const groupSel = document.getElementById("group-sel");
   const sortSel = document.getElementById("sort-sel");
   const search = document.getElementById("band-search");
-  if (!count || !chip) return;
+  if (!title || !count || !chip) return;
+
+  title.textContent = view.label;
   count.textContent = result.total === 1 ? "1 entry" : `${result.total} entries`;
   if (groupSel) groupSel.value = state.groupBy;
   if (sortSel) sortSel.value = state.sortBy;
@@ -431,36 +412,49 @@ function activeFilterLabel() {
   return null;
 }
 
+// ---- the index rail: open/closed, and whether it exists at all ----
+// Two ideas kept deliberately apart:
+//
+//   PREFERENCE   — "I like the rail open." Per device, in dash.rail. Only the
+//                  band's toggle changes it.
+//   AVAILABILITY — "this view has a rail at all." Decided by the view itself
+//                  (list and board declare supportsCatalogChrome).
+//
+// On Home and Project the rail, the band and the toggle are ABSENT — not
+// disabled, not empty — and the preference is left untouched, so the rail is
+// still open the way you left it when you come back to List.
+//
+// railOpen itself is declared up with `state`, NOT here: buildChrome() reads
+// it, boot() calls buildChrome() near the top of this file, and a `let` down
+// here would still be in its temporal dead zone at that point — a blank app
+// and a ReferenceError in the console. Declaration order is load-bearing.
+function setRail(open) {
+  railOpen = !!open;
+  localStorage.setItem("dash.rail", railOpen ? "1" : "0");
+  applyCatalogChrome(activeView());
+}
+
 function applyCatalogChrome(view) {
+  const app = document.getElementById("app");
   const band = document.getElementById("catalog-band");
-  const layout = document.getElementById("catalog-layout");
-  const sidebar = document.getElementById("sidebar");
-  const viewport = document.getElementById("viewport");
-  if (!band || !layout || !sidebar) return;
+  const btn = document.getElementById("rail-btn");
+  if (!app || !band || !btn) return;
   const available = !!view.supportsCatalogChrome;
+  const open = available && railOpen;
+  app.classList.toggle("with-sidebar", open);
   band.style.display = available ? "" : "none";
-  sidebar.style.display = available ? "" : "none";
-  layout.classList.toggle("with-index", available);
-  viewport?.classList.toggle("catalog-active", available);
+  btn.textContent = open ? "✕ Index" : "☰ Index";
+  btn.setAttribute("aria-expanded", String(open));
+  btn.title = open ? "Hide the tag / type / status index" : "Show the tag / type / status index";
 }
 
 // ===================================================
 //  RENDER
 // ===================================================
-function activeView() {
-  const requested = VIEWS.find(v => v.name === state.viewName) || listView;
-  if (requested.name === "project" && isPhoneUI()) {
-    state.viewName = "home";
-    return homeView;
-  }
-  return requested;
-}
+function activeView() { return VIEWS.find(v => v.name === state.viewName) || listView; }
 
 function setView(name) {
-  // Even if a stale button, history path or future caller asks for Project on
-  // a phone, keep the phone in its capture/list workflow rather than exposing
-  // the unfinished narrow Project page. No project data is removed.
-  state.viewName = (name === "project" && isPhoneUI()) ? "home" : name;
+  state.viewName = name;
   state.viewLocal = {};
   // Changing view drops any selection: the entries you'd picked probably
   // aren't even on screen any more, and acting on invisible items is exactly
@@ -670,31 +664,9 @@ function renderSidebarFilters() {
 
   const { total, byType, byStatus, byTag } = railCounts();
 
-  const mk = (label, active, onClick, count, markColor = null) => el("button", {
-    class: "nav-btn",
-    "aria-current": String(active),
-    onclick: onClick,
-  }, [
-    markColor
-      ? el("span", {
-          class: "nav-filter-mark",
-          "aria-hidden": "true",
-          style: `background:${markColor}`,
-        })
-      : null,
-
-    el("span", {
-      class: "nav-filter-label",
-      text: label,
-    }),
-
-    count != null
-      ? el("span", {
-          class: "count",
-          text: `${count}`,
-        })
-      : null,
-  ]);
+  const mk = (label, active, onClick, count) => el("button", {
+    class: "nav-btn", "aria-current": String(active), onclick: onClick,
+  }, [el("span", { text: label }), count != null ? el("span", { class: "count", text: `${count}` }) : null]);
 
   nav.appendChild(el("h2", { text: "All" }));
   nav.appendChild(mk("Everything", !state.filter.type && !state.filter.status && !state.filter.tag,
@@ -705,8 +677,8 @@ function renderSidebarFilters() {
   for (const t of store.types()) {
     const count = byType.get(t.key) || 0;
     if (count === 0) continue;
-    nav.appendChild(mk(t.label, state.filter.type === t.key,
-      () => applyFilter({ text: state.filter.text, type: t.key }), count, colorToken(t.color)));
+    nav.appendChild(mk(`${t.icon || "•"} ${t.label}`, state.filter.type === t.key,
+      () => applyFilter({ text: state.filter.text, type: t.key }), count));
   }
 
   // statuses
@@ -715,7 +687,7 @@ function renderSidebarFilters() {
     const count = byStatus.get(s.key) || 0;
     if (count === 0) continue;
     nav.appendChild(mk(s.label, state.filter.status === s.key,
-      () => applyFilter({ text: state.filter.text, status: s.key }), count, colorToken(s.color)));
+      () => applyFilter({ text: state.filter.text, status: s.key }), count));
   }
 
   // top tags (alphabetical, capped to keep the rail calm — unchanged)
@@ -727,42 +699,6 @@ function renderSidebarFilters() {
         () => applyFilter({ text: state.filter.text, tag }), byTag.get(tag)));
     }
   }
-
-  nav.appendChild(el("span", {
-    class: "sidebar-index-notch",
-    "aria-hidden": "true",
-  }));
-  requestAnimationFrame(() => {
-    positionSidebarNotch(activeSidebarFilter(nav));
-  });
-}
-
-function activeSidebarFilter(nav) {
-  return nav?.querySelector('.nav-btn[aria-current="true"]') || null;
-}
-
-function positionSidebarNotch(button) {
-  const nav = document.getElementById("nav-filters");
-  const notch = nav?.querySelector(".sidebar-index-notch");
-
-  if (!nav || !notch || !button) return;
-
-  requestAnimationFrame(() => {
-    if (!nav.isConnected || !button.isConnected || !notch.isConnected) return;
-
-    const navRect = nav.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-
-    const y =
-      buttonRect.top -
-      navRect.top +
-      buttonRect.height / 2;
-
-    nav.style.setProperty(
-      "--sidebar-notch-y",
-      `${Math.round(y)}px`
-    );
-  });
 }
 
 // ===================================================

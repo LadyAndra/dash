@@ -3,12 +3,8 @@
 // works in all of them for free — that's the "voice in everywhere" Tier 1
 // story (§8). A read-aloud button covers voice out (§10).
 //
-// Most edits still write straight through to Store. Title and Notes are the
-// exception: text input arrives once per keystroke, and writing every one of
-// those drafts to the append-only log turns one human edit into a long stack
-// of merge notes if another device later wins the field. Keep the live draft
-// in the control, save after a short quiet spell, and always flush on blur or
-// close. The final value is just as durable; the log is simply meaningful.
+// Edits call store methods directly (setField / addToSet / removeFromSet),
+// so each keystroke-save is one operation and sync/merge just works (§6).
 
 import { el, groundStyle } from "./views/shared.js";
 import { resolveHex } from "./theme.js";
@@ -18,8 +14,6 @@ import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
 import { midFromLinkLabel } from "./store.js";
-
-const TEXT_SAVE_DELAY = 900;
 
 // How a connection reads in the editor's list. Most links show as
 // "label: Other thing". A milestone attachment stores the milestone's mid in
@@ -45,58 +39,6 @@ export function openEditor(store, itemId, opts = {}) {
 
   store.touch(id);
 
-  // Title and Notes keep their draft in the DOM while the person is typing.
-  // One timer per field means ten keystrokes inside the quiet window become
-  // one Store.setField operation. Blur and close flush immediately, so moving
-  // on never leaves a draft waiting for the timer.
-  const pendingText = new Map();
-
-  function savedText(field) {
-    const current = store.get(id);
-    return field === "title" ? (current?.title || "") : (current?.body || "");
-  }
-
-  function commitText(field, value) {
-    if (value === savedText(field)) return;
-    store.setField(id, field, value);
-  }
-
-  function scheduleText(field, value) {
-    const pending = pendingText.get(field);
-    if (pending) clearTimeout(pending.timer);
-
-    if (value === savedText(field)) {
-      pendingText.delete(field);
-      return;
-    }
-
-    const rec = { value, timer: null };
-    rec.timer = setTimeout(() => {
-      if (pendingText.get(field) !== rec) return;
-      pendingText.delete(field);
-      commitText(field, rec.value);
-    }, TEXT_SAVE_DELAY);
-    pendingText.set(field, rec);
-  }
-
-  function flushText(field) {
-    const pending = pendingText.get(field);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    pendingText.delete(field);
-    commitText(field, pending.value);
-  }
-
-  function flushTextDrafts() {
-    flushText("title");
-    flushText("body");
-  }
-
-  function cancelTextDrafts() {
-    for (const pending of pendingText.values()) clearTimeout(pending.timer);
-    pendingText.clear();
-  }
-
   // Clicking the backdrop closes the editor. Dragging to SELECT TEXT must not.
   //
   // A `click` fires on the nearest common ancestor of where the pointer went
@@ -112,14 +54,13 @@ export function openEditor(store, itemId, opts = {}) {
     onpointerdown: (e) => { downOnScrim = e.target === scrim; },
     onclick: (e) => { if (e.target === scrim && downOnScrim) close(); },
   });
-  const modal = el("div", { class: "modal editor-sheet", role: "dialog", "aria-modal": "true", "aria-label": "Edit item" });
+  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Edit item" });
 
   // --- title ---
   const title = el("input", {
     type: "text", value: item.title, placeholder: "Title (or tap the mic on your keyboard and talk)",
     "aria-label": "Title",
-    oninput: (e) => scheduleText("title", e.target.value),
-    onblur: () => flushText("title"),
+    oninput: (e) => store.setField(id, "title", e.target.value),
   });
 
   // --- type + status selects (from the editable registry §2.2) ---
@@ -130,8 +71,7 @@ export function openEditor(store, itemId, opts = {}) {
   const body = el("textarea", {
     placeholder: "Write, or dictate with the keyboard mic…",
     "aria-label": "Notes",
-    oninput: (e) => scheduleText("body", e.target.value),
-    onblur: () => flushText("body"),
+    oninput: (e) => store.setField(id, "body", e.target.value),
   });
   body.value = item.body;
 
@@ -170,9 +110,10 @@ export function openEditor(store, itemId, opts = {}) {
     el("div", { class: "field" }, [el("label", { text: "Due" }), dueInput]),
     el("div", { class: "field" }, [
       el("label", { text: "Remind me" }), remindInput,
+      el("div", { class: "hint", text: "Both show up on your Home sheet." }),
     ]),
   ]);
-  datesRow.classList.add("editor-date-row");
+
   // --- tags (freeform, add/remove as set ops) ---
   const tagWrap = el("div", { class: "chip-input" });
   function renderTags() {
@@ -207,6 +148,7 @@ export function openEditor(store, itemId, opts = {}) {
     renderTags();
   }
   tagWrap.appendChild(tagInput);
+
   // --- projects: dedicated assignment field (multi-select) ---
   // Shown only for non-project items (a project isn't assigned to itself).
   // An entry can be in several projects at once, so this is a set of chips
@@ -255,12 +197,11 @@ export function openEditor(store, itemId, opts = {}) {
     ]);
     projectWrap.appendChild(adder);
   }
+
   const isProjectItem = store.get(id)?.type === "project";
-  const projectsField = isProjectItem ? null : detailField("Projects", projectWrap);
-  projectsField?.classList.add("editor-projects");
 
   // --- links (connect to another item §2.1) ---
-  const linkWrap = el("div", { class: "chip-input editor-connections" });
+  const linkWrap = el("div", { class: "chip-input" });
   function renderLinks() {
     linkWrap.querySelectorAll(".chip").forEach(n => n.remove());
     const current = store.get(id);
@@ -278,8 +219,6 @@ export function openEditor(store, itemId, opts = {}) {
   const linkBtn = el("button", { type: "button", class: "btn", text: "＋ Link to…",
     onclick: () => pickLink(store, id, () => renderLinks()) });
   linkWrap.appendChild(linkBtn);
-  const connectionsField = detailField("Connections", linkWrap);
-  connectionsField.classList.add("editor-connections-field");
 
   // --- attachments: images, PDFs, markdown, text — anything (§9 generalized) ---
   const attachWrap = el("div", { class: "attach-list" });
@@ -320,8 +259,8 @@ export function openEditor(store, itemId, opts = {}) {
   let sketchSaveTimer = null;
   let sketchBgUrl = null; // object URL for the loaded existing drawing (revoke on close)
   const sketchHolder = el("div", {});
-  const sketchField = detailField("Sketch", sketchHolder);
-  sketchField.classList.add("editor-sketch");
+  const sketchField = field("Sketch", sketchHolder,
+    "The paper starts in view mode, so you can scroll straight past it. Tap Draw to sketch with your finger or Apple Pencil — it saves itself as you go.");
 
   function currentSketchAtt() {
     return (store.get(id)?.attachments || []).find(a => a.role === "sketch") || null;
@@ -366,27 +305,16 @@ export function openEditor(store, itemId, opts = {}) {
 
   // --- read aloud (voice out §10) ---
   const readBtn = el("button", { class: "icon-btn", "aria-label": "Read this item aloud", title: "Read aloud", text: "🔊",
-    onclick: () => { flushTextDrafts(); readAloud(itemToSpeech(store.get(id), store)); } });
+    onclick: () => readAloud(itemToSpeech(store.get(id), store)) });
 
   // --- actions ---
   const del = el("button", { class: "btn btn-danger", text: "Delete",
     onclick: () => {
       if (confirm("Delete this item? It's kept in your history and can be recovered, but it will disappear from all views.")) {
-        cancelTextDrafts();
         store.deleteItem(id); close();
       }
     } });
   const done = el("button", { class: "btn btn-primary", text: "Done", onclick: close });
-
-  const titleField = field("Title", title);
-  titleField.classList.add("editor-title-field");
-  const notesField = field("Notes", body);
-  notesField.classList.add("editor-notes");
-  const typeStatusRow = el("div", { class: "row editor-type-status-row" }, [field("Type", typeSel), field("Status", statusSel)]);
-  const filesField = detailField("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]));
-  filesField.classList.add("editor-files");
-  const tagsField = detailField("Tags", tagWrap);
-  tagsField.classList.add("editor-tags");
 
   // --- colour (projects only) ---
   // A project wears its colour as a filled block on its own page, so this is
@@ -404,25 +332,25 @@ export function openEditor(store, itemId, opts = {}) {
       resetLabel: "Use type colour",
       note: "Shown wherever this project appears. Pick anything — the readings below tell you how it will hold up.",
     }));
-  colourField?.classList.add("editor-colour");
 
-  modal.append(...[
-    el("div", { class: "editor-head" }, [
+  modal.append(
+    el("div", { style: "display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-3)" }, [
       el("h2", { text: isNew ? "New item" : "Edit item", style: "margin:0; flex:1" }),
       readBtn,
     ]),
-    titleField,
+    field("Title", title),
     colourField,
-    typeStatusRow,
+    el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
     datesRow,
-    notesField,
+    field("Notes", body),
     sketchField,
-    filesField,
-    projectsField,
-    tagsField,
-    connectionsField,
+    field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
+      "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
+    isProjectItem ? null : field("Projects", projectWrap, "Assign this to one or more projects. An entry can live in several projects at once."),
+    field("Tags", tagWrap, "One item can carry many tags — that's how things relate without folders."),
+    field("Connections", linkWrap, "Link this to related items — ideas to projects, projects to goals."),
     el("div", { class: "modal-actions" }, [del, el("div", { class: "spacer" }), done]),
-  ].filter(Boolean));
+  );
 
   renderTags();
   renderLinks();
@@ -461,7 +389,6 @@ export function openEditor(store, itemId, opts = {}) {
     closed = true;
     document.removeEventListener("keydown", escClose);
 
-    flushTextDrafts(); // final title/notes value must never wait behind close
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter
     clearTimeout(sketchSaveTimer);
     if (sketchPad) { await saveSketch(); sketchPad.destroy(); }
@@ -490,12 +417,6 @@ function field(label, control, hint) {
     control,
     hint ? el("div", { class: "hint", text: hint }) : null,
   ]);
-}
-
-function detailField(label, control, hint) {
-  const section = field(label, control, hint);
-  section.classList.add("editor-detail-section");
-  return section;
 }
 
 // Create a new project inline (from the item editor's Projects field) without
