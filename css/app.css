@@ -573,6 +573,15 @@ button, input, textarea, select {
   background: currentColor; flex: none;
 }
 .mk-ember { color: var(--ember); font-weight: 600; }
+/* FILING vs STATE (August 2026, List typography pass).
+   A type mark says what Dash filed this as; it never changes and you can't
+   change it from a row. A status says where the thing IS, and on List you can
+   change it in place. Only the second one earns colour, so a row carries ONE
+   coloured mark instead of two competing ones — the same rule Home already
+   follows, where ember-overdue is the only colour in a metadata line.
+   Set by typeChip(store, item, { quiet: true }) in views/shared.js, which
+   omits the inline registry colour so this class can take effect. */
+.mk-quiet { color: var(--text-faint); }
 
 /* ---------- Quick status control (list rows / board cards) ---------- */
 /* Reads as a .mk mark that happens to be tappable — same mono voice, same
@@ -690,7 +699,10 @@ button, input, textarea, select {
   font-size: var(--text-label);
   font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.18em;
+  /* 0.22em, not 0.18em: the same tracking Home's .plate-title and
+     .today-head carry, so a section label reads identically on both
+     screens. The heading's structure is untouched. */
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 
   color: var(--text-primary);
@@ -718,7 +730,8 @@ button, input, textarea, select {
   font-size: var(--text-label);
   font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.06em;
+  /* matches Home's .today-head .group-count */
+  letter-spacing: 0.08em;
 
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
@@ -785,32 +798,79 @@ button, input, textarea, select {
   outline: none;
 }
 
-.group .item-row .item-title {
-  margin:
-    var(--space-1)
-    0
-    0;
+/* ---- List row typography (August 2026) ----------------------------
+   Scoped to `.group`, which is List's own wrapper and nothing else's, so
+   Board cards, Home's today rows, Project and the Desk drawer are all
+   untouched by everything below.
 
-  font-size: var(--text-lg);
-  font-weight: 400;
-  line-height: 1.15;
-}
+   The problem this fixes: every mono thing in a row was 11px, two of them
+   carried a saturated registry colour, and the title sat 8px under the
+   marks — five voices at two levels of loudness. Home solves the same
+   problem by separating its mono ranks with ink and tracking, and by
+   letting one serif line stand alone with real air around it. These rules
+   borrow those rules. NO structural change: the auto/1fr grid, the
+   hairlines, the collapse, the project registration tab and the
+   translateX hover are all exactly as they were. */
 
 .group .item-row .item-meta {
-  margin: 0;
+  margin:
+    0
+    0
+    var(--space-2);
 }
 
-.group .item-row .item-body-preview {
+/* The date stops being the fourth item in a left-to-right queue and becomes
+   a right-hand readout — the same move Home makes with .today-head
+   .group-count and .merge-note-head .num. On a narrow window .item-meta
+   still wraps, and the date simply takes its own right-aligned line. */
+.group .item-row .item-meta > .num {
+  margin-left: auto;
+}
+
+/* One step out from the status mark's 0.14em, onto the .lbl rank, so the
+   two marks are no longer typographically identical. */
+.group .item-row .mk {
+  letter-spacing: 0.16em;
+}
+
+.group .item-row .item-title {
   margin:
     var(--space-2)
     0
     0;
 
-  line-height: 1.35;
+  font-size: var(--text-lg);
+  font-weight: 400;
+  /* both borrowed from Home's .sheet-h1 — a serif line at this size wants
+     slightly tighter tracking and leading than body copy */
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.group .item-row .item-body-preview {
+  margin:
+    var(--space-1)
+    0
+    0;
+
+  line-height: 1.4;
+  /* THE mass fix. On a wide screen .item-main is unconstrained, so two
+     clamped preview lines ran ~110 characters each and outweighed the
+     22px title above them. A measure in ch is the type's own unit rather
+     than a design value, which is why it isn't a token — same reasoning
+     as the 22ch on .stage-chip and the 46rem on .ms-section > .hint. The
+     preview stays --text-muted on purpose: making it fainter would have
+     fixed the hierarchy at the cost of legibility. */
+  max-width: 68ch;
 }
 
 .group .item-row .item-foot {
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* down from 0.1em, onto the same rank as the date */
+.group .item-row .tag {
+  letter-spacing: 0.08em;
 }
 
 .item-no {

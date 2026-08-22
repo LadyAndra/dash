@@ -50,7 +50,16 @@ export const listView = {
       // statusControl: the row carries a quick status dropdown, so a status can
       // be changed without opening the editor (what Kanban used to be for).
       for (const item of group.items) {
-        const row = itemRow(ctx.store, item, ctx.onOpen, { selection: ctx.selection, statusControl: true });
+        // quietType: on List the type mark drops its registry colour and reads
+        // as plain faint mono, leaving the STATUS as the one coloured thing on
+        // the row — the thing you can actually change. Home already works this
+        // way (ember-overdue is the only colour in its metadata line); this is
+        // List borrowing the rule rather than inventing a second one.
+        const row = itemRow(ctx.store, item, ctx.onOpen, {
+          selection: ctx.selection,
+          statusControl: true,
+          quietType: true,
+        });
 
         // PROJECT IDENTITY — List experiment, round two.
         // A project's own colour is a tiny registration TAB beside its catalog

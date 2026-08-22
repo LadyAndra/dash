@@ -27,10 +27,19 @@ export function el(tag, attrs = {}, children = []) {
 // not filled pills. Color stays data-driven (registry colors are arbitrary),
 // so a re-theme restyles them for free. The dot is drawn in CSS from
 // currentColor, so we only set the text color here.
-export function typeChip(store, item) {
+// opts.quiet — draw the type mark WITHOUT its registry colour, as plain
+// faint mono (.mk-quiet in app.css). Filing is not state: what something was
+// typed as never changes and can't be changed from a row, while a status can
+// be. Where both marks sit on the same line, only the one you can act on
+// earns colour — otherwise two coloured marks compete with each other and
+// with the serif title, and colour stops meaning anything. Opt-in, so List
+// gets it and every other surface keeps the colour it already had.
+export function typeChip(store, item, opts = {}) {
   const t = store.typeDef(item.type);
+  const label = t?.label || item.type;
+  if (opts.quiet) return el("span", { class: "mk mk-quiet" }, [label]);
   return el("span", { class: "mk", style: `color:${colorToken(t?.color)}` },
-    [t?.label || item.type]);
+    [label]);
 }
 
 export function statusChip(store, item) {
@@ -244,12 +253,14 @@ function sketchThumb(item, cls) {
 // opts.statusControl — draw the status as an editable control rather than a
 // read-only mark. Opt-in, so List and Board get it and Project's connected-item
 // lists stay a quiet read-only index.
+// opts.quietType — draw the type mark in plain faint mono instead of its
+// registry colour (see typeChip above). Opt-in for the same reason.
 export function itemRow(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
   const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
 
   const meta = el("div", { class: "item-meta" }, [
-    typeChip(store, item),
+    typeChip(store, item, { quiet: !!opts.quietType }),
     editableStatus(opts) ? statusControl(store, item) : statusChip(store, item),
     stageChip(item),                 // projects only; null for everything else
     el("span", { class: "num", text: shortDate(item) }),
