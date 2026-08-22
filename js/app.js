@@ -15,16 +15,10 @@ import { createSelection } from "./selection.js";
 import { openMergeNotes, mergeNoteCount } from "./merge-notes.js";
 import { overdueCount } from "./entries.js";
 
-// ---- the Home corner cluster is SHELVED (August 1, 2026) ----------------
-// Andra's call: the ambient widgets were getting in the way and weren't
-// earning their space, and Home is now the Today panel instead. Nothing was
-// deleted — js/widgets/{motion,cluster,shapes,pet}.js are untouched on disk
-// and still in the service worker's SHELL, so bringing the pet back is
-// exactly this: uncomment the two imports and the two lines marked
-// "cluster" below. Weather / tide / train were never built and are back to
-// unscoped. See docs/dash-current-state.md.
-// import { createCluster } from "./widgets/cluster.js";
-// import { createPetWidget } from "./widgets/pet.js";
+// ---- the Home corner cluster (pet/weather/tide/train) was SHELVED August 1,
+// then REMOVED August 22, 2026 — Andra's call, made permanent: Home's own
+// visual identity now supersedes it. js/widgets/{motion,cluster,shapes,pet}.js
+// are gone from disk and out of sw.js's SHELL. See docs/dash-current-state.md.
 
 import { homeView, speakToday } from "./views/home.js";
 import { listView } from "./views/list.js";
@@ -102,10 +96,6 @@ const sync = new Sync(store);
 // change re-renders, so the checkboxes, the count and the action bar can never
 // drift out of step with each other.
 const selection = createSelection(store, () => render());
-
-// ---- cluster (shelved — see the note by the imports above) ----
-// const cluster = createCluster({ widgets: [createPetWidget({ store })] });
-// store.onAction((kind, detail) => cluster.action(kind, detail));
 
 installGlobalErrorBanner();
 
@@ -483,12 +473,6 @@ function render() {
   if (selection.active && !view.supportsSelect) { selection.exit(); return; }
   updateSelectUI(view);
   updateMergeUI();
-
-  // The corner cluster belongs to the Home sheet. Hiding it elsewhere keeps it
-  // off the catalog views' bottom-right corner, where the bulk-action bar and
-  // the kanban columns already live — and pauses its animation, so nothing is
-  // burning a frame budget behind a screen that can't see it.
-  // (cluster.setVisible(view.name === "home") lived here — shelved.)
 
   // view tabs current state
   document.querySelectorAll(".view-tab").forEach(t =>
