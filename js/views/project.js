@@ -9,8 +9,8 @@
 
 import { el, emptyState, groundStyle, catalogNo } from "./shared.js";
 import { openEditor } from "../editor.js";
-import { renderProjectPage } from "./desk.js";
-import { stageOf } from "../milestones.js";
+import { createProjectPageController } from "./desk.js";
+import { stageOf, formatDay } from "../milestones.js";
 
 export const projectView = {
   name: "project",
@@ -24,6 +24,7 @@ export const projectView = {
     const projects = store.projects(); // only items of type "project"
 
     if (projects.length === 0) {
+      destroyDetail(state);
       state.picker = null;
       container.innerHTML = "";
       container.appendChild(emptyState(
@@ -34,24 +35,14 @@ export const projectView = {
     }
 
     if (!state.projectId || !store.get(state.projectId)) {
-      // THE SHELF IS KEPT, NOT REBUILT (August 16, 2026 — the spine shake).
+      destroyDetail(state);
+      // THE PROJECT INDEX IS KEPT, NOT REBUILT (August 17, 2026).
       //
-      // Every store write anywhere in Dash redraws the whole screen, and this
-      // function used to answer that by throwing the shelf away and building a
-      // brand new one. Nothing about that is visible — until you notice that a
-      // spine's tilt is a CSS transition on :hover, and that the browser
-      // resolves :hover one style pass AFTER an element is inserted. So a
-      // freshly built spine that happens to land under the pointer starts flat
-      // and animates into the tilt, all by itself; the next redraw replaces it
-      // and it starts over. That is the "spines shake, then settle" — settle
-      // being simply the moment the redraws stop.
-      //
-      // The fix is not to soften the animation, which would hide the rebuild
-      // rather than remove it. It is to stop rebuilding: the picker is built
-      // once per visit and refreshed in place, so a redraw that changes nothing
-      // about the shelf touches no spine at all, and one that adds or removes a
-      // project touches only that one. viewLocal is emptied when the view
-      // changes, so leaving Projects still discards it.
+      // The earlier spine shelf taught us an important structural lesson:
+      // every store write can redraw Dash, so the project controls themselves
+      // must survive ordinary redraws. The visual metaphor has changed from a
+      // shelf to an index rail, but that rule has not. The picker is built once
+      // per visit and refresh() reconciles rail rows by project id.
       if (!state.picker) state.picker = buildPicker(store, state, ctx);
       state.picker.refresh();
       if (state.picker.el.parentNode !== container) {
@@ -60,16 +51,24 @@ export const projectView = {
       }
       return;
     }
-    state.picker = null;
-    container.innerHTML = "";
 
-    // The detail page is the DESK, and the desk has to size and scroll itself
-    // the moment it lands in the document — synchronously, in this same task,
-    // before the browser gets a chance to paint. Doing it a frame later is what
-    // made typing flicker (see the note on `restore` in views/desk.js).
-    const detail = renderDetail(store, state, ctx);
-    container.appendChild(detail);
-    if (detail._deskMount) detail._deskMount();
+    state.picker = null;
+    const project = store.get(state.projectId);
+    if (!state.detail || state.detail.projectId !== project.id) {
+      destroyDetail(state);
+      state.detail = buildDetail(store, state, ctx, project);
+    } else {
+      state.detail.refresh(project, ctx);
+    }
+
+    // Ordinary store writes stop here: the same wrapper and the same Desk
+    // controller stay attached. Only a genuine picker/project boundary mounts
+    // a different subtree.
+    if (state.detail.el.parentNode !== container) {
+      container.innerHTML = "";
+      container.appendChild(state.detail.el);
+      state.detail.mount();
+    }
   },
 };
 
@@ -101,11 +100,8 @@ function createProject(store, ctx) {
 
 // ONE PASS over the archive for every project's member count.
 //
-// This used to be membersOf() called once per spine, and membersOf walks the
-// whole archive — so drawing twelve projects walked everything twelve times,
-// on every redraw. Same rule the desk already lives by (§12.6, "one archive
-// pass per render") and the same one the August code-health pass applied to
-// the rest of the app; the shelf had simply never been included.
+// The overview needs counts for the focused specimen and for accessible rail
+// labels. Doing this once keeps the "one archive pass per render" rule intact.
 function memberCounts(store) {
   const counts = new Map();
   for (const it of store.all()) {
@@ -118,139 +114,391 @@ function memberCounts(store) {
   return counts;
 }
 
-// Build the picker once, and hand back a refresh() that reconciles it in
-// place. Nothing here is rebuilt on a redraw unless it actually changed.
-function buildPicker(store, state, ctx) {
-  const wrap = el("div", {});
-  const search = el("input", { type: "search", placeholder: "Search projects…", "aria-label": "Search projects" });
-  const bandCount = el("span", { class: "band-count" });
-  const band = el("div", { class: "project-picker-band" }, [
-    el("div", { class: "band-top" }, [
-      el("h2", { class: "band-title", text: "Projects" }),
-      bandCount,
-      el("button", { class: "band-btn", text: "＋ New project", onclick: () => createProject(store, ctx) }),
-    ]),
-    el("div", { class: "band-controls" }, [
-      el("div", { class: "search-wrap" }, [search]),
-    ]),
-  ]);
-  wrap.appendChild(band);
-  const shelf = el("div", { class: "project-shelf" });
-  const shelfWrap = el("div", { class: "project-shelf-wrap" }, [shelf]);
+// The overview answers TWO different questions, and keeping them separate is
+// intentional:
+//
+//   index   = what projects do I have?
+//   next up = which open project stage reaches me first?
+//
+// The index keeps Store.projects() order because it is a stable library. Next
+// up is the dynamic register. Nothing here stores priority: the order is
+// derived from the same milestone data stageOf() already uses everywhere.
+//
+// Ordering is intentionally boring and legible:
+//   1. overdue current stages
+//   2. dated current stages, nearest date first
+//   3. undated current stages
+// Complete projects and projects without milestones stay in the index but
+// don't enter this register.
+function nextUp(items) {
+  const ranked = [];
+  for (const item of items) {
+    const stage = stageOf(item);
+    if (!stage || stage.complete) continue;
+    ranked.push({
+      item,
+      stage,
+      group: stage.overdue ? 0 : (stage.date ? 1 : 2),
+    });
+  }
+  ranked.sort((a, b) => {
+    if (a.group !== b.group) return a.group - b.group;
+    if (a.stage.date && b.stage.date && a.stage.date !== b.stage.date) {
+      return a.stage.date < b.stage.date ? -1 : 1;
+    }
+    const at = (a.item.title || "").toLocaleLowerCase();
+    const bt = (b.item.title || "").toLocaleLowerCase();
+    return at.localeCompare(bt);
+  });
+  return ranked;
+}
 
-  // ONE click handler for the whole shelf, rather than a closure per spine —
-  // which is what lets a spine be kept across a redraw without rebinding it.
-  shelf.addEventListener("click", (e) => {
-    const s = e.target.closest(".spine");
-    if (!s || !s.dataset.id) return;
-    state.projectId = s.dataset.id;
-    ctx.rerender();
+// Build the picker once, and hand back a refresh() that reconciles it in
+// place. Nothing in the project rail is rebuilt on a redraw unless it actually
+// changed. The focus specimen is a VIEW of the selected project; its id lives
+// only in viewLocal and is never written to project data or sync.
+function buildPicker(store, state, ctx) {
+  // Full-bleed only on the Projects OVERVIEW. #view-host normally carries
+  // the page inset that Home wants. Rather than changing the global shell, this
+  // one wrapper reaches through that inset so the dark band aligns with the
+  // List / Board bands; the index/focus composition starts directly below it.
+  const wrap = el("div", {
+    class: "project-picker-page",
+    style: "margin:calc(0px - var(--space-5)) calc(0px - var(--space-6)) 0",
   });
 
-  const empty = el("p", { class: "item-body-preview", text: "No matching projects." });
+  // NEXT UP remains a compact derived register inside the mount band. The band
+  // is deliberately only ONE ROW now: Projects at left, immediate work at
+  // right. Search is gone because the colour rail is the project-finding
+  // surface, and project creation stays in Dash's global + New flow.
+  const nextSummary = el("span", { class: "num project-next-summary" });
+  const nextItems = el("div", { class: "project-next-items" });
+  const nextBand = el("div", {
+    class: "project-next-ledger",
+    "data-project-next": "1",
+    "aria-label": "Next up",
+  }, [
+    el("span", { class: "lbl project-next-label", text: "Next up" }),
+    nextSummary,
+    nextItems,
+  ]);
 
-  // Everything about ONE spine that can change without the project changing.
-  // Written only when it differs: assigning an identical value to .style or
-  // .title is a needless style invalidation, and this runs on every redraw.
-  function dress(node, it, count) {
-    const stage = stageOf(it);                    // derived, never stored (§3.3)
+  const band = el("div", { class: "project-picker-band" }, [nextBand]);
+  wrap.appendChild(band);
+
+  // ---- colour-forward project index rail ----
+  const railCount = el("span", { class: "num project-index-count" });
+  const railList = el("div", { class: "project-index-list", "aria-label": "All projects" });
+  const railNotch = el("span", {  class: "project-index-notch",  "aria-hidden": "true",});
+  const rail = el("section", { class: "project-index-rail" }, [
+    el("div", { class: "project-index-head" }, [
+      el("span", { class: "lbl", text: "All projects" }),
+      railCount,
+    ]),
+    railList,
+    railNotch,
+  ]);
+
+  // ---- quiet focus specimen ----
+  // The large display face carries identity. Technical metadata stays in one
+  // small zone. Clicking the title is the explicit transition into the Desk.
+  const focusNo = el("span", { class: "num project-focus-no" });
+  const focusPosition = el("span", { class: "num project-focus-position" });
+  const focusTitle = el("span", { class: "project-focus-title" });
+  const focusDatum = el("span", { class: "project-focus-datum", "aria-hidden": "true" });
+  const focusTitleButton = el("button", {
+    class: "project-focus-title-button",
+    type: "button",
+  }, [focusTitle, focusDatum]);
+  const focusMeta = el("dl", { class: "project-focus-meta" });
+  const focusEmpty = el("p", { class: "project-focus-empty", text: "No projects." });
+  const focus = el("section", { class: "project-focus-specimen", "data-project-focus": "1" }, [
+    el("div", { class: "project-focus-head" }, [
+      el("div", { class: "project-focus-head-left" }, [
+        el("span", { class: "lbl", text: "FOCUS" }),
+        focusPosition,
+      ]),
+      focusNo,
+    ]),
+    el("div", { class: "project-focus-body" }, [
+      focusTitleButton,
+      focusMeta,
+      focusEmpty,
+    ]),
+  ]);
+
+  const layout = el("div", { class: "project-index-layout" }, [rail, focus]);
+  wrap.appendChild(layout);
+
+  function openProject(id) {
+    if (!id) return;
+    state.projectId = id;
+    ctx.rerender();
+  }
+
+  function focusProject(id) {
+    if (!id) return;
+    if (state.focusProjectId !== id) {
+      state.focusProjectId = id;
+      draw();
+    } else {
+      positionRailNotch(id);
+    }
+  }
+
+  function positionRailNotch(id = state.focusProjectId) {
+    const row = [...railList.querySelectorAll("[data-project-index-item]")]
+      .find(node => node.dataset.id === id);
+    if (!row) {
+      railNotch.hidden = true;
+      return;
+    }
+    railNotch.hidden = false;
+    requestAnimationFrame(() => {
+      if (!row.isConnected || !rail.isConnected) return;
+      const railRect = rail.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const y =
+        rowRect.top -
+        railRect.top +
+        rail.scrollTop +
+        rowRect.height / 2;
+      rail.style.setProperty(
+        "--project-notch-y",
+        `${Math.round(y)}px`
+      );
+    });
+  }
+
+  function railButtonFromEvent(e) {
+    const button = e.target.closest("[data-project-index-item]");
+    return button && railList.contains(button) ? button : null;
+  }
+  railList.addEventListener("pointerover", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    if (e.relatedTarget && button.contains(e.relatedTarget)) return;
+    focusProject(button.dataset.id);
+  });
+  railList.addEventListener("focusin", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    focusProject(button.dataset.id);
+  });
+  railList.addEventListener("click", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    openProject(button.dataset.id);
+  });
+
+  focusTitleButton.addEventListener("click", () => openProject(state.focusProjectId));
+
+  // Next-up controls are reconciled by project id too, for the same reason:
+  // ordinary redraws should not throw away the control under the pointer.
+  nextItems.addEventListener("click", (e) => {
+    const button = e.target.closest("[data-project-next-item]");
+    if (button && nextItems.contains(button)) openProject(button.dataset.id);
+  });
+
+  function makeIndexItem(it) {
+    return el("button", {
+      class: "project-index-item on-ground",
+      type: "button",
+      "data-project-index-item": "1",
+      "data-id": it.id,
+    }, [
+      el("span", { class: "project-index-no num", "aria-hidden": "true" }),
+      el("span", { class: "project-index-title", "aria-hidden": "true" }),
+      el("span", { class: "project-index-overdue", "aria-hidden": "true" }),
+    ]);
+  }
+
+  function dressIndexItem(node, it, count, selected) {
+    const stage = stageOf(it); // derived, never stored (§3.3)
     const overdue = !!(stage && stage.overdue);
-    const nameParts = [it.title || "Untitled project"];
-    if (stage) nameParts.push(stage.complete ? "complete" : stage.label);
-    nameParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
-    if (overdue) nameParts.push("overdue");
-    const label = nameParts.join(", ");
+    const titleText = it.title || "Untitled project";
+    const labelParts = [titleText];
+    if (stage) labelParts.push(stage.complete ? "complete" : `current stage ${stage.label}`);
+    if (stage && stage.date) labelParts.push(overdue ? `overdue since ${formatDay(stage.date)}` : `due ${formatDay(stage.date)}`);
+    labelParts.push(`${count} ${count === 1 ? "entry" : "entries"}`);
+    const label = labelParts.join(", ");
 
-    // The project's OWN colour, via the same groundStyle() the banner uses —
-    // so a picked colour (or a custom hex) is legible here too. Width stands
-    // for how much is IN the project (css/app.css clamps it, so it never
-    // drops below --tap-min).
-    const style = `${groundStyle(store, it)};--n:${count}`;
+    const style = groundStyle(store, it);
     if (node.getAttribute("style") !== style) node.setAttribute("style", style);
     if (node.getAttribute("aria-label") !== label) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
-    // Sighted only — the accessible name above already says "overdue".
-    let flag = node.querySelector(".spine-flag");
-    if (overdue && !flag) node.prepend(el("span", { class: "spine-flag", "aria-hidden": "true" }));
-    else if (!overdue && flag) flag.remove();
+    node.dataset.previewed = selected ? "true" : "false";
 
-    const title = node.querySelector(".spine-title");
-    const wanted = it.title || "Untitled project";
-    if (title.textContent !== wanted) title.textContent = wanted;
-    // The catalogue number every item already carries — same № convention
-    // used elsewhere in Dash, not a numbering scheme just for the shelf.
-    const no = node.querySelector(".spine-no");
+    const no = node.querySelector(".project-index-no");
     const noText = `№ ${catalogNo(store, it)}`;
     if (no.textContent !== noText) no.textContent = noText;
+
+    const title = node.querySelector(".project-index-title");
+    if (title.textContent !== titleText) title.textContent = titleText;
+
+    const flag = node.querySelector(".project-index-overdue");
+    flag.hidden = !overdue;
   }
 
-  // A BRAND NEW SPINE IS BORN IN WHATEVER STATE THE POINTER IS ALREADY IN.
-  //
-  // The tilt is meant to describe a gesture: you move onto a spine and it
-  // leans out. But the browser resolves :hover one style pass AFTER an element
-  // is inserted, so a spine created under a pointer that never moved starts
-  // flat, discovers it is hovered, and animates — playing a gesture nobody
-  // performed. `is-fresh` turns the transition off for exactly that one frame,
-  // so the spine simply IS tilted if the pointer is on it, and is not if it
-  // isn't. Moving on and off still animates exactly as before; this removes
-  // the animation that had no gesture behind it, rather than hiding it.
-  const fresh = [];
-  function makeSpine(it) {
-    const node = el("button", { class: "spine on-ground is-fresh", "data-id": it.id }, [
-      el("span", { class: "spine-title", "aria-hidden": "true" }),
-      el("span", { class: "spine-no num", "aria-hidden": "true" }),
+  function makeNextButton(it) {
+    return el("button", {
+      class: "band-btn project-next-item",
+      "data-project-next-item": "1",
+      "data-id": it.id,
+    }, [
+      el("span", { class: "project-next-title" }),
+      el("span", { class: "num project-next-stage" }),
     ]);
-    fresh.push(node);
-    return node;
   }
-  function settleFresh() {
-    if (fresh.length === 0) return;
-    const batch = fresh.splice(0, fresh.length);
-    // Two frames: the first is the one in which the browser lays the spine out
-    // and works out whether the pointer is on it. Only after that has happened
-    // is it safe to hand the transition back.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      for (const node of batch) node.classList.remove("is-fresh");
-    }));
+
+  function dressNext(node, it, stage) {
+    const titleText = it.title || "Untitled project";
+    const title = node.querySelector(".project-next-title");
+    if (title.textContent !== titleText) title.textContent = titleText;
+
+    const meta = node.querySelector(".project-next-stage");
+    const dateText = stage.date ? formatDay(stage.date) : "No date";
+    const metaText = `${stage.label} · ${dateText}`;
+    if (meta.textContent !== metaText) meta.textContent = metaText;
+    meta.classList.toggle("overdue", !!stage.overdue);
+
+    const labelParts = [titleText, `current stage ${stage.label}`];
+    if (stage.date) labelParts.push(stage.overdue ? `overdue since ${dateText}` : `due ${dateText}`);
+    else labelParts.push("no stage date");
+    const label = labelParts.join(", ");
+    if (node.getAttribute("aria-label") !== label) {
+      node.setAttribute("aria-label", label);
+      node.title = label;
+    }
+  }
+
+  function drawNext(items) {
+    const ranked = nextUp(items);
+    nextBand.hidden = ranked.length === 0;
+    if (ranked.length === 0) {
+      nextItems.replaceChildren();
+      return;
+    }
+
+    const overdue = ranked.filter(x => x.stage.overdue).length;
+    const summary = overdue
+      ? `${overdue} overdue · ${ranked.length} active`
+      : `${ranked.length} active`;
+    if (nextSummary.textContent !== summary) nextSummary.textContent = summary;
+
+    // This is an AT-A-GLANCE register, not a second project list. Three is
+    // enough to show the immediate queue without letting the band become the
+    // thing that crowds the index.
+    const shown = ranked.slice(0, 3);
+    const have = new Map();
+    for (const node of nextItems.querySelectorAll("[data-project-next-item]")) {
+      have.set(node.dataset.id, node);
+    }
+
+    const wanted = [];
+    for (const { item, stage } of shown) {
+      let node = have.get(item.id);
+      if (node) have.delete(item.id); else node = makeNextButton(item);
+      dressNext(node, item, stage);
+      wanted.push(node);
+    }
+    for (const [, node] of have) node.remove();
+
+    wanted.forEach((node, i) => {
+      if (nextItems.children[i] !== node) nextItems.insertBefore(node, nextItems.children[i] || null);
+    });
+  }
+
+  function metaRow(label, value, { overdue = false } = {}) {
+    return [
+      el("dt", { class: "lbl", text: label }),
+      el("dd", { class: overdue ? "num project-focus-overdue" : "num", text: value }),
+    ];
+  }
+
+  function drawFocus(it, count, position, total) {
+    const hasProject = !!it;
+    focusEmpty.hidden = hasProject;
+    focusTitleButton.hidden = !hasProject;
+    focusMeta.hidden = !hasProject;
+    focusNo.hidden = !hasProject;
+    focusPosition.hidden = !hasProject;
+    if (!it) {
+      focusMeta.replaceChildren();
+      focusPosition.textContent = "";
+      return;
+    }
+
+    const titleText = it.title || "Untitled project";
+    if (focusTitle.textContent !== titleText) focusTitle.textContent = titleText;
+    focusTitleButton.setAttribute("aria-label", `Open ${titleText} desk`);
+
+    const noText = `№ ${catalogNo(store, it)}`;
+    if (focusNo.textContent !== noText) focusNo.textContent = noText;
+
+    const positionText = `${String(position).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+    if (focusPosition.textContent !== positionText) focusPosition.textContent = positionText;
+
+    const stage = stageOf(it);
+    const rows = [];
+    // No milestone filler. If stage is absent these rows simply do not exist.
+    if (stage) {
+      rows.push(...metaRow("Stage", stage.label));
+      if (stage.date) rows.push(...metaRow("Next due", formatDay(stage.date), { overdue: stage.overdue }));
+    }
+    rows.push(...metaRow("Entries", String(count)));
+    focusMeta.replaceChildren(...rows);
   }
 
   function draw() {
-    const q = search.value.toLowerCase();
-    const items = store.projects().filter(i => (i.title || "").toLowerCase().includes(q));
-    const counts = memberCounts(store);           // ONE archive pass, not one per spine
-    const n = items.length === 1 ? "1 project" : `${items.length} projects`;
-    if (bandCount.textContent !== n) bandCount.textContent = n;
+    const items = store.projects();
+    const counts = memberCounts(store); // ONE archive pass for all overview counts
+    if (railCount.textContent !== String(items.length)) railCount.textContent = String(items.length);
 
-    // Reconcile by project id. A spine that is still wanted is DRESSED, never
-    // replaced — which is the whole point: an element that survives a redraw
-    // keeps whatever the pointer was already doing to it.
+    drawNext(items);
+
+    // The focus selection is view-local only. Keep it if it still exists;
+    // otherwise quietly fall to the first project in the stable index.
+    let focused = items.find(it => it.id === state.focusProjectId) || null;
+    if (!focused && items.length) {
+      focused = items[0];
+      state.focusProjectId = focused.id;
+    }
+    if (!items.length) state.focusProjectId = null;
+
+    // Reconcile by project id. A rail item that is still wanted is DRESSED,
+    // never replaced — preserving the stable-DOM fix that removed hover shake.
     const have = new Map();
-    for (const node of shelf.querySelectorAll(".spine")) have.set(node.dataset.id, node);
+    for (const node of railList.querySelectorAll("[data-project-index-item]")) {
+      have.set(node.dataset.id, node);
+    }
 
     const wanted = [];
     for (const it of items) {
       let node = have.get(it.id);
-      if (node) have.delete(it.id); else node = makeSpine(it);
-      dress(node, it, counts.get(it.id) || 0);
+      if (node) have.delete(it.id); else node = makeIndexItem(it);
+      dressIndexItem(node, it, counts.get(it.id) || 0, it.id === state.focusProjectId);
       wanted.push(node);
     }
-    for (const [, node] of have) node.remove();   // projects that are gone or filtered out
+    for (const [, node] of have) node.remove();
 
-    // Put them in order, moving only the ones that are actually out of place.
     wanted.forEach((node, i) => {
-      if (shelf.children[i] !== node) shelf.insertBefore(node, shelf.children[i] || null);
+      if (railList.children[i] !== node) railList.insertBefore(node, railList.children[i] || null);
     });
 
-    if (items.length === 0) { if (!empty.parentNode) shelf.appendChild(empty); }
-    else if (empty.parentNode) empty.remove();
-    settleFresh();
+    const focusedPosition = focused ? items.findIndex(it => it.id === focused.id) + 1 : 0;
+    drawFocus(
+      focused,
+      focused ? (counts.get(focused.id) || 0) : 0,
+      focusedPosition,
+      items.length
+    );
+    positionRailNotch(state.focusProjectId);
   }
-  search.addEventListener("input", draw);
-  draw();
 
-  wrap.append(shelfWrap);
+  draw();
   return { el: wrap, refresh: draw };
 }
 
@@ -262,29 +510,46 @@ function buildPicker(store, state, ctx) {
 // home in the Peek drawers instead — the entry groups became the Filed shelf,
 // and the milestone editor moved into its own drawer, mount point only.
 //
-// This function is now four lines because views/desk.js owns the whole body,
-// banner included: the Peek drawer handles hang off the banner's bottom edge,
-// so drawing them apart would mean two files agreeing about one seam.
-function renderDetail(store, state, ctx) {
-  const project = store.get(state.projectId);
-  const wrap = el("div", { class: "sheet-page sheet-page-desk" });
-  const reload = () => ctx.rerender();
+// views/desk.js owns the whole body, banner included: the Peek drawer handles
+// hang off the banner's bottom edge, so drawing them apart would mean two files
+// agreeing about one seam. This wrapper owns one Desk controller per project.
+function destroyDetail(state) {
+  if (!state.detail) return;
+  state.detail.destroy();
+  state.detail = null;
+}
 
-  const page = renderProjectPage(store, project, ctx, {
-    onBack: () => { state.projectId = null; ctx.rerender(); },
-    onEdit: () => openEditor(store, project.id, { onClose: reload, sync: ctx.sync }),
-    onNew:  () => {
+function buildDetail(store, state, ctx, project) {
+  const wrap = el("div", { class: "sheet-page sheet-page-desk" });
+  let currentProject = project;
+  let currentCtx = ctx;
+  const reload = () => currentCtx.rerender();
+
+  const actions = {
+    onBack: () => { state.projectId = null; currentCtx.rerender(); },
+    onEdit: () => openEditor(store, currentProject.id, { onClose: reload, sync: currentCtx.sync }),
+    onNew: () => {
       const newId = store.createItem({ title: "" });
-      store.assignToProject(newId, project.id);
-      openEditor(store, newId, { onClose: reload, sync: ctx.sync });
+      store.assignToProject(newId, currentProject.id);
+      openEditor(store, newId, { onClose: reload, sync: currentCtx.sync });
     },
-    onAdd:  () => openAssignPicker(store, project.id, reload),
-  });
-  wrap.appendChild(page);
-  // pass the desk's mount hook up to render(), which is the thing holding the
-  // container and therefore the only place that knows when we are attached
-  wrap._deskMount = page._deskMount;
-  return wrap;
+    onAdd: () => openAssignPicker(store, currentProject.id, reload),
+  };
+
+  const desk = createProjectPageController(store, currentProject, currentCtx, actions);
+  wrap.appendChild(desk.el);
+
+  return {
+    el: wrap,
+    projectId: project.id,
+    mount: () => desk.mount(),
+    refresh(nextProject, nextCtx) {
+      currentProject = nextProject;
+      currentCtx = nextCtx;
+      desk.refresh(currentProject, currentCtx, actions);
+    },
+    destroy: () => desk.destroy(),
+  };
 }
 
 // Entries that are members of this project — i.e. they link to it with the
