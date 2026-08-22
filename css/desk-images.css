@@ -22,7 +22,7 @@
   background: var(--surface-raised);
   border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: 2px;
-  box-shadow: 0 2px 7px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  box-shadow: none;
   transform: translate(var(--image-dx, 0px), var(--image-dy, 0px)) rotate(var(--image-rot, 0deg));
   transform-origin: center;
   cursor: grab;
@@ -37,10 +37,14 @@
   object-fit: contain;
   pointer-events: none;
 }
+.desk-image-object:hover,
+.desk-image-object.is-dragging {
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
 .desk-image-object.is-dragging { cursor: grabbing; }
 .desk-image-object:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring), 0 2px 7px color-mix(in srgb, var(--text-primary) 14%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 /* A snapshot can arrive before its binary asset on another device. Keep the

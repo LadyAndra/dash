@@ -55,30 +55,20 @@ button, input, textarea, select {
 .num { letter-spacing: 0.08em; }
 
 /* ---------- App shell: index rail + main ---------- */
-/* The rail is OPEN by default on List and Board (August 2026) and absent
-   everywhere else. It reversed an earlier same-day decision to keep it
-   closed: it stopped being a drawer you had to remember and became where
-   filtering lives, so hiding it by default hid the point. The band's
-   "☰ Index" toggle adds/removes .with-sidebar; open/closed is per device
-   (dash.rail). Settings / Read-aloud stay in the topbar regardless, so
-   nothing is ever stranded behind this. */
 #app {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 100vh;
   height: 100vh;
 }
-#app.with-sidebar { grid-template-columns: var(--index-rail-w) 1fr; }
-#app:not(.with-sidebar) > .sidebar { display: none; }
 
 /* ---------- Sidebar = catalog index ---------- */
 .sidebar {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: visible;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .brand {
@@ -98,48 +88,156 @@ button, input, textarea, select {
   flex: none;
 }
 
-.sidebar-section { padding: 0 var(--space-4); }
+.sidebar-section {
+  position: relative;
+  min-height: 100%;
+  padding:
+    0
+    var(--space-4)
+    var(--space-6)
+    calc(var(--space-4) + var(--space-5));
+}
+.sidebar-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: var(--space-6);
+  left: var(--space-4);
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
 .sidebar-section h2 {
+  margin:
+    var(--space-6)
+    0
+    var(--space-2);
+  padding: 0;
+
+  border: 0;
+
   font-family: var(--font-mono);
   font-size: var(--text-label);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--text-faint);
   font-weight: 500;
-  margin: var(--space-5) 0 var(--space-1);
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 .sidebar-section h2:first-child { margin-top: 0; }
 
 .nav-btn {
-  display: flex; align-items: center; gap: var(--space-2);
+  position: relative;
+
+  display: grid;
+  grid-template-columns:
+    5px
+    minmax(0, 1fr)
+    max-content;
+  align-items: center;
+  gap: var(--space-2);
+
   width: 100%;
   min-height: 34px;
   padding: var(--space-1) 0;
+
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
+  color: var(--text-primary);
+
   text-align: left;
   cursor: pointer;
+}
+.nav-btn[aria-current="true"] {
+  padding-left: 0;
+  box-shadow: none;
+  font-weight: 600;
   color: var(--text-primary);
+}
+.nav-filter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
   font-family: var(--font-body);
   font-size: var(--text-sm);
 }
-.nav-btn:hover { border-bottom-color: var(--border); }
-.nav-btn[aria-current="true"] {
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--ember);
-  padding-left: var(--space-2);
-}
 .nav-btn .count {
-  margin-left: auto;
+  justify-self: end;
+  margin-left: 0;
   font-family: var(--font-mono);
   font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 1;
   letter-spacing: 0.06em;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+}
+.nav-btn[aria-current="true"] .count { color: var(--text-muted); }
+.nav-filter-mark {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+}
+.nav-btn:not(:has(.nav-filter-mark)) .nav-filter-label {
+  grid-column: 1 / 3;
+}
+.sidebar-index-notch {
+  position: absolute;
+  top: var(--sidebar-notch-y, 0px);
+  left: calc(var(--space-4) - 2px);
+  z-index: 6;
+
+  width: 15px;
+  height: 18px;
+
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 0 2px,
+      var(--surface) 2px calc(100% - 2px),
+      transparent calc(100% - 2px) 100%
+    );
+
+  transform: translateY(-50%);
+  pointer-events: none;
+
+    transition: top 140ms ease;
+}
+  .sidebar-index-notch::before,
+  .sidebar-index-notch::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+
+  width: 12px;
+  height: 1px;
+  background: var(--border);
+  transform-origin: left center;
+}
+.sidebar-index-notch::before {
+  top: 2px;
+  transform: rotate(36deg);
+}
+.sidebar-index-notch::after {
+  bottom: 2px;
+  transform: rotate(-36deg);
+}
+
+.viewport.catalog-active .sidebar .nav-btn {
+  position: relative;
+  transition:
+    transform 140ms ease,
+    color 140ms ease;
+}
+
+.viewport.catalog-active .sidebar .nav-btn:hover,
+.viewport.catalog-active .sidebar .nav-btn:focus-visible {
+  transform: translateX(6px);
+  z-index: 3;
 }
 
 /* (.sidebar-footer removed August 2026 — it held Settings and Read-aloud until
@@ -223,11 +321,34 @@ button, input, textarea, select {
    #view-host. Home and Project are unaffected: they render into #view-host and
    get exactly the inset they had before. */
 .viewport {
-  flex: 1; min-height: 0;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 0;
 }
-#view-host { padding: var(--space-5) var(--space-6); }
+#view-host {
+  padding: var(--space-5) var(--space-6);
+}
+
+.viewport.catalog-active {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.viewport.catalog-active .catalog-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--index-rail-w) minmax(0, 1fr);
+}
+.viewport:not(.catalog-active) .catalog-layout { display: block; }
+.viewport.catalog-active #view-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5) var(--space-6);
+}
+.viewport.catalog-active .sidebar { padding-top: var(--space-4); }
 
 /* =========================================================================
    THE CATALOG BAND  (August 2026)
@@ -245,24 +366,52 @@ button, input, textarea, select {
    Sticky, not fixed: it belongs to the page and scrolls with it, but never
    leaves — re-sorting a list you've scrolled halfway down shouldn't mean
    scrolling back to the top first. */
-.catalog-band {
-  position: sticky; top: 0; z-index: 5;
+.viewport.catalog-active .catalog-band {
+  position: relative;
+  flex: none;
   background: var(--mount);
   color: var(--ink-on-mount);
-  padding: var(--space-4) var(--space-6);
-  display: flex; flex-direction: column; gap: var(--space-3);
+  padding:
+    var(--space-3)
+    var(--space-6);
+
+  min-height: 66px;
+
+  display: flex;
+  align-items: center;
 }
 
-.band-top { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.band-title {
+.viewport.catalog-active .band-controls {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1fr)
+    max-content
+    max-content
+    max-content;
+  align-items: end;
+  column-gap: var(--space-6);
+
+  width: 100%;
+  min-width: 0;
+}
+
+.viewport.catalog-active .band-count {
+  align-self: end;
+
+  margin: 0;
+  padding-bottom: var(--space-2);
+
+  color: var(--ink-on-mount-muted);
+
   font-family: var(--font-mono);
   font-size: var(--text-label);
-  letter-spacing: 0.22em;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-weight: 600;
-  color: var(--ink-on-mount);
+
+  white-space: nowrap;
 }
-.band-count { margin-left: auto; color: var(--ink-on-mount-muted); font-size: var(--text-label); }
 
 /* "You are looking at a slice." Quiet, but impossible to miss once it's there,
    because a filter you forgot about looks exactly like missing data. */
@@ -287,44 +436,108 @@ button, input, textarea, select {
 }
 .band-filter-clear:hover { color: var(--ember-on-mount); }
 
-.band-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.band-controls .search-wrap { flex: 1 1 260px; max-width: 420px; }
-
-/* Controls sitting ON the mount. They'd otherwise be paper-coloured boxes on a
-   near-black band, which reads as holes punched in the strip. Tokens only —
-   --mount-soft is the raised variant of the ground, exactly like
-   --surface-raised is on paper. */
-.catalog-band .search-wrap input,
-.band-sel {
-  min-height: var(--control-min);
+/* Controls sitting on the mount use one quiet baseline rather than filled
+   fields. */
+.viewport.catalog-active #band-search {
   width: 100%;
-  padding: var(--space-2) var(--space-3);
-  background: var(--mount-soft);
-  border: 1px solid var(--mount-soft);
-  border-radius: var(--radius);
+  max-width: none;
+
+  margin: 0;
+  padding:
+    0
+    0
+    var(--space-2);
+
+  border: 0;
+  border-bottom: 1px solid var(--ink-on-mount-muted);
+  border-radius: 0;
+
+  background: transparent;
+
   color: var(--ink-on-mount);
+
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.08em;
+
+  outline: none;
+
+  transition:
+    border-color 140ms ease;
 }
-.catalog-band .search-wrap input { font-family: var(--font-body); }
-.band-sel {
-  width: auto;
+
+.viewport.catalog-active #band-search::placeholder {
+  color: var(--ink-on-mount-muted);
+  opacity: 1;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+}
+
+.viewport.catalog-active #band-search:focus {
+  border-bottom-color: var(--ink-on-mount);
+}
+
+.viewport.catalog-active #group-sel,
+.viewport.catalog-active #sort-sel {
+  min-width: 0;
+
+  margin: 0;
+
+  padding:
+    0
+    var(--space-5)
+    var(--space-2)
+    0;
+
+  border: 0;
+  border-bottom: 1px solid var(--ink-on-mount-muted);
+  border-radius: 0;
+
+  background-color: transparent;
+
+  color: var(--ink-on-mount);
+
   font-family: var(--font-mono);
   font-size: var(--text-label);
-  letter-spacing: 0.1em;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
+
   cursor: pointer;
-}
-.catalog-band .search-wrap input::placeholder { color: var(--ink-on-mount-muted); }
-.catalog-band .search-wrap input:hover,
-.band-sel:hover { border-color: var(--ink-on-mount-muted); }
-.catalog-band .search-wrap input:focus-visible,
-.band-sel:focus-visible {
-  border-color: var(--ink-on-mount);
-  box-shadow: 0 0 0 2px var(--mount), 0 0 0 4px var(--ember-on-mount);
   outline: none;
+
+  transition:
+    border-color 140ms ease;
 }
+
+.viewport.catalog-active #group-sel:hover,
+.viewport.catalog-active #group-sel:focus,
+.viewport.catalog-active #sort-sel:hover,
+.viewport.catalog-active #sort-sel:focus {
+  border-bottom-color: var(--ink-on-mount);
+}
+
 /* The dropdown list is drawn by the OS on the page's own surface, not on the
    mount — name both so a dark theme doesn't hand back an unreadable menu. */
 .band-sel option { background: var(--surface-raised); color: var(--text-primary); }
+
+@media (max-width: 900px) {
+  .viewport.catalog-active .band-controls {
+    grid-template-columns:
+      minmax(180px, 1fr)
+      max-content
+      max-content;
+  }
+
+  .viewport.catalog-active .band-count {
+    display: none;
+  }
+}
 
 /* The rail toggle. A band control, not a topbar button: quiet, outlined in the
    ink it sits on, and it never appears on a view without a rail. */
@@ -438,24 +651,91 @@ button, input, textarea, select {
 .chip.tag::before { content: "#"; }
 
 /* ---------- Groups → numbered plates ---------- */
-.group { margin-bottom: var(--space-6); }
+.group {
+  margin: 0 0 var(--space-5);
+}
+
+.group:last-child {
+  margin-bottom: 0;
+}
+
 .group-head {
-  display: flex; align-items: center; gap: var(--space-3);
+  display: grid;
+  grid-template-columns:
+    max-content
+    minmax(var(--space-6), 1fr)
+    max-content;
+  align-items: center;
+  gap: var(--space-3);
+
+  min-height: var(--control-min);
+
+  margin: 0;
+  padding:
+    var(--space-3)
+    0
+    var(--space-2);
+
+  border: 0;
+  background: transparent;
+
+  cursor: pointer;
+}
+
+.group-title {
+  grid-column: 1;
+  grid-row: 1;
+
   font-family: var(--font-mono);
   font-size: var(--text-label);
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
   font-weight: 600;
-  margin-bottom: var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-strong);
-  cursor: pointer;
-  min-height: var(--control-min);
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+
+  transition:
+    transform 140ms ease,
+    color var(--transition);
 }
-.group-head .caret { transition: transform var(--transition); color: var(--ember); }
-.group-head.collapsed .caret { transform: rotate(-90deg); }
-.group-head .group-count { margin-left: auto; color: var(--text-faint); letter-spacing: 0.08em; }
+
+.group-rule {
+  grid-column: 2;
+  grid-row: 1;
+
+  width: 100%;
+  height: 1px;
+
+  background: var(--border);
+}
+
+.group-count {
+  grid-column: 3;
+  grid-row: 1;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.06em;
+
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.group-head:hover .group-title,
+.group-head:focus-visible .group-title {
+  transform: translateX(4px);
+}
+
+.group-head:focus-visible {
+  outline: none;
+}
+
+.group-head[aria-expanded="false"] .group-rule {
+  opacity: 0.55;
+}
 
 /* ---------- Specimen entry (was boxed item-row) ---------- */
 .item-row {
@@ -469,6 +749,69 @@ button, input, textarea, select {
 }
 .item-row:hover { background: var(--surface-raised); }
 .item-row:first-child { border-top: 1px solid var(--border); }
+
+.group .item-row {
+  position: relative;
+
+  display: grid;
+
+  padding:
+    var(--space-3)
+    var(--space-2);
+
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+
+  cursor: pointer;
+
+  transition:
+    transform 140ms ease,
+    background var(--transition);
+}
+
+.group .item-row:hover,
+.group .item-row:focus-visible {
+  transform: translateX(4px);
+  background: color-mix(
+    in srgb,
+    var(--surface-raised) 45%,
+    transparent
+  );
+}
+
+.group .item-row:focus-visible {
+  outline: none;
+}
+
+.group .item-row .item-title {
+  margin:
+    var(--space-1)
+    0
+    0;
+
+  font-size: var(--text-lg);
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.group .item-row .item-meta {
+  margin: 0;
+}
+
+.group .item-row .item-body-preview {
+  margin:
+    var(--space-2)
+    0
+    0;
+
+  line-height: 1.35;
+}
+
+.group .item-row .item-foot {
+  margin-top: var(--space-2);
+}
 
 .item-no {
   font-family: var(--font-mono);
@@ -502,29 +845,140 @@ button, input, textarea, select {
 /* ---------- Board (masonry) view ---------- */
 .board {
   column-width: var(--board-col-w);
-  column-gap: var(--space-5);
+  column-gap: var(--space-4);
+}
+.board-group {
+  margin: 0 0 var(--space-5);
+}
+
+.board-group:last-child {
+  margin-bottom: 0;
+}
+
+.board-group-head {
+  display: grid;
+  grid-template-columns:
+    max-content
+    minmax(var(--space-6), 1fr)
+    max-content;
+  align-items: center;
+  gap: var(--space-3);
+
+  margin: 0 0 var(--space-4);
+  padding: 0;
+
+  border: 0;
+}
+
+.board-group-head::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 1;
+
+  width: 100%;
+  height: 1px;
+
+  background: var(--border);
+}
+
+.board-group-title {
+  grid-column: 1;
+  grid-row: 1;
+
+  min-width: 0;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+}
+
+.board-group-count {
+  grid-column: 3;
+  grid-row: 1;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.06em;
+
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 .board .card {
-  break-inside: avoid;
-  margin-bottom: var(--space-5);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-4);
-  cursor: pointer;
-}
-.board .card:hover { border-color: var(--border-strong); }
-.board .card .item-title { font-size: var(--text-lg); }
+  position: relative;
 
-.card-head {
-  display: flex; align-items: baseline; justify-content: space-between;
+  break-inside: avoid;
+  margin-bottom: var(--space-4);
+
+  padding:
+    var(--space-3)
+    var(--space-4)
+    var(--space-4);
+
+  background: var(--surface-raised);
+
+  border: 0;
+  border-radius: 0;
+
+  box-shadow:
+    inset 0 1px 0 var(--border),
+    inset 0 -1px 0 var(--border);
+
+  cursor: pointer;
+
+  transition:
+    transform 140ms ease,
+    background var(--transition);
+}
+.board .card:hover {
+  transform: translateY(-2px);
+  background: var(--surface);
+}
+.board .card:focus-visible {
+  transform: translateY(-2px);
+  border-radius: 0;
+}
+
+.board .card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: var(--space-3);
+
+  min-width: 0;
+
   padding-bottom: var(--space-2);
   margin-bottom: var(--space-3);
+
   border-bottom: 1px solid var(--border);
 }
-.card .item-title { margin: 0 0 var(--space-1); }
-.card .item-meta { margin-top: var(--space-2); }
+.board .card .item-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 400;
+  line-height: 1.15;
+}
+.board .card .item-body-preview {
+  margin: 0 0 var(--space-2);
+  line-height: 1.35;
+}
+.board .card .item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+.board .card .item-foot {
+  margin-top: var(--space-3);
+  gap: var(--space-2);
+}
 
 /* ---------- Kanban view ---------- */
 .kanban {
@@ -1539,9 +1993,8 @@ button, input, textarea, select {
 
 /* ---------- Responsive: phone / tablet ---------- */
 @media (max-width: 820px) {
-  #app, #app.with-sidebar { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .viewport.catalog-active .catalog-layout { grid-template-columns: 1fr; }
   .sidebar {
-    grid-row: auto;
     flex-direction: row; flex-wrap: nowrap; align-items: center;
     border-right: none; border-bottom: 1px solid var(--border-strong);
     overflow-x: auto;
@@ -1549,22 +2002,14 @@ button, input, textarea, select {
   }
   .sidebar-section { padding: var(--space-1) var(--space-2); }
   .sidebar-section h2 { display: none; }
-  .sidebar-section { display: flex; align-items: center; gap: var(--space-1); }
-  .nav-btn { width: auto; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) var(--space-2); }
+  .sidebar-section { display: block; }
+  .nav-btn { width: 100%; white-space: nowrap; min-height: var(--control-min); padding: var(--space-1) 0; }
   /* the panel is a horizontal strip here, so Group sizes to its own text */
-  .nav-btn[aria-current="true"] { box-shadow: inset 0 -2px 0 var(--ember); padding-left: var(--space-2); }
+  .nav-btn[aria-current="true"] { padding-left: 0; }
   .brand { padding: var(--space-2) var(--space-3); }
   #view-host { padding: var(--space-4); }
   .topbar { padding: var(--space-3) var(--space-4); }
   .topbar-spacer { display: none; }
-  /* search used to be pinned to 160px here, which on a phone is about
-     four characters of your own query. It now takes the row it's in. */
-  .band-controls .search-wrap { flex: 1 1 100%; max-width: none; }
-  .search-wrap input { width: 100%; max-width: none; }
-  /* The band stacks rather than squeezing: title row, then controls, and the
-     selects sit side by side on their own line. */
-  .catalog-band { padding: var(--space-3) var(--space-4); }
-  .band-sel { flex: 1 1 auto; }
   .kanban-col { flex-basis: 78vw; }
   .finder-col { flex-basis: 70vw; }
   .item-row { grid-template-columns: auto 1fr; gap: var(--space-3); padding: var(--space-4) 0; }
@@ -2290,8 +2735,8 @@ button, input, textarea, select {
      number, and the pairs are marked on both sides. */
   --desk-clip-mark:    52px;     /* must match MARK_SIZE in js/desk.js */
   --desk-clip-icon:    22px;     /* the same drawing, at banner-button size */
-  --desk-note-w:       220px;    /* must match NOTE_W */
-  --desk-note-min-h:   118px;
+  --desk-note-w:       190px;    /* must match NOTE_W */
+  --desk-note-min-h:   130px;
   /* How much of the project's own colour goes into the post-it's paper.
      VERIFIED against js/theme.js's contrast(), not eyeballed: at 18% the worst
      possible project colour still leaves --text-primary at 7.66:1 on the paper
@@ -2650,7 +3095,7 @@ button, input, textarea, select {
   max-width: var(--desk-card-open-w);
   padding: var(--space-4);
   border-color: var(--text-faint);
-  box-shadow: var(--shadow-2);
+  box-shadow: none;
   cursor: default;
   /* The z-index is set inline from js/desk.js's Z_EXPANDED — it has to beat
      the members of a clip it may be inside, and those carry their clip's own
@@ -2695,11 +3140,11 @@ button, input, textarea, select {
 .dcard.is-expanded .dcard-drag {
   user-select: none; -webkit-user-select: none;
   cursor: grab;
-  margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-sunken);
-  border-radius: var(--radius) var(--radius) 0 0;
+  margin-bottom: var(--space-2);
+  padding: 0 0 var(--space-2);
+  border-bottom: 0;
+  background: transparent;
+  border-radius: 0;
 }
 .dcard.is-expanded.is-dragging .dcard-drag { cursor: grabbing; }
 /* THE CURSOR HAS TO SAY WHICH SURFACE YOU ARE ON. The header is a handle, so
@@ -2708,9 +3153,28 @@ button, input, textarea, select {
    of the desk where you can. */
 .dcard.is-expanded .dcard-full,
 .dcard.is-expanded .dcard-full p { cursor: text; }
-.dcard.is-expanded .dcard-acts,
+.dcard.is-expanded .dcard-acts {
+  gap: var(--space-4);
+  flex-wrap: nowrap;
+}
 .dcard.is-expanded .dcard-foot { cursor: default; }
-.dcard.is-expanded .dcard-acts .btn { cursor: pointer; }
+.dcard.is-expanded .dcard-acts .btn {
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.dcard.is-expanded .dcard-acts .btn:hover,
+.dcard.is-expanded .dcard-acts .btn:focus-visible {
+  background: transparent;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .dcard-grip { color: var(--text-faint); letter-spacing: 0.1em; }
 .dcard-link { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -2842,6 +3306,12 @@ button, input, textarea, select {
 .dclip-mark:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius); }
 /* Open, the clip is parked above its grid rather than gripping anything. */
 .dclip-mark.is-open { opacity: 0.85; }
+.dclip-mark:not(.is-open) {
+  width: 42px;
+  height: 42px;
+  margin-top: 8px;
+  margin-right: 8px;
+}
 
 /* ---------- a post-it ---------- */
 .dnote {
@@ -2879,8 +3349,9 @@ button, input, textarea, select {
   padding: var(--space-3);
   resize: none;
   font-family: var(--font-body);
-  font-size: var(--text-base);          /* the 18px floor, like everything else */
+  font-size: 40px;
   line-height: 1.35;
+  overflow: hidden;
   /* --text-primary is the verified pair for this paper. --text-faint is NOT
      (3.6:1 worst case) and must not be used here. */
   color: var(--text-primary);
@@ -3671,3 +4142,693 @@ button, input, textarea, select {
   .editor-more-hint { display: none; }
   .editor-more-body { padding-top: var(--space-2); }
 }
+
+/* ---------- entry editor: specimen sheet ---------- */
+.editor-sheet {
+  width: min(760px, 100%);
+
+  margin-top: 3vh;
+
+  padding:
+    0
+    var(--space-5)
+    var(--space-5);
+
+  background: var(--surface-raised);
+
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+
+  box-shadow:
+    0 18px 50px
+    color-mix(in srgb, var(--mount) 18%, transparent);
+}
+
+.modal-scrim:has(.editor-sheet) {
+  background:
+    color-mix(
+      in srgb,
+      var(--mount) 34%,
+      transparent
+    );
+
+  padding: var(--space-4);
+}
+
+.editor-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+
+  min-height: 64px;
+
+  margin:
+    0
+    calc(0px - var(--space-5))
+    var(--space-4);
+
+  padding:
+    0
+    var(--space-5);
+
+  background: var(--surface-raised);
+
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-head h2 {
+  flex: 1;
+
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+}
+
+.editor-head .btn-primary {
+  min-height: 36px;
+
+  padding:
+    var(--space-2)
+    var(--space-3);
+
+  border-radius: 0;
+}
+
+.editor-head .icon-btn {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+
+  padding: 0;
+
+  border: 0;
+  border-radius: 0;
+
+  background: transparent;
+  box-shadow: none;
+}
+
+.editor-head .icon-btn:hover,
+.editor-head .icon-btn:focus-visible {
+  background: var(--surface-sunken);
+}
+
+.editor-title-field input {
+  width: 100%;
+
+  min-height: 52px;
+
+  padding:
+    var(--space-1)
+    0
+    var(--space-2);
+
+  background: transparent;
+
+  border: 0;
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+
+  font-family: var(--font-body);
+  font-size: clamp(
+    var(--text-xl),
+    2.2vw,
+    var(--text-2xl)
+  );
+  font-weight: 400;
+  line-height: 1.05;
+
+  outline: none;
+}
+
+.editor-title-field input:focus {
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-sheet > .field > label,
+.editor-sheet .row > .field > label {
+  margin-bottom: var(--space-2);
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+
+  color: var(--text-faint);
+}
+
+.editor-sheet .row {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: var(--space-5);
+
+  padding:
+    var(--space-1)
+    0
+    var(--space-4);
+
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-sheet .row > .field {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.editor-sheet .row .field select,
+.editor-sheet .row .field input[type="date"] {
+  width: 100%;
+
+  min-height: 42px;
+
+  padding:
+    var(--space-2)
+    var(--space-5)
+    var(--space-2)
+    0;
+
+  background: transparent;
+
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+
+  outline: none;
+}
+
+.editor-sheet .row .field select:hover,
+.editor-sheet .row .field select:focus,
+.editor-sheet .row .field input[type="date"]:hover,
+.editor-sheet .row .field input[type="date"]:focus {
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-sheet .field textarea {
+  width: 100%;
+  min-height: 150px;
+
+  padding:
+    var(--space-3)
+    0;
+
+  background: transparent;
+
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+
+  resize: vertical;
+  outline: none;
+}
+
+.editor-sheet .field textarea:focus {
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-sheet .hint {
+  margin-top: var(--space-2);
+
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.3;
+
+  color: var(--text-faint);
+}
+
+.editor-sheet .btn-danger {
+  min-height: var(--control-min);
+
+  padding:
+    var(--space-2)
+    0;
+
+  border: 0;
+  border-radius: 0;
+
+  background: transparent;
+
+  color: var(--ember);
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+
+  box-shadow: none;
+}
+
+.editor-sheet .btn-danger:hover,
+.editor-sheet .btn-danger:focus-visible {
+  background: transparent;
+  text-decoration: line-through;
+}
+
+@media (max-width: 680px) {
+  .editor-sheet .row {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  .editor-sheet {
+    margin-top: 0;
+  }
+}
+
+/* ---------- entry editor: expanded detail sections ---------- */
+.editor-details {
+  padding-top: var(--space-1);
+}
+
+.editor-detail-section {
+  margin: 0;
+  padding:
+    var(--space-4)
+    0;
+
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-detail-section:last-child {
+  border-bottom: 0;
+}
+
+.editor-detail-section > label {
+  margin: 0 0 var(--space-3);
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+
+  color: var(--text-faint);
+}
+
+.editor-detail-section select {
+  width: 100%;
+  min-height: 42px;
+
+  padding:
+    var(--space-2)
+    var(--space-5)
+    var(--space-2)
+    0;
+
+  background: transparent;
+
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+
+  outline: none;
+}
+
+.editor-detail-section select:hover,
+.editor-detail-section select:focus {
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-details .chip-input input {
+  min-height: 40px;
+
+  padding:
+    var(--space-2)
+    0;
+
+  background: transparent;
+
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+
+  outline: none;
+}
+
+.editor-details .chip-input input:focus {
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-details .chip {
+  border-radius: 0;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+}
+
+.editor-details .btn:not(.btn-primary):not(.btn-danger),
+.editor-details .sketch-tool {
+  min-height: var(--control-min);
+
+  padding:
+    var(--space-2)
+    0;
+
+  border: 0;
+  border-radius: 0;
+
+  background: transparent;
+
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+
+  box-shadow: none;
+}
+
+.editor-details .btn:not(.btn-primary):not(.btn-danger):hover,
+.editor-details .btn:not(.btn-primary):not(.btn-danger):focus-visible {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.editor-detail-section .hint {
+  max-width: 60ch;
+
+  margin-top: var(--space-2);
+
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+
+  color: var(--text-faint);
+}
+
+.editor-connections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.editor-details .sketch-wrap {
+  gap: var(--space-3);
+}
+
+.editor-details .sketch-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+
+  gap: var(--space-3);
+
+  padding-bottom: var(--space-2);
+}
+
+.editor-details .sketch-tool {
+  border-bottom: 1px solid transparent;
+}
+
+.editor-details .sketch-tool:hover,
+.editor-details .sketch-tool:focus-visible {
+  text-decoration: none;
+  border-bottom-color: var(--text-primary);
+}
+
+.editor-details .sketch-tool[aria-pressed="true"] {
+  background: var(--mount);
+  color: var(--ink-on-mount);
+
+  padding:
+    var(--space-2)
+    var(--space-3);
+
+  border: 0;
+}
+
+.editor-sheet .sketch-paper {
+  border-radius: 0;
+  border: 1px solid var(--border);
+}
+
+.editor-sheet label,
+.editor-detail-section > label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+
+  color: var(--text-faint);
+}
+
+.editor-sheet input::placeholder,
+.editor-sheet textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.editor-sheet .row .field select,
+.editor-sheet .row .field input[type="date"],
+.editor-detail-section select,
+.editor-details .chip-input input {
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+}
+
+.editor-details .sketch-mode-label {
+  text-transform: uppercase;
+}
+
+/* Expanded details become one working sheet: the upper fields remain full
+   width while the organizational fields sit beside the larger sketch area. */
+.editor-sheet:has(.editor-details[open]) {
+  width: min(1120px, 100%);
+}
+
+.editor-details .editor-more-body {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 40fr)
+    minmax(0, 60fr);
+  column-gap: var(--space-6);
+  align-items: start;
+}
+
+.editor-details .editor-detail-section {
+  grid-column: 1;
+}
+
+.editor-details .editor-detail-section:last-child {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+}
+
+@media (max-width: 680px) {
+  .editor-details .editor-more-body {
+    display: block;
+  }
+
+  .editor-details .editor-detail-section:last-child {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+/* ---------- entry editor: safe expanded compactness ---------- */
+.editor-sheet:has(.editor-details[open]) .editor-head {
+  min-height: 56px;
+  margin-bottom: var(--space-3);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-title-field {
+  margin-bottom: var(--space-2);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-title-field input {
+  min-height: 42px;
+  padding-top: 0;
+  padding-bottom: var(--space-1);
+}
+
+.editor-sheet:has(.editor-details[open]) .row {
+  gap: var(--space-3);
+  padding:
+    var(--space-1)
+    0
+    var(--space-2);
+
+  border-top: 0;
+}
+
+.editor-sheet:has(.editor-details[open]) .field:has(textarea) {
+  margin-bottom: var(--space-2);
+}
+
+.editor-sheet:has(.editor-details[open]) .field textarea {
+  min-height: 84px;
+  height: 84px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-more-summary {
+  min-height: 40px;
+  padding-block: var(--space-1);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-detail-section {
+  padding:
+    var(--space-2)
+    0
+    var(--space-3);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-detail-section > label {
+  margin-bottom: var(--space-2);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-details .sketch-wrap {
+  gap: var(--space-2);
+}
+
+.editor-sheet:has(.editor-details[open]) .editor-details .sketch-toolbar {
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+}
+
+.editor-sheet:has(.editor-details[open]) .sketch-paper {
+  height: clamp(190px, 24vh, 260px);
+}
+
+/* Expanded editor: the entry stays on the left while filing metadata lives
+   in a compact nested grid on the right. */
+@media (min-width: 901px) {
+  .modal.editor-sheet.editor-expanded {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 3fr)
+      minmax(320px, 2fr);
+    gap: var(--space-6);
+  }
+
+  .modal.editor-sheet.editor-expanded > .editor-head,
+  .modal.editor-sheet.editor-expanded > .editor-details {
+    grid-column: 1 / -1;
+  }
+
+  .modal.editor-sheet.editor-expanded > .editor-title-field,
+  .modal.editor-sheet.editor-expanded > .editor-notes,
+  .modal.editor-sheet.editor-expanded > .editor-sketch {
+    grid-column: 1;
+  }
+
+  .modal.editor-sheet.editor-expanded > .editor-colour,
+  .modal.editor-sheet.editor-expanded > .editor-type-status-row,
+  .modal.editor-sheet.editor-expanded > .editor-date-row {
+    grid-column: 2;
+  }
+
+  .modal.editor-sheet.editor-expanded > .editor-details {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 3fr)
+      minmax(320px, 2fr);
+    column-gap: var(--space-6);
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-details > .editor-more-summary {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-details > .editor-more-body {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns:
+      minmax(0, 3fr)
+      minmax(320px, 2fr);
+    column-gap: var(--space-6);
+    align-items: start;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-details > .editor-more-body > .editor-detail-metadata {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "projects tags"
+      "files connections";
+    gap: var(--space-3) var(--space-4);
+    align-items: start;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-details > .editor-more-body > .editor-sketch {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-detail-metadata .editor-projects {
+    grid-area: projects;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-detail-metadata .editor-tags {
+    grid-area: tags;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-detail-metadata .editor-files {
+    grid-area: files;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-detail-metadata .editor-connections-field {
+    grid-area: connections;
+  }
+
+  .modal.editor-sheet.editor-expanded .editor-sketch .sketch-paper {
+    height: clamp(200px, 26vh, 280px);
+  }
+
+  .modal.editor-sheet.editor-expanded > .modal-actions .btn-danger {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .modal.editor-sheet.editor-expanded .editor-details > .editor-more-body > .editor-detail-metadata {
+    display: block;
+  }
+}
+
+

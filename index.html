@@ -39,7 +39,15 @@
   <!-- Offline-first: register the service worker so the app shell works with
        no network (data is local anyway). (§13.2 #6) -->
   <script>
-    if ("serviceWorker" in navigator) {
+    const isLocalPreview = ["localhost", "127.0.0.1"].includes(location.hostname);
+
+if ("serviceWorker" in navigator && isLocalPreview) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => registration.unregister());
+  });
+}
+
+if ("serviceWorker" in navigator && !isLocalPreview) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").catch(() => {
           /* not fatal — app still works online; see console */

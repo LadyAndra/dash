@@ -111,10 +111,7 @@
   letter-spacing: 0.08em;
 }
 
-/* NEW — the one small physical object in the topbar. The button itself is
-   still invisible and easy to hit; the visible object is a compact notched
-   ticket carrying a plus, borrowing the directional-ticket grammar already
-   used by the Project specimen without copying its large ENTER treatment. */
+/* NEW — a standalone plus with the original button-sized hit target. */
 .topbar [data-dash-new="1"] {
   min-width: var(--tap-min);
   min-height: var(--tap-min);
@@ -122,6 +119,12 @@
   border: 0;
   border-radius: 0;
   background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
   box-shadow: none;
 }
 
@@ -129,37 +132,6 @@
 .topbar [data-dash-new="1"].btn-primary:hover {
   border: 0;
   background: transparent;
-}
-
-.dash-new-ticket {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--space-5) + var(--space-4));
-  height: calc(var(--space-4) + var(--space-2));
-  padding-right: var(--space-1);
-  background: var(--mount);
-  color: var(--ink-on-mount);
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  font-weight: 500;
-  line-height: 1;
-  clip-path: polygon(
-    0 0,
-    72% 0,
-    100% 42%,
-    100% 58%,
-    72% 100%,
-    0 100%,
-    0 63%,
-    12% 50%,
-    0 37%
-  );
-  transition: transform var(--transition);
-}
-
-.topbar [data-dash-new="1"]:hover .dash-new-ticket {
-  transform: translateX(var(--space-1));
 }
 
 /* Next Up items are already separated by spacing and typography. Removing the
@@ -552,7 +524,7 @@
    The colored project band now follows the same control alphabet as the rest
    of Dash: create/initiate is a ticket; secondary utilities are plain mono
    actions. Mechanics and handlers are untouched. */
-.desk-page .pb-acts > .btn {
+.desk-page .pb-acts > .btn:not(.banner-new-entry) {
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -561,7 +533,7 @@
   padding-inline: var(--space-2);
 }
 
-.desk-page .pb-acts > .btn:hover {
+.desk-page .pb-acts > .btn:not(.banner-new-entry):hover {
   border: 0;
   background: color-mix(in srgb, var(--ground-ink, var(--text-on-accent)) 12%, transparent);
 }
@@ -590,10 +562,29 @@
   color: var(--ground-bg, var(--surface));
 }
 
-.desk-page .pb-acts > .btn:focus-visible {
+.desk-page .pb-acts > .btn:not(.banner-new-entry):focus-visible {
   border-radius: 0;
 }
 
+.desk-page .pb-acts {
+  align-items: center;
+}
+
+.desk-page .pb-acts > .btn.btn-primary,
+.desk-page .pb-acts > .banner-clip,
+.desk-page .pb-acts > .banner-image,
+.desk-page .pb-acts > .banner-glance {
+  margin-left: var(--space-2);
+}
+
+.desk-page .pb-acts > .btn.btn-primary {
+  margin-left: 0;
+  margin-right: var(--space-2);
+}
+
+.desk-page .pb-acts > .banner-clip + .banner-image {
+  margin-left: 0;
+}
 
 /* PROJECT WORKSPACE — QUIET FACT LINE
    ------------------------------------------------------------
@@ -782,4 +773,199 @@
 .desk-page .desk-drawer .desk-shelf-head + .hint {
   margin-bottom: var(--space-3);
   color: var(--text-muted);
+}
+
+/* PROJECT WORKSPACE — RIGHT-CLICK COMMAND SLIP
+   ------------------------------------------------------------
+   Shared context actions such as UNCLIP and DELETE should feel like a small
+   desk command, not a generic floating application menu. Behavior is unchanged. */
+
+.desk-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.desk-menu-item:hover {
+  background: var(--surface-sunken);
+}
+
+.desk-menu-item:focus-visible {
+  outline: none;
+  box-shadow: none;
+  background: var(--surface-sunken);
+}
+
+/* PROJECT WORKSPACE — SCRIBBLE DELETE
+   The authored scribble itself is the destructive control.
+   The invisible 44px button remains for a reliable hit target. */
+
+.desk-menu.desk-menu-delete-only {
+  --desk-menu-w: var(--tap-min);
+  min-width: var(--tap-min);
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desk-menu-delete {
+  width: var(--tap-min);
+  min-width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desk-menu-delete::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 38px;
+  background: currentColor;
+
+  -webkit-mask: url("../Delete_Scribble.svg") center / contain no-repeat;
+  mask: url("../Delete_Scribble.svg") center / contain no-repeat;
+
+  opacity: 0.82;
+  transition:
+    opacity var(--transition),
+    transform var(--transition);
+}
+
+.desk-menu-delete:hover,
+.desk-menu-delete:focus-visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.desk-menu-delete:hover::before,
+.desk-menu-delete:focus-visible::before {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+/* PROJECT WORKSPACE — TEXT COMMAND SLIPS, FINAL
+   Keep ordinary desk commands compact and paper-like.
+   Destructive image delete uses its separate floating scribble treatment. */
+
+.desk-menu:not(.desk-menu-delete-only) {
+  --desk-menu-w: auto;
+  width: max-content;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--surface-raised);
+  box-shadow: none;
+}
+
+.desk-menu:not(.desk-menu-delete-only) .desk-menu-item {
+  width: auto;
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  box-shadow: none;
+}
+
+.desk-menu:not(.desk-menu-delete-only) .desk-menu-item:hover,
+.desk-menu:not(.desk-menu-delete-only) .desk-menu-item:focus-visible {
+  background: var(--surface-sunken);
+  outline: none;
+  box-shadow: none;
+}
+
+/* PROJECT WORKSPACE — POST-IT HANDLE
+   The top strip remains the full drag target, but stops looking like app chrome. */
+
+.dnote {
+  border-radius: 0;
+}
+
+.dnote-drag {
+  position: relative;
+  background: transparent;
+  border-bottom: 0;
+  border-radius: 0;
+}
+
+.dnote-drag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 28px;
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 28%, transparent);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.dnote:hover .dnote-drag::after,
+.dnote:focus-within .dnote-drag::after,
+.dnote.is-dragging .dnote-drag::after {
+  opacity: 1;
+}
+
+.dnote:focus-within .dnote-drag {
+  background: transparent;
+}
+
+/* PROJECT WORKSPACE — POST-IT COPY
+   Read like a note placed on the desk, not a tiny app text box. */
+
+.dnote {  height: 130px;  min-height: 130px;}.dnote-text {  min-height: 0;  text-align: center;  padding: var(--space-3);}
+
+.dnote-text::placeholder {
+  text-align: center;
+}
+
+/* PROJECT — LOCAL NEW ENTRY
+   Paper tag on the project's own colour ground. */
+.pb .banner-new-entry {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-min);
+  min-width: var(--control-min);
+  height: var(--control-min);
+  min-height: var(--control-min);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ground-ink, var(--text-on-accent));
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.pb .banner-new-entry:hover {
+  background: transparent;
+  color: var(--ground-ink, var(--text-on-accent));
+  opacity: 0.86;
+}
+.pb .banner-new-entry:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 3px;
 }
