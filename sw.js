@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v99";
+const CACHE_VERSION = "dash-v100";
 const SHELL = [
   "./",
   "./index.html",
@@ -42,14 +42,6 @@ const SHELL = [
   "./js/ui/toast.js",
   "./js/ui/colorfield.js",
   "./js/ui/readaloud.js",
-  // The corner-cluster widgets are SHELVED (August 2026) — app.js no longer
-  // imports them. They stay cached on purpose: nothing costs anything, and
-  // bringing the pet back is then two uncommented lines in app.js with no
-  // risk of the classic "forgot to add it to SHELL" broken deploy.
-  "./js/widgets/motion.js",
-  "./js/widgets/cluster.js",
-  "./js/widgets/shapes.js",
-  "./js/widgets/pet.js",
   "./js/views/shared.js",
   "./js/views/home.js",
   "./js/views/list.js",
