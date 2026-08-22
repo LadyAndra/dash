@@ -298,9 +298,13 @@ function banner(runtime, state, clipMode) {
     el("div", { class: "pb-head" }, [
       name,
       el("div", { class: "pb-acts" }, [
-        el("button", { class: "btn btn-primary", text: "＋ Entry", onclick: () => runtime.actions.onNew() }),
-        el("button", { class: "btn", text: "＋ Existing", onclick: () => runtime.actions.onAdd() }),
-        el("button", { class: "btn", text: "Edit", onclick: () => runtime.actions.onEdit() }),
+        el("button", { class: "btn banner-new-entry", text: "+", title: "New entry in this project", "aria-label": "New entry in this project", onclick: () => runtime.actions.onNew(), }),
+        el("button", {
+          class: "btn dash-utility-settings",
+          "aria-label": "Project settings",
+          title: "Project settings",
+          onclick: () => runtime.actions.onEdit(),
+        }, [el("span", { class: "dash-utility-mark", "aria-hidden": "true", text: "/////" })]),
         el("button", { class: "btn", text: "← All", onclick: () => runtime.actions.onBack() }),
         clipBtn,
         glanceBtn,
@@ -1009,10 +1013,40 @@ function createPostItController(runtime, state, nid) {
     return rec ? (rec.text || "") : "";
   };
 
+  const fitText = () => {
+    const styles = getComputedStyle(ta);
+    const paddingTop = parseFloat(styles.paddingTop) || 0;
+    const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+    const paddingLeft = styles.paddingLeft;
+    const paddingRight = styles.paddingRight;
+
+    ta.style.paddingTop = `${paddingTop}px`;
+    ta.style.paddingBottom = `${paddingBottom}px`;
+    ta.style.paddingLeft = paddingLeft;
+    ta.style.paddingRight = paddingRight;
+
+    for (let fontSize = 40; fontSize >= 16; fontSize -= 1) {
+      ta.style.fontSize = `${fontSize}px`;
+      if (ta.scrollHeight <= ta.clientHeight && ta.scrollWidth <= ta.clientWidth) break;
+    }
+
+    const fieldHeight = ta.clientHeight;
+    const flex = ta.style.flex;
+    ta.style.flex = "none";
+    ta.style.height = "0px";
+    const contentHeight = ta.scrollHeight - paddingTop - paddingBottom;
+    ta.style.height = "";
+    ta.style.flex = flex;
+    const extraHeight = Math.max(0, fieldHeight - contentHeight - paddingTop - paddingBottom);
+    ta.style.paddingTop = `${paddingTop + extraHeight / 2}px`;
+    ta.style.paddingBottom = `${paddingBottom + extraHeight / 2}px`;
+  };
+
   ta.addEventListener("input", () => {
     drafts[nid] = ta.value;
     typed[nid] = true;
     state.noteSel = [ta.selectionStart, ta.selectionEnd];
+    fitText();
   });
 
   const hadWords = () => currentText().trim() !== "" || !!typed[nid];
@@ -1071,6 +1105,8 @@ function createPostItController(runtime, state, nid) {
     if (document.activeElement !== ta || drafts[nid] === undefined) {
       if (ta.value !== nextValue) ta.value = nextValue;
     }
+    if (node.isConnected) fitText();
+    else requestAnimationFrame(fitText);
   }
 
   return { node, textarea: ta, refresh };
@@ -1338,6 +1374,13 @@ function wireDesk(runtime, state, dom) {
 
     if (kind === "pan") {
       deskEl.classList.remove("is-panning");
+      if (!moved && state.clipOpen) {
+        state.clipOpen = null;
+        state.expanded = null;
+        state.lastTapId = null;
+        runtime.ctx.rerender();
+        return;
+      }
       // A DOUBLE-CLICK ON BARE DESK MAKES A POST-IT (§5.6). It reuses the same
       // tap memory the cards use, under a reserved id, so a click on a card
       // and a click on the desk can't be mistaken for one double-click.
@@ -1653,14 +1696,14 @@ function wireDesk(runtime, state, dom) {
     const rec = runtime.noteByNid.get(note.dataset.nid);
     if (!rec) return;
     deskMenu(e, [{
-      label: "Throw this away",
+      label: "Delete",
       run: () => {
         delete state.noteDrafts[rec.nid];
         delete state.noteTyped[rec.nid];
         runtime.store.removeNote(runtime.project.id, rec.nid);
         runtime.ctx.rerender();
       },
-    }]);
+    }], { deleteOnly: true });
   });
 
   // Touching a card brings it to the top (§8.9) — VISUALLY, right now, with no
@@ -1744,7 +1787,7 @@ function wireDesk(runtime, state, dom) {
   const guard = dom.guard;
   const glanceOn = () => {
     if (glance) return;
-    const boxes = [...deskEl.querySelectorAll(".dcard")].map(n => ({
+    const boxes = [...deskEl.querySelectorAll(".dcard, .dnote, .desk-image-object, .dclip-mark")].map(n => ({
       x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight,
     }));
     const f = D.glanceFrame(D.contentBounds(boxes), view.clientWidth, view.clientHeight);
@@ -1940,12 +1983,18 @@ function closeDeskMenu() {
   return true;
 }
 
-function deskMenu(e, entries) {
+function deskMenu(e, entries, options = {}) {
   closeDeskMenu();
-  const box = el("div", { class: "desk-menu", role: "menu" });
+  const deleteOnly = options.deleteOnly === true;
+  const box = el("div", {
+    class: deleteOnly ? "desk-menu desk-menu-delete-only" : "desk-menu",
+    role: "menu",
+  });
   for (const entry of entries) {
     box.appendChild(el("button", {
-      class: "desk-menu-item", role: "menuitem", text: entry.label,
+      class: deleteOnly ? "desk-menu-item desk-menu-delete" : "desk-menu-item",
+      role: "menuitem",
+      ...(deleteOnly ? { "aria-label": entry.label, title: entry.label } : { text: entry.label }),
       onclick: (ev) => { ev.stopPropagation(); closeDeskMenu(); entry.run(); },
     }));
   }

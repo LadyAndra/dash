@@ -96,13 +96,10 @@ function markNewButton() {
   if (button.getAttribute("aria-label") !== "New item") button.setAttribute("aria-label", "New item");
   if (button.title !== "New") button.title = "New";
 
-  if (button.dataset.dashNewContent === "ticket") return;
-  const ticket = document.createElement("span");
-  ticket.className = "dash-new-ticket";
-  ticket.setAttribute("aria-hidden", "true");
-  ticket.textContent = "+";
-  button.replaceChildren(ticket);
-  button.dataset.dashNewContent = "ticket";
+  if (button.dataset.dashNewContent === "plus") return;
+  button.replaceChildren();
+  button.textContent = "+";
+  button.dataset.dashNewContent = "plus";
 }
 
 function applyTopbarCleanup() {

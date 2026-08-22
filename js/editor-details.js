@@ -43,12 +43,16 @@ function enhanceEditor(modal) {
   const isNew = heading?.textContent?.trim().toLowerCase() === "new item";
 
   const details = document.createElement("details");
-  details.className = "editor-more";
+  details.className = "editor-more editor-details";
   // Existing items open by default. This is intentionally conservative: the
   // editor cannot inspect store data from this presentation-only module, so
   // opening edits guarantees that existing projects/tags/files/links/sketches
   // are never made to look missing. New capture gets the space-saving default.
   details.open = !isNew;
+  modal.classList.toggle("editor-expanded", details.open);
+  details.addEventListener("toggle", () => {
+    modal.classList.toggle("editor-expanded", details.open);
+  });
 
   const summary = document.createElement("summary");
   summary.className = "editor-more-summary";
@@ -66,9 +70,17 @@ function enhanceEditor(modal) {
   const body = document.createElement("div");
   body.className = "editor-more-body";
 
+  const metadata = document.createElement("div");
+  metadata.className = "editor-detail-metadata";
+  const sketch = ordered.find((field) => directFieldLabel(field) === "Sketch");
+
   ordered[0].before(details);
   details.append(summary, body);
-  for (const field of ordered) body.appendChild(field);
+  body.append(metadata);
+  for (const field of ordered) {
+    if (field !== sketch) metadata.appendChild(field);
+  }
+  if (sketch) body.append(sketch);
 }
 
 function scan(root = document) {

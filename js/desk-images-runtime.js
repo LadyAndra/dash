@@ -522,13 +522,15 @@ function wireImageNode(node, handle) {
 function openImageMenu(e, key) {
   closeImageMenu();
   const box = document.createElement("div");
-  box.className = "desk-menu";
+ box.className = "desk-menu desk-menu-delete-only";
   box.setAttribute("role", "menu");
 
-  const del = document.createElement("button");
-  del.className = "desk-menu-item";
-  del.setAttribute("role", "menuitem");
-  del.textContent = "Delete";
+ const del = document.createElement("button");
+del.className = "desk-menu-item desk-menu-delete";
+del.setAttribute("role", "menuitem");
+del.setAttribute("aria-label", "Delete");
+del.title = "Delete";
+
   del.addEventListener("click", () => {
     closeImageMenu();
     removeImage(key);

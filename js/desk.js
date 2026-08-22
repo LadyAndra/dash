@@ -140,8 +140,8 @@ export const OPEN_COLS_MAX = 3;      // the delivered look, when there is room
 export const OPEN_INSET_Y = 44;      // grid starts below the mark, not under it
 
 // POST-ITS.
-export const NOTE_W = 220;           // must match --desk-note-w in css/app.css
-export const NOTE_H = 140;           // used only for clamping on drop
+export const NOTE_W = 190;           // must match --desk-note-w in css/app.css
+export const NOTE_H = 130;           // used only for clamping on drop
 // Where an attached post-it sits when it has never been placed by hand — i.e.
 // a note attached before `offset` existed. Below the stack and clear of the
 // mark, which now lives on the right; anything dropped since carries its own

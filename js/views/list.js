@@ -28,11 +28,20 @@ export const listView = {
         const head = el("div", {
           class: "group-head" + (collapsed ? " collapsed" : ""),
           role: "button", tabindex: "0",
+          "aria-expanded": String(!collapsed),
           onclick: () => ctx.toggleCollapse(group.key),
           onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ctx.toggleCollapse(group.key); } },
         }, [
-          el("span", { class: "caret", text: "▾" }),
-          el("span", { text: group.label }),
+          el("span", {
+            class: "group-title",
+            text: group.label,
+          }),
+
+          el("span", {
+            class: "group-rule",
+            "aria-hidden": "true",
+          }),
+
           el("span", { class: "group-count", text: `${group.items.length}` }),
         ]);
         wrap.appendChild(head);

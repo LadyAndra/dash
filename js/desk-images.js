@@ -33,17 +33,21 @@ export function proportionalResize(start, dx, dy, minEdge = DESK_IMAGE_MIN_EDGE)
   const h0 = finitePositive(start && start.h) || minEdge;
   const aspect = w0 / h0;
 
-  // One lower-right handle controls one scale. Whichever pointer axis changed
-  // more *proportionally* wins, so dragging mostly left really does shrink and
-  // dragging mostly down really does grow. The old max(scaleX, scaleY) rule
-  // could grow perfectly but made shrinking feel stuck unless both axes moved.
-  const scaleW = 1 + Number(dx || 0) / w0;
-  const scaleH = 1 + Number(dy || 0) / h0;
-  let scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+  const dw = Number(dx || 0) / w0;
+  const dh = Number(dy || 0) / h0;
+  const ww = Math.abs(dw);
+  const wh = Math.abs(dh);
+  const movement = ww + wh;
+  const deltaScale = movement ? ((dw * ww) + (dh * wh)) / movement : 0;
+
+  let scale = 1 + deltaScale;
   const minScale = minEdge / Math.min(w0, h0);
   scale = Math.max(minScale, scale);
 
-  return { w: Math.round(w0 * scale), h: Math.round((w0 * scale) / aspect) };
+  return {
+    w: Math.round(w0 * scale),
+    h: Math.round((w0 * scale) / aspect),
+  };
 }
 
 // Return the z changes needed to move one unit exactly one neighbour toward

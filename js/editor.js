@@ -112,7 +112,7 @@ export function openEditor(store, itemId, opts = {}) {
     onpointerdown: (e) => { downOnScrim = e.target === scrim; },
     onclick: (e) => { if (e.target === scrim && downOnScrim) close(); },
   });
-  const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Edit item" });
+  const modal = el("div", { class: "modal editor-sheet", role: "dialog", "aria-modal": "true", "aria-label": "Edit item" });
 
   // --- title ---
   const title = el("input", {
@@ -170,10 +170,9 @@ export function openEditor(store, itemId, opts = {}) {
     el("div", { class: "field" }, [el("label", { text: "Due" }), dueInput]),
     el("div", { class: "field" }, [
       el("label", { text: "Remind me" }), remindInput,
-      el("div", { class: "hint", text: "Both show up on your Home sheet." }),
     ]),
   ]);
-
+  datesRow.classList.add("editor-date-row");
   // --- tags (freeform, add/remove as set ops) ---
   const tagWrap = el("div", { class: "chip-input" });
   function renderTags() {
@@ -208,7 +207,6 @@ export function openEditor(store, itemId, opts = {}) {
     renderTags();
   }
   tagWrap.appendChild(tagInput);
-
   // --- projects: dedicated assignment field (multi-select) ---
   // Shown only for non-project items (a project isn't assigned to itself).
   // An entry can be in several projects at once, so this is a set of chips
@@ -258,9 +256,11 @@ export function openEditor(store, itemId, opts = {}) {
     projectWrap.appendChild(adder);
   }
   const isProjectItem = store.get(id)?.type === "project";
+  const projectsField = isProjectItem ? null : detailField("Projects", projectWrap);
+  projectsField?.classList.add("editor-projects");
 
   // --- links (connect to another item §2.1) ---
-  const linkWrap = el("div", { class: "chip-input" });
+  const linkWrap = el("div", { class: "chip-input editor-connections" });
   function renderLinks() {
     linkWrap.querySelectorAll(".chip").forEach(n => n.remove());
     const current = store.get(id);
@@ -278,6 +278,8 @@ export function openEditor(store, itemId, opts = {}) {
   const linkBtn = el("button", { type: "button", class: "btn", text: "＋ Link to…",
     onclick: () => pickLink(store, id, () => renderLinks()) });
   linkWrap.appendChild(linkBtn);
+  const connectionsField = detailField("Connections", linkWrap);
+  connectionsField.classList.add("editor-connections-field");
 
   // --- attachments: images, PDFs, markdown, text — anything (§9 generalized) ---
   const attachWrap = el("div", { class: "attach-list" });
@@ -318,8 +320,8 @@ export function openEditor(store, itemId, opts = {}) {
   let sketchSaveTimer = null;
   let sketchBgUrl = null; // object URL for the loaded existing drawing (revoke on close)
   const sketchHolder = el("div", {});
-  const sketchField = field("Sketch", sketchHolder,
-    "The paper starts in view mode, so you can scroll straight past it. Tap Draw to sketch with your finger or Apple Pencil — it saves itself as you go.");
+  const sketchField = detailField("Sketch", sketchHolder);
+  sketchField.classList.add("editor-sketch");
 
   function currentSketchAtt() {
     return (store.get(id)?.attachments || []).find(a => a.role === "sketch") || null;
@@ -376,6 +378,16 @@ export function openEditor(store, itemId, opts = {}) {
     } });
   const done = el("button", { class: "btn btn-primary", text: "Done", onclick: close });
 
+  const titleField = field("Title", title);
+  titleField.classList.add("editor-title-field");
+  const notesField = field("Notes", body);
+  notesField.classList.add("editor-notes");
+  const typeStatusRow = el("div", { class: "row editor-type-status-row" }, [field("Type", typeSel), field("Status", statusSel)]);
+  const filesField = detailField("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]));
+  filesField.classList.add("editor-files");
+  const tagsField = detailField("Tags", tagWrap);
+  tagsField.classList.add("editor-tags");
+
   // --- colour (projects only) ---
   // A project wears its colour as a filled block on its own page, so this is
   // where the colour gets chosen — next to the name, in the same place you
@@ -392,25 +404,25 @@ export function openEditor(store, itemId, opts = {}) {
       resetLabel: "Use type colour",
       note: "Shown wherever this project appears. Pick anything — the readings below tell you how it will hold up.",
     }));
+  colourField?.classList.add("editor-colour");
 
-  modal.append(
-    el("div", { style: "display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-3)" }, [
+  modal.append(...[
+    el("div", { class: "editor-head" }, [
       el("h2", { text: isNew ? "New item" : "Edit item", style: "margin:0; flex:1" }),
       readBtn,
     ]),
-    field("Title", title),
+    titleField,
     colourField,
-    el("div", { class: "row" }, [field("Type", typeSel), field("Status", statusSel)]),
+    typeStatusRow,
     datesRow,
-    field("Notes", body),
+    notesField,
     sketchField,
-    field("Files & images", el("div", {}, [attachWrap, fileInput, attachBtn]),
-      "Attach photos, PDFs, or text/markdown files. Duplicates are detected automatically."),
-    isProjectItem ? null : field("Projects", projectWrap, "Assign this to one or more projects. An entry can live in several projects at once."),
-    field("Tags", tagWrap, "One item can carry many tags — that's how things relate without folders."),
-    field("Connections", linkWrap, "Link this to related items — ideas to projects, projects to goals."),
+    filesField,
+    projectsField,
+    tagsField,
+    connectionsField,
     el("div", { class: "modal-actions" }, [del, el("div", { class: "spacer" }), done]),
-  );
+  ].filter(Boolean));
 
   renderTags();
   renderLinks();
@@ -478,6 +490,12 @@ function field(label, control, hint) {
     control,
     hint ? el("div", { class: "hint", text: hint }) : null,
   ]);
+}
+
+function detailField(label, control, hint) {
+  const section = field(label, control, hint);
+  section.classList.add("editor-detail-section");
+  return section;
 }
 
 // Create a new project inline (from the item editor's Projects field) without

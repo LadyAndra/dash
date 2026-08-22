@@ -183,21 +183,20 @@ function buildPicker(store, state, ctx) {
     nextItems,
   ]);
 
-  const band = el("div", { class: "project-picker-band" }, [
-    el("h2", { class: "band-title", text: "Projects" }),
-    nextBand,
-  ]);
+  const band = el("div", { class: "project-picker-band" }, [nextBand]);
   wrap.appendChild(band);
 
   // ---- colour-forward project index rail ----
   const railCount = el("span", { class: "num project-index-count" });
   const railList = el("div", { class: "project-index-list", "aria-label": "All projects" });
+  const railNotch = el("span", {  class: "project-index-notch",  "aria-hidden": "true",});
   const rail = el("section", { class: "project-index-rail" }, [
     el("div", { class: "project-index-head" }, [
       el("span", { class: "lbl", text: "All projects" }),
       railCount,
     ]),
     railList,
+    railNotch,
   ]);
 
   // ---- quiet focus specimen ----
@@ -206,20 +205,17 @@ function buildPicker(store, state, ctx) {
   const focusNo = el("span", { class: "num project-focus-no" });
   const focusPosition = el("span", { class: "num project-focus-position" });
   const focusTitle = el("span", { class: "project-focus-title" });
-  const focusEnter = el("span", { class: "lbl project-focus-enter on-ground", text: "Enter", "aria-hidden": "true" });
-  const focusDatum = el("span", { class: "project-focus-datum", "aria-hidden": "true" }, [
-    el("span", { class: "project-focus-datum-notch" }),
-  ]);
+  const focusDatum = el("span", { class: "project-focus-datum", "aria-hidden": "true" });
   const focusTitleButton = el("button", {
     class: "project-focus-title-button",
     type: "button",
-  }, [focusTitle, focusEnter, focusDatum]);
+  }, [focusTitle, focusDatum]);
   const focusMeta = el("dl", { class: "project-focus-meta" });
   const focusEmpty = el("p", { class: "project-focus-empty", text: "No projects." });
   const focus = el("section", { class: "project-focus-specimen", "data-project-focus": "1" }, [
     el("div", { class: "project-focus-head" }, [
       el("div", { class: "project-focus-head-left" }, [
-        el("span", { class: "lbl", text: "Focus specimen" }),
+        el("span", { class: "lbl", text: "FOCUS" }),
         focusPosition,
       ]),
       focusNo,
@@ -241,17 +237,58 @@ function buildPicker(store, state, ctx) {
   }
 
   function focusProject(id) {
-    if (!id || state.focusProjectId === id) return;
-    state.focusProjectId = id;
-    draw();
+    if (!id) return;
+    if (state.focusProjectId !== id) {
+      state.focusProjectId = id;
+      draw();
+    } else {
+      positionRailNotch(id);
+    }
   }
 
-  // One delegated click handler for the whole index. Reconciliation can keep a
-  // row element for its entire visit without rebinding listeners on every draw.
-  railList.addEventListener("click", (e) => {
+  function positionRailNotch(id = state.focusProjectId) {
+    const row = [...railList.querySelectorAll("[data-project-index-item]")]
+      .find(node => node.dataset.id === id);
+    if (!row) {
+      railNotch.hidden = true;
+      return;
+    }
+    railNotch.hidden = false;
+    requestAnimationFrame(() => {
+      if (!row.isConnected || !rail.isConnected) return;
+      const railRect = rail.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const y =
+        rowRect.top -
+        railRect.top +
+        rail.scrollTop +
+        rowRect.height / 2;
+      rail.style.setProperty(
+        "--project-notch-y",
+        `${Math.round(y)}px`
+      );
+    });
+  }
+
+  function railButtonFromEvent(e) {
     const button = e.target.closest("[data-project-index-item]");
-    if (!button || !railList.contains(button)) return;
+    return button && railList.contains(button) ? button : null;
+  }
+  railList.addEventListener("pointerover", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    if (e.relatedTarget && button.contains(e.relatedTarget)) return;
     focusProject(button.dataset.id);
+  });
+  railList.addEventListener("focusin", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    focusProject(button.dataset.id);
+  });
+  railList.addEventListener("click", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    openProject(button.dataset.id);
   });
 
   focusTitleButton.addEventListener("click", () => openProject(state.focusProjectId));
@@ -269,12 +306,10 @@ function buildPicker(store, state, ctx) {
       type: "button",
       "data-project-index-item": "1",
       "data-id": it.id,
-      "aria-pressed": "false",
     }, [
       el("span", { class: "project-index-no num", "aria-hidden": "true" }),
       el("span", { class: "project-index-title", "aria-hidden": "true" }),
       el("span", { class: "project-index-overdue", "aria-hidden": "true" }),
-      el("span", { class: "project-index-pointer", "aria-hidden": "true" }),
     ]);
   }
 
@@ -294,8 +329,7 @@ function buildPicker(store, state, ctx) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
-    const pressed = selected ? "true" : "false";
-    if (node.getAttribute("aria-pressed") !== pressed) node.setAttribute("aria-pressed", pressed);
+    node.dataset.previewed = selected ? "true" : "false";
 
     const no = node.querySelector(".project-index-no");
     const noText = `№ ${catalogNo(store, it)}`;
@@ -401,12 +435,6 @@ function buildPicker(store, state, ctx) {
     if (focusTitle.textContent !== titleText) focusTitle.textContent = titleText;
     focusTitleButton.setAttribute("aria-label", `Open ${titleText} desk`);
 
-    // The ENTER ticket is made from the project's own colour, but it remains
-    // pure interface: no stored field, no new data, just the same ground helper
-    // the rail already uses. The font itself stays local-only via tokens.css.
-    const enterStyle = groundStyle(store, it);
-    if (focusEnter.getAttribute("style") !== enterStyle) focusEnter.setAttribute("style", enterStyle);
-
     const noText = `№ ${catalogNo(store, it)}`;
     if (focusNo.textContent !== noText) focusNo.textContent = noText;
 
@@ -467,6 +495,7 @@ function buildPicker(store, state, ctx) {
       focusedPosition,
       items.length
     );
+    positionRailNotch(state.focusProjectId);
   }
 
   draw();
