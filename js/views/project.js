@@ -329,7 +329,15 @@ function buildPicker(store, state, ctx) {
       node.setAttribute("aria-label", label);
       node.title = label;
     }
+    // The previewed row is the one the focus specimen is currently describing.
+    // It used to be marked ONLY with a data attribute, which assistive tech
+    // cannot see — so a screen reader user had no way to tell which project the
+    // big specimen belonged to. aria-current is the honest word for "this is
+    // the one you are looking at" on a row that OPENS on click rather than
+    // toggling; aria-pressed would claim a two-state button this is not.
     node.dataset.previewed = selected ? "true" : "false";
+    if (selected) node.setAttribute("aria-current", "true");
+    else node.removeAttribute("aria-current");
 
     const no = node.querySelector(".project-index-no");
     const noText = `№ ${catalogNo(store, it)}`;
