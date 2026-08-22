@@ -78,7 +78,11 @@ assert.ok(
   "Dash itself must start before the optional image runtime",
 );
 assert.match(runtime, /const LIMIT = 20/);
-assert.match(runtime, /del\.textContent = "Delete"/);
+// The delete control is an ICON button now: the scribble is painted from
+// Delete_Scribble.svg through a CSS mask, so the control carries no text.
+// Its NAME therefore lives in aria-label, which is what a screen reader
+// announces and what this rule has always really been about.
+assert.match(runtime, /del\.setAttribute\("aria-label", "Delete"\)/);
 assert.doesNotMatch(runtime, /input\.multiple\s*=\s*true/);
 
 console.log("desk-images.test.mjs: ok");
