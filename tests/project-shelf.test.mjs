@@ -106,30 +106,57 @@ console.log("\n--- counts still come from one overview archive pass ---");
      walks <= 3, `walked ${walks} times for 3 projects`);
 }
 
-console.log("\n--- the rail selects a focus specimen before entering the Desk ---");
+console.log("\n--- the rail previews a focus specimen, and a click is the door ---");
 {
   const h = harness();
   ok("the first visible project is focused by default", h.viewLocal.focusProjectId === h.pids[0]);
   ok("its large specimen title is shown",
      h.host.querySelector('.project-focus-title')?.textContent === "Bestie");
 
+  // POINTING previews; CLICKING enters. The earlier rail made the click a
+  // selection and put the only door on the specimen title. That second step is
+  // gone (August 19): the specimen follows the pointer so you can read a
+  // project without committing to it, and the row itself is the door.
   const second = h.rows()[1];
-  second.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-  ok("clicking a rail row changes the focus project", h.viewLocal.focusProjectId === h.pids[1]);
-  ok("a rail selection alone does not enter the Desk", !h.viewLocal.projectId);
-  const selected = h.rows().find(r => r.dataset.id === h.pids[1]);
-  ok("the selected row is exposed accessibly",
-     selected?.getAttribute('aria-pressed') === 'true');
-  ok("the selected row carries the directional pointer",
-     !!selected?.querySelector('.project-index-pointer'));
-  ok("the focus specimen updates to the selected project",
+  second.dispatchEvent(new dom.window.Event('pointerover', { bubbles: true }));
+  ok("pointing at a rail row changes the focus project", h.viewLocal.focusProjectId === h.pids[1]);
+  ok("a preview on its own does not enter the Desk", !h.viewLocal.projectId);
+
+  const previewed = h.rows().find(r => r.dataset.id === h.pids[1]);
+  ok("the previewed row is exposed to assistive tech, not just styled",
+     previewed?.getAttribute('aria-current') === 'true');
+  ok("...and exactly one row claims it at a time",
+     h.rows().filter(r => r.getAttribute('aria-current') === 'true').length === 1);
+  ok("the rail bends one shared notch toward the row, rather than a mark per row",
+     !!h.host.querySelector('.project-index-notch'));
+  ok("the focus specimen updates to the previewed project",
      h.host.querySelector('.project-focus-title')?.textContent === "Dash");
   ok("the specimen shows its position in the current index",
      h.host.querySelector('.project-focus-position')?.textContent === "02 / 03");
 
+  // Keyboard must reach the same preview, or the rail is pointer-only.
+  h.rows()[2].dispatchEvent(new dom.window.Event('focusin', { bubbles: true }));
+  ok("keyboard focus previews exactly the way the pointer does",
+     h.viewLocal.focusProjectId === h.pids[2]);
+  ok("...and the aria-current mark follows it",
+     h.rows()[2].getAttribute('aria-current') === 'true' &&
+     h.rows()[1].getAttribute('aria-current') === null);
+}
+
+console.log("\n--- clicking a rail row enters that project's Desk ---");
+{
+  const h = harness();
+  h.rows()[1].dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  ok("the row itself is the doorway", h.viewLocal.projectId === h.pids[1]);
+}
+
+console.log("\n--- the large specimen title is still a doorway too ---");
+{
+  const h = harness();
+  h.rows()[1].dispatchEvent(new dom.window.Event('pointerover', { bubbles: true }));
   h.host.querySelector('.project-focus-title-button')
     .dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-  ok("the large focus title is the explicit doorway into the Desk",
+  ok("clicking the specimen title enters the previewed project",
      h.viewLocal.projectId === h.pids[1]);
 }
 

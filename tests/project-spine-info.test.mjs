@@ -74,7 +74,6 @@ console.log("\n--- the chosen index-rail composition is present ---");
        !!row.querySelector(".project-index-no") &&
        !!row.querySelector(".project-index-title") &&
        !!row.querySelector(".project-index-overdue") &&
-       !!row.querySelector(".project-index-pointer") &&
        !row.querySelector(".spine-stage, .spine-count, .spine-meta, .project-index-stage, .project-index-count")));
   ok("literal shelf/spine objects are gone from the overview",
      !host.querySelector(".project-shelf, .spine, .project-slat"));
@@ -101,14 +100,12 @@ console.log("\n--- the focus specimen carries identity, then tiny metadata ---")
      meta.includes("Stage") && meta.includes("Research") && meta.includes("Next due") && meta.includes("Entries") && meta.includes("4"));
   ok("entry count is not repeated on the colour rail",
      !host.querySelector(`.project-index-list [data-id="${activeId}"]`).textContent.includes("4 entries"));
-  ok("the title doorway carries the datum rule and dip",
-     !!host.querySelector(".project-focus-datum .project-focus-datum-notch"));
-  const enter = host.querySelector(".project-focus-enter");
-  ok("the specimen carries one concise ENTER ticket",
-     enter?.textContent === "Enter" && (enter.getAttribute("style") || "").includes("background:"));
-  ok("the ENTER ticket receives the focused project's ground variables",
-     (enter?.getAttribute("style") || "").includes("--ground-bg:") &&
-     (enter?.getAttribute("style") || "").includes("--ground-ink:"));
+  // The datum rule, its dip and the separate ENTER ticket were retired with
+  // the August 19 rail: the large title IS the doorway, so a second control
+  // saying the same thing was one control too many.
+  ok("the title itself is the doorway, with no second ENTER control beside it",
+     !!host.querySelector(".project-focus-title-button") &&
+     !host.querySelector(".project-focus-enter"));
   ok("the specimen includes a quiet position reference",
      host.querySelector(".project-focus-position")?.textContent === "01 / 02");
 }
@@ -116,7 +113,7 @@ console.log("\n--- the focus specimen carries identity, then tiny metadata ---")
 console.log("\n--- no milestones read as absence, not filler text ---");
 {
   const quietRow = host.querySelector(`.project-index-list [data-id="${quietId}"]`);
-  quietRow.dispatchEvent(new dom.window.Event("click", { bubbles: true }));
+  quietRow.dispatchEvent(new dom.window.Event("pointerover", { bubbles: true }));
   ok("quiet project becomes the focus specimen", host.querySelector(".project-focus-title")?.textContent === "Quiet project");
   const meta = host.querySelector(".project-focus-meta").textContent;
   ok("stage and due rows are omitted", !meta.includes("Stage") && !meta.includes("Next due"));
@@ -138,12 +135,16 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../css/projects.css", import.meta.url), "utf8");
   const tokens = fs.readFileSync(new URL("../css/tokens.css", import.meta.url), "utf8");
+  const projectJs = fs.readFileSync(new URL("../js/views/project.js", import.meta.url), "utf8");
   ok("index.html loads projects.css after the shared app stylesheet",
      html.indexOf('href="css/projects.css"') > html.indexOf('href="css/app.css"'));
-  ok("selected project styling does not draw a persistent highlight",
-     /\.project-index-item\[aria-pressed="true"\][\s\S]*?box-shadow:\s*none;/.test(css));
-  ok("the selector pointer uses Dash ink rather than the project's colour",
-     /\.project-index-pointer[\s\S]*?border-left:[^;]*var\(--text-primary\)/.test(css));
+  ok("the previewed row is marked by movement, not a persistent highlight",
+     /\.project-index-item:hover,[\s\S]*?transform:\s*translateX/.test(css) &&
+     !/\.project-index-item\[aria-current[\s\S]*?box-shadow/.test(css));
+  ok("the rail notch is drawn in Dash ink rather than the project's colour",
+     /\.project-index-notch::before,[\s\S]*?background:\s*var\(--border-strong\)/.test(css));
+  ok("the notch is positioned from the measured row, not a fixed offset",
+     css.includes("var(--project-notch-y") && projectJs.includes("--project-notch-y"));
   ok("the rail owns vertical overflow for larger project collections",
      /\.project-index-rail[\s\S]*?overflow-y:\s*auto;/.test(css));
   ok("cream gutters separate the project colour bars",
@@ -154,16 +155,18 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
      /\.project-focus-title-button[\s\S]*?width:\s*100%;/.test(css) &&
      /\.project-focus-title[\s\S]*?font-family:\s*var\(--font-display\)/.test(css) &&
      !/\.project-focus-title[\s\S]*?overflow-wrap:\s*anywhere;/.test(css));
-  ok("datum and metadata keep the deliberate shorter specimen measure",
-     /\.project-focus-datum[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css) &&
-     /\.project-focus-meta[\s\S]*?width:\s*var\(--project-specimen-measure\)/.test(css));
-  ok("the datum dip is drawn as two hairlines, not a filled triangle",
-     css.includes(".project-focus-datum-notch::before") &&
-     css.includes(".project-focus-datum-notch::after") &&
-     /\.project-focus-datum-notch[\s\S]*?background:\s*var\(--surface\)/.test(css));
-  ok("the ENTER control is a shaped ticket rather than a rectangle button",
-     /\.project-focus-enter[\s\S]*?clip-path:\s*polygon\(/.test(css) &&
-     /\.project-focus-enter::before[\s\S]*?border-radius:\s*var\(--radius-pill\)/.test(css));
+  // The measure is no longer pinned onto the datum, which is gone. It is
+  // carried by one shared registration column: the specimen's vertical rule,
+  // its head, the title doorway and the metadata grid all align to the same
+  // coordinate, which is what kept the specimen from sprawling in the first place.
+  ok("title, head and metadata all register against one shared column",
+     /\.project-focus-specimen[\s\S]*?--project-specimen-measure:/.test(css) &&
+     /\.project-focus-head[\s\S]*?grid-template-columns:\s*var\(--project-meta-label-w\)/.test(css) &&
+     /\.project-focus-meta[\s\S]*?grid-template-columns:\s*var\(--project-meta-label-w\)/.test(css) &&
+     /\.project-focus-title-button[\s\S]*?margin-left:\s*var\(--project-meta-label-w\)/.test(css));
+  ok("the retired datum rule and dip are not drawn any more",
+     /\.project-focus-datum\s*\{[\s\S]*?display:\s*none;/.test(css) &&
+     /\.project-focus-datum-notch\s*\{[\s\S]*?display:\s*none;/.test(css));
   ok("the redundant far-right specimen accession is visually removed",
      /\.project-focus-no\s*\{[\s\S]*?display:\s*none;/.test(css));
   ok("Canyon is requested only from a locally installed copy",
