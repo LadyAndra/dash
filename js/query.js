@@ -28,7 +28,11 @@ export function query(store, opts = {}) {
 
   // ---- group ----
   const groups = groupItems(store, items, groupBy);
-  return { groups, total: items.length };
+  // groupBy comes back out with the result so a view can react to HOW the
+  // groups were made, not just what's in them — Board uses it to stop each
+  // card repeating a type its own group heading already says. Additive: every
+  // existing caller reads groups/total and is unaffected.
+  return { groups, total: items.length, groupBy };
 }
 
 function sortItems(items, sortBy) {

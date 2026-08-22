@@ -70,6 +70,24 @@ export function statusControl(store, item) {
   const cur = store.statusDef(item.status);
   const known = store.statuses();
 
+  // THE VISIBLE WORD IS NOT THE SELECT (August 2026, Board metadata pass).
+  // A native <select> is always as wide as its WIDEST option, so with "On
+  // hold" in the registry every shorter status — DONE, ACTIVE — rendered with
+  // a pocket of dead space between the word and the caret, and the size of
+  // that pocket changed from entry to entry. On Board, where cards stack in
+  // narrow columns, it made the metadata line's right edge visibly ragged.
+  //
+  // So the word is drawn as its own span, and the real select is laid over the
+  // whole control at zero opacity (see .status-ctl in app.css). The wrapper
+  // then measures the CURRENT status instead of the longest one, and the
+  // control is still a genuine native select — keyboard, screen reader and the
+  // iOS picker all behave exactly as they did.
+  const label = el("span", {
+    class: "status-ctl-label",
+    "aria-hidden": "true",   // the select underneath carries the real name
+    text: cur?.label || item.status,
+  });
+
   const sel = el("select", {
     "aria-label": "Status",
     onclick: (e) => e.stopPropagation(),
@@ -77,6 +95,10 @@ export function statusControl(store, item) {
     onkeydown: (e) => e.stopPropagation(),
     onchange: (e) => {
       e.stopPropagation();
+      // Keep the visible word in step before the store re-renders, so the
+      // control never shows the old status for a frame.
+      const next = store.statusDef(e.target.value);
+      label.textContent = next?.label || e.target.value;
       store.setField(item.id, "status", e.target.value);
     },
   });
@@ -89,7 +111,7 @@ export function statusControl(store, item) {
   // Colour comes from the registry, inline, exactly like a .mk mark — the dot
   // and the caret are drawn from currentColor / a token in CSS, so a re-theme
   // and a brand-new status both work without touching the stylesheet.
-  return el("span", { class: "status-ctl", style: `color:${colorToken(cur?.color)}` }, [sel]);
+  return el("span", { class: "status-ctl", style: `color:${colorToken(cur?.color)}` }, [label, sel]);
 }
 
 export function tagChips(item) {

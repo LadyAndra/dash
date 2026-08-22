@@ -633,6 +633,77 @@ button, input, textarea, select {
    a white menu. */
 .status-ctl option { color: var(--text-primary); background: var(--surface-raised); }
 
+/* ---- The status control measures its word, not its longest option --------
+   (August 2026, Board metadata pass.)
+
+   A native <select> is always as wide as its WIDEST option. With "On hold" in
+   the registry, every shorter status left a pocket of dead space between the
+   word and the caret, and that pocket changed size from entry to entry — so
+   the right edge of the metadata line was ragged down a Board column and
+   along a List row.
+
+   The visible word is now its own span (.status-ctl-label) and the real
+   select is laid over the whole control at zero opacity. The wrapper measures
+   the current status; the select is still a real native control underneath,
+   so keyboard, screen reader and the iOS picker are unchanged, and the whole
+   visible mark — dot, word and caret — remains the tap target.
+
+   Shared on purpose: List rows, Board cards and the Desk drawer all draw the
+   same control, and the drift was the same on all three. */
+.status-ctl {
+  position: relative;
+}
+
+/* The mono voice moves off the select and onto the word, unchanged: same
+   family, size, tracking and case the select was rendering. The transparent
+   border is held at rest so hover doesn't shift anything, and the space
+   before the caret is a margin rather than padding, so the hover box hugs
+   the word exactly. */
+.status-ctl-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  padding: 0;
+  margin-right: var(--space-1);
+
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.status-ctl select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  opacity: 0;
+
+  /* iOS zooms the page when a focused control's text is under 16px. The
+     select is invisible, so this size is never seen — it just stops the
+     picker from yanking the viewport. */
+  font-size: var(--text-sm);
+}
+
+.status-ctl:hover .status-ctl-label {
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+/* The ring moves to the word, because the select it used to sit on is now
+   transparent. */
+.status-ctl:has(select:focus-visible) .status-ctl-label {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--focus-ring);
+}
+
 .tag {
   font-family: var(--font-mono);
   font-size: var(--text-label);
@@ -3031,6 +3102,11 @@ button, input, textarea, select {
 .desk-drawer .status-ctl::after { color: color-mix(in srgb, var(--ground-ink) 70%, transparent); }
 .desk-drawer .status-ctl select { color: var(--ground-ink); }
 .desk-drawer .status-ctl select:hover {
+  border-color: color-mix(in srgb, var(--ground-ink) 45%, transparent);
+  background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
+}
+/* the hover box follows the word now that the select itself is transparent */
+.desk-drawer .status-ctl:hover .status-ctl-label {
   border-color: color-mix(in srgb, var(--ground-ink) 45%, transparent);
   background: color-mix(in srgb, var(--ground-ink) 12%, transparent);
 }

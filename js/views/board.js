@@ -25,6 +25,14 @@ export const boardView = {
       return;
     }
 
+    // GROUP: TYPE already names the type once, in the heading above the
+    // column run. A card that repeats it under every title is saying nothing
+    // — and quieting the mark's colour made that redundancy easier to see
+    // rather than fixing it. Drop the mark in that one case only: grouped by
+    // status or tag, or not grouped at all, the type is still the only thing
+    // on a card that says what the entry IS.
+    const typeIsTheHeading = result.groupBy === "type";
+
     const makeCard = (item) => {
       const card = itemCard(
         ctx.store,
@@ -33,6 +41,7 @@ export const boardView = {
         {
           selection: ctx.selection,
           statusControl: true,
+          hideType: typeIsTheHeading,
 
           // Filing is not state. A card's type mark drops its registry
           // colour so the status — the one mark you can actually change
