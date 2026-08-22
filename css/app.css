@@ -1040,6 +1040,52 @@ button, input, textarea, select {
   gap: var(--space-2);
 }
 
+/* ---- Board card typography (August 2026) --------------------------
+   Phase 6 continued: the metadata rules List got, carried onto Board.
+   Scoped to `.board .card`, which is Board's own wrapper and nothing
+   else's, so List rows, Home, Project, the Desk drawer and the
+   unregistered kanban are untouched by everything below.
+
+   FILING vs STATE, again. A card carried TWO saturated registry colours
+   side by side — the type mark and the status control — at the same
+   size, the same case and the same 0.14em tracking. Since the metadata
+   grammar pass hid the dot on .mk, colour was the only thing the type
+   mark had left, which meant the loudest signal on a card belonged to
+   the one mark you cannot act on.
+
+   Board's marks sit BELOW the title rather than above it, so unlike
+   List they were never competing with the serif — they were competing
+   with each other, and across a masonry of cards a scattered field of
+   registry colour at the foot of every slip reads as decoration rather
+   than information. Quieting the type leaves ONE coloured mark per
+   card. Set by itemCard(..., { quietType: true }) from views/board.js.
+
+   NO structural change: the masonry columns, card order, the de-boxed
+   top rule, .card-head, the sketch thumb, drag/select and the project
+   registration tab are all exactly as they were. */
+
+/* One step out from the status control's 0.14em, onto the .lbl rank, so
+   the two marks are no longer typographically identical. Same move the
+   List pass made on .group .item-row .mk. */
+.board .card .mk {
+  letter-spacing: 0.16em;
+}
+
+/* down from 0.1em, onto the same rank as the card-head date */
+.board .card .tag {
+  letter-spacing: 0.08em;
+}
+
+/* Borrowed from Home's .sheet-h1 by way of List: a serif line at this
+   size wants slightly tighter tracking and a little more leading than
+   the 1.15 it had. It matters more here than it did on List, because a
+   --board-col-w column wraps most titles onto two or three lines, and
+   1.15 set them closer than the mono metadata around them. */
+.board .card .item-title {
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
 /* ---------- Kanban view ---------- */
 .kanban {
   display: flex; gap: var(--space-5);

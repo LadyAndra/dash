@@ -33,6 +33,12 @@ export const boardView = {
         {
           selection: ctx.selection,
           statusControl: true,
+
+          // Filing is not state. A card's type mark drops its registry
+          // colour so the status — the one mark you can actually change
+          // from the card — is the only coloured thing on it. Same rule
+          // List follows; see typeChip() in shared.js.
+          quietType: true,
         }
       );
 

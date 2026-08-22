@@ -286,6 +286,10 @@ export function itemRow(store, item, onOpen, opts = {}) {
 
 // A compact specimen card for board / kanban. Same voice as the row: a mono
 // header line (catalog no. + marks), serif title, preview, tags.
+// opts.quietType — draw the type mark in plain faint mono instead of its
+// registry colour, exactly as itemRow's option of the same name does (see
+// typeChip above). Opt-in for the same reason: Board asks for it, and any
+// other surface that draws a card keeps the colour it already had.
 export function itemCard(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "card-sketch-thumb");
   const header = el("div", { class: "card-head" }, [
@@ -293,7 +297,7 @@ export function itemCard(store, item, onOpen, opts = {}) {
     el("span", { class: "num", text: shortDate(item) }),
   ]);
   const marks = el("div", { class: "item-meta" }, [
-    opts.hideType ? null : typeChip(store, item),
+    opts.hideType ? null : typeChip(store, item, { quiet: !!opts.quietType }),
     opts.hideStatus ? null
       : (editableStatus(opts) ? statusControl(store, item) : statusChip(store, item)),
     stageChip(item),                 // projects only; null for everything else
