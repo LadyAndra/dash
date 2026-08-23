@@ -46,6 +46,7 @@
 import { calendarData } from "../entries.js";
 import { todayISO, daysUntil, visibleMilestones } from "../milestones.js";
 import { itemColor } from "./shared.js";
+import { mount as mountDateInput } from "../widgets/flipdate.js";
 import { colorToken } from "../theme.js";
 
 // ===================================================================
@@ -1253,12 +1254,18 @@ function renderTray(view, s) {
 
       const btn = row.querySelector(".cal-setdate");
       const slot = row.querySelector(".cal-flip-slot");
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", () => {
         if (view.flipFor === item.id) { closeFlip(view); btn.setAttribute("aria-expanded", "false"); return; }
         closeFlip(view);
-        const { mount } = await import("../widgets/flipdate.js");
-        view.flip = mount(slot, {
+        // FULL size here, and SET only — deliberately no autocommit. Putting a
+        // date on an unscheduled phase is a decision with a consequence (the
+        // phase leaves the tray and lands on the strip), so nothing should do
+        // it on your behalf. In the editors, where the mechanism is replacing
+        // a field that already autosaved, it is the other way round.
+        view.flip = mountDateInput(slot, {
           value: null,
+          size: "full",
+          label: `Date for ${item.label}`,
           onCommit: (dateStr) => {
             closeFlip(view);
             // ONE ordinary set op, exactly as any other date edit in Dash.

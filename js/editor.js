@@ -18,6 +18,7 @@ import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
 import { midFromLinkLabel } from "./store.js";
+import { mount as mountDateInput } from "./widgets/flipdate.js";
 
 const TEXT_SAVE_DELAY = 900;
 
@@ -157,20 +158,36 @@ export function openEditor(store, itemId, opts = {}) {
     return m ? new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0).toISOString() : null;
   };
 
-  const dueInput = el("input", {
-    type: "date", value: dayValue(item.dates?.due), "aria-label": "Due date",
-    onchange: (e) => store.setField(id, "due", atMidday(e.target.value)),
-  });
-  const remindInput = el("input", {
-    type: "date", value: dayValue(item.dates?.remind), "aria-label": "Reminder date",
-    onchange: (e) => store.setField(id, "remind", atMidday(e.target.value)),
-  });
+  // THE FLIP MECHANISM, not a native picker (August 23, 2026). The same widget
+  // the Calendar's tray uses, mounted COMPACT so it fits this two-column row.
+  //
+  // Rest the pointer on a card and scroll and it ticks — no clicking it open
+  // first, which is the difference between an instrument sitting on the form
+  // and a field you have to go and operate. Arrows, typed digits, hold-and-drag
+  // and the native picker behind TYPE all still reach the same value.
+  //
+  // autoCommitMs is what keeps this honest next to the rest of the editor:
+  // every other field here saves itself, so a date scrolled and then abandoned
+  // must not be the one thing that vanishes. One op lands a beat after the last
+  // tick, SET does it immediately, and close() below catches anything still
+  // pending. Nothing is ever written per tick.
+  const dateWidgets = [];
+  function dateField(labelText, ariaLabel, storeKey, currentIso) {
+    const host = el("div", { class: "field" }, [el("label", { text: labelText })]);
+    dateWidgets.push(mountDateInput(host, {
+      value: dayValue(currentIso) || null,
+      size: "compact",
+      allowEmpty: true,
+      label: ariaLabel,
+      autoCommitMs: 1500,
+      onCommit: (dateStr) => store.setField(id, storeKey, atMidday(dateStr)),
+    }));
+    return host;
+  }
 
   const datesRow = el("div", { class: "row" }, [
-    el("div", { class: "field" }, [el("label", { text: "Due" }), dueInput]),
-    el("div", { class: "field" }, [
-      el("label", { text: "Remind me" }), remindInput,
-    ]),
+    dateField("Due", "Due date", "due", item.dates?.due),
+    dateField("Remind me", "Reminder date", "remind", item.dates?.remind),
   ]);
   datesRow.classList.add("editor-date-row");
   // --- tags (freeform, add/remove as set ops) ---
@@ -464,6 +481,8 @@ export function openEditor(store, itemId, opts = {}) {
 
     flushTextDrafts(); // final title/notes value must never wait behind close
     commitPendingTag(); // don't lose a tag the user typed but didn't Enter
+    // ...and a date scrolled but not yet SET, for exactly the same reason.
+    for (const w of dateWidgets) { w.commitIfDirty(); w.destroy(); }
     clearTimeout(sketchSaveTimer);
     if (sketchPad) { await saveSketch(); sketchPad.destroy(); }
     if (sketchBgUrl) URL.revokeObjectURL(sketchBgUrl);

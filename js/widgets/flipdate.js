@@ -1,9 +1,9 @@
 // flipdate.js — "The Setting Mechanism" (calendar architecture §4).
 // ===================================================================
-// A date being READ stays quiet: a typed stamp, "16 JUL", a fact nobody is
-// manipulating. A date being SET becomes a machine — three split-flap units
-// that tick one value at a time. That is the whole idea, and every rule below
-// follows from it:
+// THE date input for Dash. A date being READ stays quiet — a typed stamp,
+// "16 JUL", a fact nobody is manipulating. A date being SET becomes a machine:
+// three split-flap units that tick one value at a time. Every rule below
+// follows from that:
 //
 //   - Every change is DISCRETE. A jump of five is five flips, never a slide.
 //   - There is NO MOMENTUM anywhere, on any input path. A flick does nothing.
@@ -11,29 +11,62 @@
 //     is Sep 1, and the month card flips too.
 //   - Nothing is reachable only by gesture. Wheel, arrow keys, typed digits,
 //     hold-and-drag, and a native date field all reach the same value.
+//   - You never have to CLICK IT FIRST. Rest the pointer over a card and
+//     scroll: it ticks. That is the whole point of a machine sitting on the
+//     surface rather than a field you have to go and open.
 //
 // This module is DELIBERATELY self-contained: no imports, no store, no DOM
-// outside the container it is handed. That is what makes it adoptable — the
-// entry and milestone editors can swap their date fields onto mount() later
-// without a rewrite, and it is what lets the carry logic below be tested
+// outside the container it is handed. That is what lets one widget serve the
+// item editor, the phase editor and the Calendar's tray without any of them
+// knowing about each other, and what lets the carry logic below be tested
 // headlessly with no DOM at all.
 //
-// Styling lives in css/calendar.css for now (it is Calendar-scoped this pass);
-// when a second surface adopts the widget, that block moves to app.css. There
-// are no literal colours, sizes or fonts in this file — the CSS owns all of
-// it through tokens, per the standing rule.
+// Styling lives in css/dateinput.css — app-wide, since August 23, 2026, when
+// this became the date input everywhere rather than a Calendar-only widget.
+// There are no literal colours, sizes or fonts in this file.
 //
-//   API:  mount(container, { value, onCommit, onCancel }) -> { destroy() }
+//   API:  mount(container, {
+//           value,        // "YYYY-MM-DD" | null
+//           onCommit,     // (dateStr | null) => void — fires ONCE, on SET
+//           onCancel,     // optional; Escape
+//           size,         // "full" (default) | "compact"
+//           allowEmpty,   // may the field hold NO date? (default false)
+//           label,        // accessible name prefix, e.g. "Due date"
+//           fkey,         // optional data-fkey, for focus restoration
+//           autoCommitMs, // 0 = SET only; >0 = also commit a beat after the
+//                         //   last tick, for fields replacing an autosaving input
+//         }) -> { root, value(), setValue(v), isDirty(), commitIfDirty(),
+//                 focus(), destroy() }
 //
-//     value      "YYYY-MM-DD" or null (null starts from today)
-//     onCommit   called ONCE, with a "YYYY-MM-DD" string, when SET is pressed
-//     onCancel   optional; called on Escape
+// SIZE. "full" is the object as designed — a machine you can see across the
+// room, for the Calendar's tray where it is the only thing happening. But a
+// date field in a two-column editor gets ~200px, so "compact" shrinks the same
+// mechanism to fit an ordinary form row. Nothing about the behaviour changes;
+// only the cards get smaller and the DAY/MONTH/YEAR hints drop away (each unit
+// keeps its aria-label, so nothing is lost to a screen reader).
 //
-// Ticking mutates only this component's own state. Nothing is written until
-// SET, so scrubbing through three months costs the store exactly nothing and
-// collapsing the widget without pressing SET writes nothing at all.
+// EMPTY. Most date fields in Dash are allowed to hold no date at all — a
+// reminder usually doesn't have one. An empty mechanism shows blank flaps, and
+// the first tick, drag or typed digit seeds it from today and carries on
+// normally. CLEAR puts it back to empty.
+//
+// COMMITTING. Ticking mutates only this component's own state, so scrubbing
+// through three months costs the store nothing and closing without pressing
+// SET writes nothing. Because that makes dates the one field in Dash that
+// doesn't autosave, the widget SHOWS it: while the faces differ from what was
+// last committed, the housing takes an ink edge and SET lights up. When they
+// match, SET is spent and says so. CLEAR is the one exception — clearing is a
+// single unambiguous act with no intermediate state to scrub through, so it
+// commits on the spot.
 
 export const MONTH_LABELS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+// What a blank flap reads as, per unit. Not spaces — a split-flap that has not
+// been set to anything should still show you it has three drums and how many
+// characters each one takes. Dots rather than dashes on purpose: a dash sits
+// exactly on the seam between the two halves of a card and becomes
+// indistinguishable from it, which made an empty field read as a broken one.
+export const EMPTY_FACE = { d: "··", mo: "···", y: "····" };
 
 // A tick is ~150ms: the top flap folds down over 75ms, the bottom flap falls
 // in over the next 75ms. More than this many ticks still queued and the whole
@@ -58,14 +91,13 @@ export const YEAR_MAX = 2100;
 // ===================================================================
 //  THE PURE PART — date arithmetic, no DOM, no state
 // ===================================================================
-// Everything below this line down to makeUnit() is a plain function over
-// plain numbers, so the carry rules (the part that is actually easy to get
-// wrong) can be tested at every boundary without a browser.
+// Everything down to mount() is a plain function over plain numbers, so the
+// carry rules (the part that is actually easy to get wrong) can be tested at
+// every boundary without a browser.
 
 export function parseISO(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-  if (!m) return null;
-  return { y: +m[1], mo: +m[2], d: +m[3] };
+  return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
 }
 
 export function toISO(y, mo, d) {
@@ -127,13 +159,13 @@ export function changedUnits(before, after) {
 }
 
 export function faceText(v, unit) {
+  if (!v) return EMPTY_FACE[unit];
   if (unit === "d") return String(v.d).padStart(2, "0");
   if (unit === "mo") return MONTH_LABELS[v.mo - 1];
   return String(v.y);
 }
 
-function todayValue() {
-  const now = new Date();
+export function todayValue(now = new Date()) {
   return { y: now.getFullYear(), mo: now.getMonth() + 1, d: now.getDate() };
 }
 
@@ -150,10 +182,24 @@ function prefersReducedMotion() {
 // ===================================================================
 
 export function mount(container, opts = {}) {
-  const { value = null, onCommit = null, onCancel = null } = opts;
+  const {
+    onCommit = null, onCancel = null,
+    size = "full", allowEmpty = false, label = "", fkey = null,
+    autoCommitMs = 0,
+  } = opts;
 
-  let v = parseISO(value) || todayValue();
-  v = clampDay(v);
+  let v = parseISO(opts.value ?? null);
+  if (v) v = clampDay(v);
+
+  // COMMITTED IS WHAT THE CALLER GAVE US, not what we are showing. The
+  // distinction matters: a field that cannot be empty (the Calendar's tray,
+  // setting a date on a phase that has none) opens showing TODAY, because
+  // there is no such thing as "no date" for it to display — but today is a
+  // proposal, not a saved value. Treating it as saved would leave SET spent
+  // and disabled on arrival, and "set this phase to today" — the single most
+  // likely thing you want — would be the one date you could not choose.
+  let committed = v ? toISO(v.y, v.mo, v.d) : null;
+  if (!v && !allowEmpty) v = todayValue();
 
   const doc = container.ownerDocument || document;
   const listeners = [];
@@ -171,34 +217,42 @@ export function mount(container, opts = {}) {
   };
 
   const root = doc.createElement("div");
-  root.className = "flipdate";
+  root.className = "flipdate" + (size === "compact" ? " flipdate-compact" : "");
+  if (label) root.setAttribute("aria-label", label);
 
   // ---- the three units ----
   const units = {};
-  for (const [key, cls, label] of [
+  for (const [key, cls, name] of [
     ["d", "fd-day", "Day"],
     ["mo", "fd-month", "Month"],
     ["y", "fd-year", "Year"],
   ]) {
-    units[key] = makeUnit(key, cls, label);
+    units[key] = makeUnit(key, cls, name);
     root.appendChild(units[key]);
   }
+  // The focus-restoration key goes on the DAY card rather than the housing:
+  // callers that rebuild their whole form (the phase editor does, on every
+  // store change) find it with querySelector and call .focus() on it, and the
+  // housing is not focusable.
+  if (fkey) units.d.dataset.fkey = fkey;
 
-  function makeUnit(key, cls, label) {
+  function makeUnit(key, cls, name) {
     const el = doc.createElement("div");
     el.className = `fd-unit ${cls}`;
     el.tabIndex = 0;
     el.setAttribute("role", "spinbutton");
-    el.setAttribute("aria-label", label);
+    el.setAttribute("aria-label", label ? `${label} — ${name}` : name);
     el.innerHTML =
       `<div class="fd-half fd-top"><span></span></div>` +
       `<div class="fd-half fd-bottom"><span></span></div>` +
       `<div class="fd-flap fd-flap-top"><span></span></div>` +
       `<div class="fd-flap fd-flap-bottom"><span></span></div>` +
       `<span class="fd-hint mk"></span>`;
-    el.querySelector(".fd-hint").textContent = label;
+    el.querySelector(".fd-hint").textContent = name;
 
-    // (1) POINTER — rest on a card and scroll. One notch, one tick.
+    // (1) POINTER — rest on a card and scroll. One notch, one tick. NO CLICK
+    //     FIRST: the mechanism is live wherever the pointer is resting, which
+    //     is the difference between an instrument and a form field.
     on(el, "wheel", (ev) => {
       ev.preventDefault();
       const now = Date.now();
@@ -237,7 +291,7 @@ export function mount(container, opts = {}) {
     return el;
   }
 
-  // ---- SET / TYPE ----
+  // ---- SET / CLEAR / TYPE ----
   const actions = doc.createElement("div");
   actions.className = "fd-actions";
 
@@ -246,6 +300,7 @@ export function mount(container, opts = {}) {
   okBtn.className = "fd-btn fd-btn-primary";
   okBtn.textContent = "Set";
   on(okBtn, "click", () => commit());
+  actions.appendChild(okBtn);
 
   const typeBtn = doc.createElement("button");
   typeBtn.type = "button";
@@ -253,19 +308,30 @@ export function mount(container, opts = {}) {
   typeBtn.textContent = "Type";
   typeBtn.setAttribute("aria-expanded", "false");
   on(typeBtn, "click", () => toggleTyped());
+  actions.appendChild(typeBtn);
 
-  actions.append(okBtn, typeBtn);
+  let clearBtn = null;
+  if (allowEmpty) {
+    clearBtn = doc.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "fd-btn fd-btn-clear";
+    clearBtn.textContent = "Clear";
+    on(clearBtn, "click", () => clear());
+    actions.appendChild(clearBtn);
+  }
   root.appendChild(actions);
 
   // (4) EXACT — the native date field. Always present, never the only way in.
+  // On a phone this is also the fastest path, and it is deliberately kept.
   const typed = doc.createElement("span");
   typed.className = "fd-typed";
   const input = doc.createElement("input");
   input.type = "date";
-  input.setAttribute("aria-label", "Exact date");
+  input.setAttribute("aria-label", label ? `${label} — exact date` : "Exact date");
   on(input, "change", () => {
     const next = parseISO(input.value);
     if (next) { v = clampDay(next); paintAll(); }
+    else if (allowEmpty) { v = null; paintAll(); }
   });
   on(input, "keydown", (ev) => {
     if (ev.key === "Enter") { ev.preventDefault(); commit(); }
@@ -281,16 +347,28 @@ export function mount(container, opts = {}) {
     if (open) input.focus();
   }
 
+  // An empty mechanism seeds itself from today the moment you touch it, so
+  // "scroll to set a date that isn't there yet" works without a separate
+  // "add a date" step in front of it.
+  function ensureValue() {
+    if (v) return false;
+    v = todayValue();
+    return true;
+  }
+
   // ---- typed digits on a focused card ----
   let buffer = "";
   let bufferTimer = null;
   function typeDigit(key, digit) {
+    const seeded = ensureValue();
     buffer = (buffer + digit).slice(key === "y" ? -4 : -2);
     if (bufferTimer) clearTimeout(bufferTimer);
     bufferTimer = later(() => { buffer = ""; }, TYPE_BUFFER_MS);
     const n = parseInt(buffer, 10);
-    if (key === "d" && n >= 1 && n <= daysInMonth(v.y, v.mo)) { v = { ...v, d: n }; paintAll(); }
-    if (key === "y" && buffer.length === 4 && n >= YEAR_MIN && n <= YEAR_MAX) { v = clampDay({ ...v, y: n }); paintAll(); }
+    if (key === "d" && n >= 1 && n <= daysInMonth(v.y, v.mo)) v = { ...v, d: n };
+    else if (key === "y" && buffer.length === 4 && n >= YEAR_MIN && n <= YEAR_MAX) v = clampDay({ ...v, y: n });
+    else if (!seeded) return;
+    paintAll();
   }
 
   // ---- the tick queue ----
@@ -300,6 +378,9 @@ export function mount(container, opts = {}) {
   let animating = false;
 
   function tick(key, delta) {
+    // Seeding is itself the first change: one notch on an empty field lands
+    // you on today, and the notch after that moves off it.
+    if (ensureValue()) { paintAll(); return; }
     const dir = Math.sign(delta) || 1;
     for (let i = 0; i < Math.abs(delta); i++) queue.push({ key, dir });
     drain();
@@ -308,12 +389,13 @@ export function mount(container, opts = {}) {
   function drain() {
     if (animating || destroyed) return;
     const job = queue.shift();
-    if (!job) { input.value = valueOf(); return; }
+    if (!job) { syncOutputs(); return; }
     animating = true;
     const before = v;
     v = stepDate(v, job.key, job.dir);
     const changed = changedUnits(before, v);
     if (!changed.length) { animating = false; drain(); return; }   // clamped at a bound
+    syncOutputs();
     const ms = queue.length > FLUTTER_AFTER ? FLUTTER_MS : TICK_MS;
     let waiting = changed.length;
     const settle = () => { if (--waiting === 0) { animating = false; drain(); } };
@@ -368,6 +450,11 @@ export function mount(container, opts = {}) {
   // ---- painting ----
   function writeAria(unit) {
     const el = units[unit];
+    if (!v) {
+      el.removeAttribute("aria-valuenow");
+      el.setAttribute("aria-valuetext", "No date set");
+      return;
+    }
     el.setAttribute("aria-valuenow", String(unit === "mo" ? v.mo : unit === "d" ? v.d : v.y));
     el.setAttribute("aria-valuetext", faceText(v, unit));
     el.setAttribute("aria-valuemin", String(unit === "y" ? YEAR_MIN : 1));
@@ -383,15 +470,69 @@ export function mount(container, opts = {}) {
       el.querySelector(".fd-bottom > span").textContent = txt;
       writeAria(unit);
     }
-    input.value = valueOf();
+    syncOutputs();
   }
 
-  function valueOf() { return toISO(v.y, v.mo, v.d); }
+  // Everything that has to agree with the faces but isn't a face: the native
+  // input behind TYPE, and — the important one — whether this mechanism is
+  // currently showing something it has not saved.
+  function syncOutputs() {
+    const now = valueOf();
+    input.value = now || "";
+    const dirty = now !== committed;
+    root.classList.toggle("is-dirty", dirty);
+    root.classList.toggle("is-empty", !v);
+    okBtn.disabled = !dirty;
+    okBtn.classList.toggle("is-pending", dirty);
+    // Said out loud, not only drawn: dates are the one field in Dash that
+    // does not autosave, so a screen reader has to be told the same thing the
+    // ink edge is showing.
+    okBtn.setAttribute("aria-label", dirty ? "Set this date" : "Date saved");
+    if (clearBtn) clearBtn.disabled = !v;
+    if (dirty) scheduleAutoCommit();
+  }
+
+  function valueOf() { return v ? toISO(v.y, v.mo, v.d) : null; }
+
+  // ---- the safety net ----
+  // SET is the affirmative act, and in the Calendar's tray it is the ONLY one:
+  // putting a date on an unscheduled phase is a decision with a consequence
+  // (the phase leaves the tray and lands on the strip), so nothing should do
+  // it on your behalf.
+  //
+  // A date field REPLACING an autosaving input is a different situation. Every
+  // other field in those editors saves itself, and a mechanism you can drive
+  // by hovering and scrolling — without ever focusing it — has no reliable
+  // moment to notice you have wandered off. So those callers pass
+  // autoCommitMs, and one op lands a beat after the last tick. That is still
+  // one op per intent rather than one per tick, which is what the "no op spam
+  // while scrubbing" rule was actually protecting.
+  let autoTimer = null;
+  function scheduleAutoCommit() {
+    if (!autoCommitMs) return;
+    if (autoTimer) clearTimeout(autoTimer);
+    autoTimer = later(() => { if (valueOf() !== committed) commit(); }, autoCommitMs);
+  }
 
   // ONE commit, one op. Nothing before this and nothing after it.
   function commit() {
     queue.length = 0;
-    if (onCommit) onCommit(valueOf());
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    committed = valueOf();
+    syncOutputs();
+    if (onCommit) onCommit(committed);
+  }
+
+  // Clearing is a single unambiguous act with no intermediate state to scrub
+  // through, so it commits on the spot rather than waiting for SET.
+  function clear() {
+    if (!allowEmpty) return;
+    queue.length = 0;
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    v = null;
+    committed = null;
+    paintAll();
+    if (onCommit) onCommit(null);
   }
 
   paintAll();
@@ -400,11 +541,23 @@ export function mount(container, opts = {}) {
   return {
     root,
     value: valueOf,
+    isDirty: () => valueOf() !== committed,
+    // For a caller that is closing: a date scrolled but not SET must never be
+    // lost on the way out. editor.js calls this from close(), next to the
+    // flushes that already exist there for exactly this reason.
+    commitIfDirty() { if (valueOf() !== committed) commit(); },
+    setValue(next) {
+      const parsed = parseISO(next ?? null);
+      v = parsed ? clampDay(parsed) : (allowEmpty ? null : todayValue());
+      committed = valueOf();
+      paintAll();
+    },
     focus() { units.d.focus(); },
     destroy() {
       if (destroyed) return;
       destroyed = true;
       queue.length = 0;
+      if (autoTimer) clearTimeout(autoTimer);
       for (const id of timers) clearTimeout(id);
       timers.clear();
       if (bufferTimer) clearTimeout(bufferTimer);

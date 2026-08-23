@@ -1,0 +1,135 @@
+/* ============================================================
+   dateinput.css — the flip-numeral date input, app-wide
+   ------------------------------------------------------------
+   Was a block inside calendar.css until August 23, 2026, when the
+   mechanism became THE way a date is set in Dash rather than a
+   Calendar-only widget. It moved to its own sheet rather than into
+   app.css for the same reason projects.css and calendar.css are
+   their own files: a change here is a small file to upload.
+
+   Two sizes, one mechanism. FULL is the object as designed, for
+   the Calendar tray where it is the only thing happening. COMPACT
+   fits an ordinary two-column form row (~200px) — same behaviour,
+   smaller cards, hints dropped (each unit keeps its aria-label, so
+   nothing is lost to a screen reader).
+
+   No literal colours, sizes or fonts: everything is a token.
+   ============================================================ */
+
+.flipdate {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-housing);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  margin: var(--space-2) 0;
+  transition: border-color var(--transition);
+}
+
+/* Dates are the ONE field in Dash that does not autosave — the mechanism
+   deliberately writes nothing until SET, so that scrubbing through three
+   months costs the store nothing. That has to be visible, or it becomes a
+   trap: while the faces differ from what was last saved, the housing takes an
+   ink edge and SET lights up. */
+.flipdate.is-dirty { border-color: var(--text-primary); }
+
+.fd-unit {
+  position: relative; border-radius: 4px;
+  background: var(--mount); color: var(--ink-on-mount);
+  font-family: var(--font-mono); text-align: center;
+  user-select: none; touch-action: none; cursor: ns-resize;
+  perspective: 260px;
+}
+.fd-unit:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* A field holding no date yet still shows you it has three drums. */
+.flipdate.is-empty .fd-unit { color: var(--ink-on-mount-muted); }
+
+/* every unit is over --tap-min in both directions (§4's a11y contract) */
+.fd-day   { width: 64px; height: 76px; font-size: 40px; }
+.fd-month { width: 84px; height: 76px; font-size: 30px; letter-spacing: 0.06em; }
+.fd-year  { width: 96px; height: 76px; font-size: 30px; }
+
+.fd-half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: flex; justify-content: center; }
+.fd-top { top: 0; border-radius: 4px 4px 0 0; background: var(--mount); border-bottom: 1px solid var(--rule-mount); }
+.fd-bottom { bottom: 0; border-radius: 0 0 4px 4px; background: var(--mount-soft); }
+.fd-half > span { flex: none; line-height: 76px; height: 76px; }
+.fd-bottom > span { transform: translateY(-50%); }
+
+.fd-flap { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: none; justify-content: center; backface-visibility: hidden; }
+.fd-flap > span { flex: none; line-height: 76px; height: 76px; }
+.fd-flap-top { top: 0; transform-origin: bottom; background: var(--mount); border-radius: 4px 4px 0 0; border-bottom: 1px solid var(--rule-mount); }
+.fd-flap-bottom { top: 50%; transform-origin: top; background: var(--mount-soft); border-radius: 0 0 4px 4px; }
+.fd-flap-bottom > span { transform: translateY(-50%); }
+
+/* Reduced motion: the flaps never appear. flipdate.js carries the matching
+   JS guard, so the timers do not run either — the value simply lands. */
+@media (prefers-reduced-motion: reduce) { .fd-flap { display: none !important; } }
+
+.fd-hint {
+  position: absolute; left: 0; right: 0; bottom: -20px;
+  color: var(--text-faint); letter-spacing: 0.16em; line-height: 1;
+  display: block; text-align: center;
+}
+.fd-hint::before { display: none; }
+
+.fd-actions { display: flex; flex-direction: column; gap: var(--space-1); margin-left: var(--space-1); }
+.fd-btn {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  min-height: 34px; padding: 0 var(--space-3);
+  color: var(--text-muted); background: var(--surface-raised);
+  transition: background var(--transition), color var(--transition);
+}
+.fd-btn:hover:not(:disabled) { color: var(--text-primary); }
+.fd-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* SET is filled only while there is something to save. Spent, it goes quiet
+   rather than disappearing, so the control never moves under your hand. */
+.fd-btn-primary.is-pending {
+  background: var(--text-primary); color: var(--surface); border-color: var(--text-primary);
+}
+.fd-btn:disabled { opacity: 0.45; cursor: default; }
+
+.fd-typed { display: none; margin-left: var(--space-2); }
+.flipdate.typing .fd-typed { display: inline-block; }
+.fd-typed input {
+  font-family: var(--font-mono); font-size: var(--text-base);
+  padding: var(--space-2); min-height: var(--tap-min);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-raised); color: var(--text-primary);
+}
+.fd-typed input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ============================================================
+   COMPACT — the same machine, sized for a form row
+   ------------------------------------------------------------
+   Cards on one line, actions on the next, hints dropped. Every
+   card still clears the 44px touch floor in both directions, and
+   every numeral is still 18px or larger.
+   ============================================================ */
+.flipdate-compact {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  margin: 0;
+  max-width: 100%;
+}
+.flipdate-compact .fd-day   { width: 44px; height: 50px; font-size: 26px; }
+.flipdate-compact .fd-month { width: 54px; height: 50px; font-size: 18px; letter-spacing: 0.04em; }
+.flipdate-compact .fd-year  { width: 58px; height: 50px; font-size: 18px; }
+.flipdate-compact .fd-half > span,
+.flipdate-compact .fd-flap > span { line-height: 50px; height: 50px; }
+/* The hints go, not the accessible names — each unit keeps its aria-label. */
+.flipdate-compact .fd-hint { display: none; }
+.flipdate-compact .fd-actions {
+  flex-basis: 100%; flex-direction: row; flex-wrap: wrap;
+  margin-left: 0; margin-top: var(--space-1);
+}
+.flipdate-compact .fd-btn { min-height: var(--control-min); padding: 0 var(--space-2); }
+.flipdate-compact .fd-typed { flex-basis: 100%; margin-left: 0; }
+.flipdate-compact .fd-typed input { width: 100%; min-height: var(--control-min); }
+
+/* The editor's two date fields sit side by side in a narrow column; let the
+   mechanism own its cell rather than fighting the label above it. */
+.editor-date-row .field { min-width: 0; }
+.editor-date-row .flipdate { margin-top: var(--space-1); }

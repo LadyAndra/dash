@@ -13,6 +13,7 @@
 
 import { el, typeChip } from "./shared.js";
 import { openEditor } from "../editor.js";
+import { mount as mountDateInput } from "../widgets/flipdate.js";
 import {
   visibleMilestones, removedMilestones, sortMilestones,
   orderBetween, needsRenumber, renumbered,
@@ -235,20 +236,34 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
 // control and the picker trigger. That keeps desktop and iPhone on the same
 // interaction contract now, and gives the future Calendar one component
 // boundary to replace later instead of several page/device-specific systems.
+// A phase's dates use the same flip mechanism as every other date in Dash
+// (August 23, 2026 — it replaced a native <input type="date"> here). Mounted
+// COMPACT, because two of these sit side by side in a phase row.
+//
+// Two things this one has to get right that the Calendar's tray does not:
+//
+//   - `fkey` still has to work. This whole drawer is REBUILT on every store
+//     change, and restoreFocus() finds the previously focused control by
+//     data-fkey and calls .focus() on it. The widget puts that attribute on
+//     its DAY card, which is focusable, rather than on the housing, which is
+//     not.
+//   - It autocommits a beat after the last tick, like the item editor's, so a
+//     date scrolled here cannot be lost to a rebuild arriving mid-scroll from
+//     another device.
 function dateField({ label, value, fkey, ariaLabel, onChange }) {
-  const input = el("input", {
-    type: "date",
-    class: "ms-date dash-date",
-    value: value || "",
-    "aria-label": ariaLabel,
-    "data-fkey": fkey,
-    onchange: (e) => onChange(e.target.value || ""),
-  });
-
-  return el("div", { class: "ms-date-field" }, [
+  const wrap = el("div", { class: "ms-date-field" }, [
     el("span", { class: "mk", text: label }),
-    input,
   ]);
+  mountDateInput(wrap, {
+    value: value || null,
+    size: "compact",
+    allowEmpty: true,
+    label: ariaLabel,
+    fkey,
+    autoCommitMs: 1500,
+    onCommit: (dateStr) => onChange(dateStr || ""),
+  });
+  return wrap;
 }
 
 // ===================================================================
