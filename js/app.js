@@ -24,6 +24,7 @@ import { homeView, speakToday } from "./views/home.js";
 import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { projectView } from "./views/project.js";
+import { calendarView } from "./views/calendar.js";
 
 // ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
 // Andra doesn't use either one, so they've come out of the view switcher.
@@ -40,7 +41,7 @@ import { projectView } from "./views/project.js";
 // import { kanbanView } from "./views/kanban.js";
 // import { finderView } from "./views/finder.js";
 
-const VIEWS = [homeView, listView, boardView, projectView];
+const VIEWS = [homeView, listView, boardView, projectView, calendarView];
 
 // Phone mode is intentionally capture-first for now. Project/Desk is a large
 // workspace feature and is deliberately not offered on a phone while its
@@ -48,6 +49,15 @@ const VIEWS = [homeView, listView, boardView, projectView];
 // than viewport width so rotating an iPhone cannot accidentally turn Project
 // back on; iPad-sized coarse-pointer devices remain eligible.
 const PHONE_SHORT_SIDE_MAX = 600;
+
+// Views deliberately not offered on phone-class screens. Project is a large
+// workspace feature whose narrow information architecture is unresolved.
+// Calendar (August 2026) is a desktop instrument by design — see §6 of the
+// calendar architecture: Home/Today stays the phone's surface for dates, and
+// js/mobile-chrome.js needs no change because Calendar is simply absent from
+// the phone's tab set rather than hidden inside it.
+const PHONE_HIDDEN_VIEWS = new Set(["project", "calendar"]);
+
 function isPhoneUI() {
   try {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -439,7 +449,7 @@ function applyCatalogChrome(view) {
 // ===================================================
 function activeView() {
   const requested = VIEWS.find(v => v.name === state.viewName) || listView;
-  if (requested.name === "project" && isPhoneUI()) {
+  if (PHONE_HIDDEN_VIEWS.has(requested.name) && isPhoneUI()) {
     state.viewName = "home";
     return homeView;
   }
@@ -447,10 +457,11 @@ function activeView() {
 }
 
 function setView(name) {
-  // Even if a stale button, history path or future caller asks for Project on
-  // a phone, keep the phone in its capture/list workflow rather than exposing
-  // the unfinished narrow Project page. No project data is removed.
-  state.viewName = (name === "project" && isPhoneUI()) ? "home" : name;
+  // Even if a stale button, history path or future caller asks for one of the
+  // desktop-only views on a phone, keep the phone in its capture/list workflow
+  // rather than exposing a page that was never laid out for it. No data is
+  // removed or hidden — Home still carries every date the Calendar would.
+  state.viewName = (PHONE_HIDDEN_VIEWS.has(name) && isPhoneUI()) ? "home" : name;
   state.viewLocal = {};
   // Changing view drops any selection: the entries you'd picked probably
   // aren't even on screen any more, and acting on invisible items is exactly
