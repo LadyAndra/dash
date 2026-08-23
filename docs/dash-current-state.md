@@ -459,3 +459,59 @@ parse error and dropped it app-wide. Nothing looked broken because most focus
 styles are written longhand, but the token existed and was reaching nothing.
 `tests/calendar.test.mjs` now checks that stylesheet for balanced braces and
 stray `\n`, so it cannot happen again quietly.
+
+
+### The flip clock becomes Dash's date input — August 23, 2026
+
+`js/widgets/flipdate.js` was built the same day as the Calendar and scoped to
+it. That scoping had a hole: the Calendar's only set-date affordance is the
+unscheduled tray, and the tray only holds **undated phases** — so on an archive
+with no undated phases the mechanism was reachable in principle and invisible in
+practice. It is now **the date input everywhere**: the item editor's Due and
+Remind me, the phase editor's Due and Remind, and the Calendar's tray. There is
+no hand-rolled `<input type="date">` left in Dash outside the widget itself.
+
+**Files:** `css/dateinput.css` is new and holds the widget's styles, which moved
+out of `css/calendar.css` (its own sheet rather than app.css, for the same
+upload-size reason projects.css and calendar.css are). `index.html` loads it;
+`sw.js` is at `dash-v102`. `js/views/calendar.js` now imports the widget
+statically rather than dynamically, so the SHELL crawler can see it.
+
+Design decisions a future session should not relitigate without asking:
+
+- **Two sizes, one mechanism.** `size: "compact"` shrinks the cards to fit a
+  two-column form row (~200px) and drops the visible DAY/MONTH/YEAR hints; each
+  unit keeps its `aria-label`, so nothing is lost to a screen reader. Every
+  compact card still clears the 44px touch floor in both directions and every
+  numeral is still 18px or larger — `tests/dateinput.test.mjs` reads those
+  numbers back out of the stylesheet and fails the build if they drop.
+- **Hovering is enough.** The wheel handler is on each unit with
+  `preventDefault()`, so resting the pointer on a card and scrolling ticks it
+  with nothing focused and nothing clicked. That is the requested behaviour and
+  the point of the widget. The known trade: scrolling a long editor with the
+  cursor over a date card ticks the date instead of scrolling the page.
+- **`committed` is what the CALLER passed, not what is on the faces.** A field
+  that may not be empty opens showing today, but today is a *proposal* — if it
+  counted as saved, SET would be spent on arrival and "set this phase to today",
+  the most likely thing anyone wants from that tray, would be the one date you
+  could not choose.
+- **Autocommit is per-caller, and the split is on purpose.** The editors pass
+  `autoCommitMs: 1500` because they are replacing fields that already autosaved
+  and a mechanism drivable by hovering has no reliable moment to notice you have
+  wandered off; `editor.js`'s `close()` also calls `commitIfDirty()`, next to
+  the flushes already there for a half-typed tag. The Calendar's tray passes
+  nothing, so SET is the only way — scheduling a phase is a decision with a
+  consequence and nothing should take it on your behalf. Either way it is one op
+  per intent, never one per tick.
+- **Blank flaps are dots, not dashes.** A dash sits exactly on the seam between
+  a card's two halves and becomes indistinguishable from it, which made an empty
+  field read as a broken one.
+- **`fkey` goes on the DAY card, not the housing.** `restoreFocus()` in
+  `milestone-editor.js` finds the previously focused control by `data-fkey` and
+  calls `.focus()` on it; that drawer is rebuilt on every store change, and the
+  housing is not focusable.
+
+**Left behind on purpose:** `.ms-date` and `.field input[type="date"]` in
+`css/app.css` styled the native pickers that are gone. They are harmless, and
+removing them means re-uploading a 165KB file for nothing — fold it into the
+next pass that touches `app.css` for another reason.

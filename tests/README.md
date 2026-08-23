@@ -29,13 +29,19 @@ change the test environment between Dash uploads.
 | `desk-d1.test.mjs` | Phase D1 of the Desk: the `"vs"` op's merge rules in every arrival order, two-device convergence, un-place/restore, collision reporting, the one-archive-pass rule, and the pure geometry (wobble, clamping, z-order, pile weight, glance framing). |
 | `desk-d2.test.mjs` | Phase D2: the `"dk"` op (clips and post-its) through the same shared merge helper — every arrival order, two devices clipping different cards offline, add-idempotence, remove-vs-edit, a late `create` that must not wipe a project's clips, and an unknown collection (D3's `sym`) landing safely. Also the derived clip geometry, and the post-it tint measured against `js/theme.js`'s own `contrast()` across every possible project colour in both themes. Needs nothing installed. |
 | `desk-d2.render.test.mjs` | Phase D2 interaction: select-to-clip writes one clip and one membership op each and nothing before that; a closed clip drags as one object with relative offsets preserved; open/close writes nothing at all; both unclip gestures; the post-it's deferred commit, its draft surviving a rebuild, and drop-decides-attachment. Then the August 16 round: that a post-it you have not typed into yet survives the pointer moving away, that words typed into one that was already thrown away bring it back, the right-pinned stack, an expanded card outranking its grid siblings, the measured open grid, and a selection that cannot escape an expanded card. Needs jsdom. |
+| `calendar.test.mjs` | The Calendar's pure logic (M3): the dye ramp at every boundary and against the tokens it claims to be, weight, both strip axis functions at `CAL_HORIZON_DAYS = 120`, the tooltip's edge clamps, the load score and the fog's continuity, the shelf's shedding order, and the flip clock's carry across month ends and leap years. It also audits the source: a literal colour anywhere in `calendar.js`, `flipdate.js` or `calendar.css` fails the build, because a baked colour is what would force a redraw on a theme swap. Needs nothing installed. |
+| `calendar.render.test.mjs` | The Calendar under jsdom: that the shell is KEPT across redraws rather than rebuilt (which would destroy an open flip widget mid-edit), that each mark carries the ramp class and the ARIA its band and distance imply, that the tooltip follows focus and not only hover, that the overdue field breathes while the NOW line stays put, that Month mode shows finished entries as history, that the tray's SET writes one op and the phase leaves the tray, that reduced motion is a different code path rather than a slower one, and that flipping the theme changes nothing in the drawn markup. Needs jsdom. |
+| `dateinput.test.mjs` | The flip-numeral date input, app-wide (August 23, 2026): the compact size and its accessibility floors, the empty state and the fact that one notch on an empty field lands on TODAY rather than tomorrow, clearing, the saved-vs-unsaved signal (this is the one field in Dash that does not autosave per tick, so that has to be visible AND announced), both safety nets that stop that honesty becoming a trap, and hover-and-scroll working with nothing focused and nothing clicked. Also checks that no hand-rolled native date input is left in either editor. Needs jsdom. The widget's date ARITHMETIC is in `calendar.test.mjs`, where it was written. |
 | `project-shelf.test.mjs` | The Projects overview's shelf: that a redraw KEEPS its spines rather than rebuilding them (which is what stopped the tilt animation restarting on every unrelated store write), that it still reflects renames, additions and removals, that entry counts come from one archive pass rather than one per spine, and that a brand new spine does not animate into a hover nobody performed. Needs jsdom. |
 
-`visual-harness.html` is not a test. It is a page that draws a real desk — a
-clip, a post-it, cards at every width — from the real `js/` and `css/`, so that
-the things a headless test can never see can be LOOKED at (§14.20: "headless
-tests can check structure and data, never geometry"). Serve the repo folder
-(`python3 -m http.server`) and open it; module imports need http, not `file:`.
+`calendar-harness.html` and `visual-harness.html` are not tests. They are pages that draw a real desk
+— a clip, a post-it, cards at every width — and a real Calendar from the real
+`js/` and `css/`, so that the things a headless test can never see can be
+LOOKED at (§14.20: "headless tests can check structure and data, never
+geometry"). Serve the repo folder (`python3 -m http.server`) and open them;
+module imports need http, not `file:`. The Calendar one takes query flags:
+`?dark=1`, `?heavy=1` (the fog at its ceiling), `?quiet=1` (the landscape
+clear), `?w=1100` (watch the shelf shed).
 
 Why these exist: merge bugs are invisible until they've quietly eaten
 something, and the desk's whole promise is that two devices arranging the same

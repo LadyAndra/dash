@@ -1,0 +1,138 @@
+<!doctype html>
+<!-- Scratch visual harness for the Calendar. Not deployed, not linked from
+     anywhere, not in the service worker's SHELL: it exists so a person (or a
+     headless browser) can LOOK at the instrument, which is the only way
+     geometry is ever checked in this repo (§14.20 — "headless tests can check
+     structure and data, never geometry").
+
+     Serve the repo root (python3 -m http.server) and open
+     /tests/calendar-harness.html. Module imports need http, not file:.
+
+     ?heavy=1  a fortnight stuffed full, so the fog can be looked at at its
+               ceiling; ?quiet=1 clears the next two weeks entirely.
+     ?dark=1   the mount theme.
+     ?w=1100   narrows the window to watch the shelf shed. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>calendar visual harness</title>
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/app.css">
+<link rel="stylesheet" href="../css/calendar.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  /* mirrors index.html's real chrome closely enough for Calendar to be sized
+     the way it is in the app: a column that owns the window, with the view
+     host filling what is left under a topbar-sized strip */
+  #app { height: 100vh; }
+  .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; }
+  .viewport { flex: 1; min-height: 0; overflow: auto; }
+  .fake-topbar {
+    flex: none; padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--border-strong); background: var(--surface-sunken);
+    font-family: var(--font-mono); font-size: var(--text-label);
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint);
+  }
+</style>
+</head>
+<body>
+<div id="app"><div class="main">
+  <div class="fake-topbar">Dash · calendar visual harness</div>
+  <div class="viewport"><div class="catalog-layout"><div id="view-host"></div></div></div>
+</div></div>
+<script type="module">
+import { Store } from "../js/store.js";
+import { calendarView } from "../js/views/calendar.js";
+import { todayISO } from "../js/milestones.js";
+
+const params = new URLSearchParams(location.search);
+if (params.get("dark") === "1") document.documentElement.setAttribute("data-theme", "dark");
+if (params.get("w")) document.getElementById("app").style.maxWidth = params.get("w") + "px";
+
+const TODAY = todayISO();
+function plus(n) {
+  const [y, m, d] = TODAY.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n, 12);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+
+const store = new Store();
+function project(title, color, phases) {
+  const pid = store.createItem({ title, type: "project" });
+  store.setField(pid, "color", color);
+  for (const [label, offset, extra = {}] of phases) {
+    const mid = store.addMilestone(pid, { label });
+    if (offset !== null) store.setMilestoneField(pid, mid, "date", plus(offset));
+    if (extra.done) store.setMilestoneField(pid, mid, "done", new Date().toISOString());
+    if (extra.remind != null) store.setMilestoneField(pid, mid, "remind", plus(extra.remind));
+  }
+  return pid;
+}
+
+project("Dash renovation", "clay", [
+  ["Repo setup", -196, { done: true }],
+  ["Board metadata", -6, { done: true }],
+  ["Calendar concept", 0],
+  ["Flip component", 12],
+  ["Calendar live", 51, {}],
+]);
+project("Freelance site rebuild", "blue", [
+  ["Contract signed", -105, { done: true }],
+  ["Wireframes", -4],
+  ["Design comps", 5, { remind: 2 }],
+  ["Launch", 34],
+]);
+project("Studio zine, issue 2", "plum", [
+  ["Issue 1 out", -84, { done: true }],
+  ["Draft interviews", 2],
+  ["Photo day", 12],
+  ["Distribution plan", null],
+  ["Print deadline", 27],
+]);
+project("Garden overhaul", "green", [
+  ["Beds built", -126, { done: true }],
+  ["Order bulbs", 10],
+  ["Fence repair", null],
+  ["Winterize", 76],
+]);
+
+for (const [title, offset] of [["Renew domain", 3], ["Dentist forms", 6], ["Quarterly taxes", 24], ["Passport renewal", 86]]) {
+  const id = store.createItem({ title });
+  store.setField(id, "due", `${plus(offset)}T12:00:00.000Z`);
+}
+
+const viewLocal = {};
+const ctx = {
+  store, viewLocal, selection: { active: false }, sync: null,
+  onOpen: (id) => console.log("open", id), onNew(){},
+  isCollapsed: () => false, toggleCollapse(){},
+  holdRenders: () => () => {}, rerender: draw,
+};
+function draw() { calendarView.render(null, ctx, document.getElementById("view-host")); }
+draw();
+
+// The gauge across its range — by seeding real work, not by poking the fog,
+// so what you are looking at is the actual loadScore -> fog path.
+//   ?heavy=1   a fortnight stuffed full
+//   ?quiet=1   nothing at all in the next two weeks
+if (params.get("heavy") === "1") {
+  const pid = project("Overload", "ochre", []);
+  for (let i = 0; i < 16; i++) {
+    const mid = store.addMilestone(pid, { label: `Phase ${i + 1}` });
+    store.setMilestoneField(pid, mid, "date", plus((i % 14) - 3));
+  }
+  draw();
+}
+if (params.get("quiet") === "1") {
+  for (const p of store.projects()) {
+    for (const m of (p.milestones || [])) {
+      if (m.date && !m.done) store.setMilestoneField(p.id, m.mid, "date", plus(60));
+    }
+  }
+  draw();
+}
+
+window.__cal = { store, viewLocal, draw };
+</script>
+</body>
+</html>

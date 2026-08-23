@@ -99,7 +99,11 @@ first, then the empty space; the dial and the gauge hold on longest.
 phases that have no date yet, grouped by project. Press **Set date →** and the
 flip mechanism appears in place.
 
-**The flip mechanism.** Three split-flap cards — day, month, year. Scroll on
+**The flip mechanism.** (Superseded within the day — see
+`changes-2026-08-23-date-input.md`. The mechanism is no longer reachable only
+from this tray: it is now the date input on every date field in Dash, and this
+tray keeps the full-size version of it. Everything below still describes how it
+behaves.) Three split-flap cards — day, month, year. Scroll on
 one, or Tab to it and use ↑/↓, or just type the digits ("2" then "7" lands on
 27), or press TYPE for an ordinary date field. Drag works too on a touchscreen,
 one tick per short drag, no flick-and-spin. Every change is one flip; a jump of
