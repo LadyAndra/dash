@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dash Calendar — Exploration A · Ledger</title>
+<style>
+/* ============================================================
+   Dash tokens (verbatim values from css/tokens.css) + demo vars
+   ============================================================ */
+:root {
+  --text-scale: 1;
+  --surface:        #f2ece0;
+  --surface-raised: #f8f4ea;
+  --surface-sunken: #e8e0d0;
+  --border:         #cfc6b2;
+  --border-strong:  #a89d84;
+  --mount:          #17150f;
+  --text-primary:  #1c1a14;
+  --text-muted:    #4d4738;
+  --text-faint:    #6a6252;
+  --text-on-accent:#f8f4ea;
+  --ember:         #b23a14;
+  --ember-ink:     var(--text-on-accent);
+  --color-green:  #4a6353;
+  --color-clay:   #87502f;
+  --color-blue:   #4c6076;
+  --color-plum:   #5f4a5c;
+  --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-display: "Dash Canyon Local", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-base: calc(1.125rem * var(--text-scale));
+  --text-sm:   calc(1rem     * var(--text-scale));
+  --text-lg:   calc(1.375rem * var(--text-scale));
+  --text-2xl:  calc(2.5rem   * var(--text-scale));
+  --text-3xl:  calc(3.5rem   * var(--text-scale));
+  --text-label:calc(0.6875rem * var(--text-scale));
+  --radius: 2px;
+  --tap-min: 44px;
+  --transition: 140ms ease;
+}
+:root[data-theme="dark"] {
+  --surface:        #17150f;
+  --surface-raised: #211e16;
+  --surface-sunken: #100e09;
+  --border:         #3a352a;
+  --border-strong:  #524c3d;
+  --text-primary: #efe8d8;
+  --text-muted:   #c3bba7;
+  --text-faint:   #928a76;
+  --text-on-accent:#17150f;
+  --ember:        #ef7a4e;
+  --color-green:  #7fa38c;
+  --color-clay:   #cf8a63;
+  --color-blue:   #7f9bb8;
+  --color-plum:   #a988a6;
+}
+
+/* ---- base ---- */
+* { box-sizing: border-box; margin: 0; }
+html, body { background: var(--surface); color: var(--text-primary); }
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  padding: 2.5rem clamp(1rem, 4vw, 3.5rem) 4rem;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+
+/* the mono metadata voice */
+.mk {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ---- header ---- */
+header { margin-bottom: 2rem; }
+.topline { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.controls { display: flex; gap: 0.5rem; }
+.ctl {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  min-height: var(--tap-min); padding: 0 1rem;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  color: var(--text-muted); background: var(--surface-raised);
+  transition: background var(--transition);
+}
+.ctl[aria-pressed="true"] { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.ctl:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary); }
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl); font-weight: 400; line-height: 1.05;
+  margin-top: 0.75rem;
+}
+.monthnav { display: inline-flex; gap: 0.25rem; margin-left: 0.75rem; vertical-align: 0.5rem; }
+.monthnav .ctl { min-height: 36px; padding: 0 0.75rem; }
+.intro { color: var(--text-muted); max-width: 62ch; margin-top: 1rem; font-size: var(--text-base); }
+
+/* ============================================================
+   MONTH — a ruled instrument sheet, not boxes
+   ============================================================ */
+.month { border-top: 1px solid var(--border-strong); }
+.dow-row, .week {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+}
+.dow-row .mk { padding: 0.5rem 0.5rem 0.4rem; }
+.week { border-top: 1px solid var(--border); min-height: 108px; }
+.day {
+  padding: 0.4rem 0.35rem 0.6rem;
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.day:first-child { border-left: none; }
+.day.out .daynum { opacity: 0.45; }
+.daynum {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.1em; color: var(--text-faint);
+  margin-bottom: 2px;
+}
+.day.today .daynum {
+  color: var(--surface); background: var(--text-primary);
+  align-self: flex-start; padding: 2px 6px; border-radius: var(--radius);
+}
+
+/* ---- the entry block: colour = which project; TREATMENT = how soon ---- */
+.blk {
+  position: relative; overflow: hidden;
+  border-radius: var(--radius);
+  padding: 4px 7px;
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.09em; text-transform: uppercase;
+  line-height: 1.35;
+  white-space: nowrap; text-overflow: ellipsis; overflow-x: hidden;
+  background: var(--pc); color: var(--text-on-accent);
+}
+.blk .ctx { opacity: 0.7; }
+.blk.w2 { padding-top: 7px; padding-bottom: 7px; }
+.blk.w3 { padding-top: 12px; padding-bottom: 12px; font-size: calc(var(--text-label) * 1.15); }
+
+/* grain — a tiled SVG noise, CSS-only, vendorable in-repo */
+.grain::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.5; mix-blend-mode: overlay;
+}
+
+/* the distance ramp: solid & sharp → grainy → dissolved outline */
+.blk.near { box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.blk.soon { opacity: 0.92; }
+.blk.mid  { background: color-mix(in srgb, var(--pc) 55%, var(--surface)); color: var(--text-primary); }
+.blk.far  {
+  background: color-mix(in srgb, var(--pc) 14%, var(--surface));
+  color: var(--pc);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 55%, var(--surface));
+}
+.blk.overdue { background: var(--ember); color: var(--ember-ink); }
+.blk.done {
+  background: transparent; color: var(--text-faint);
+  box-shadow: inset 0 0 0 1px var(--border);
+  text-decoration: line-through; opacity: 0.8;
+}
+.blk.remind {
+  background: transparent; color: var(--text-muted);
+  box-shadow: none; padding-left: 0;
+}
+.blk.remind::before { content: "◌ "; }
+
+/* ============================================================
+   AGENDA — large rows that dissolve down the page
+   ============================================================ */
+.agenda { border-top: 1px solid var(--border-strong); }
+.aday {
+  display: grid; grid-template-columns: 110px 1fr;
+  gap: 1rem; padding: 0.9rem 0; border-bottom: 1px solid var(--border);
+}
+.aday .datecell { text-align: right; }
+.aday .dnum {
+  font-family: var(--font-mono); font-size: var(--text-2xl);
+  line-height: 1; color: var(--text-primary); letter-spacing: -0.02em;
+}
+.aday .dmon { display: block; margin-top: 2px; }
+.aday.is-today .dnum { background: var(--text-primary); color: var(--surface); padding: 2px 8px; border-radius: var(--radius); }
+.aday .rows { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.arow {
+  position: relative; overflow: hidden;
+  display: flex; align-items: baseline; gap: 0.75rem;
+  border-radius: var(--radius); padding: 8px 12px;
+  background: var(--pc); color: var(--text-on-accent);
+}
+.arow .t { font-size: var(--text-base); font-family: var(--font-body); }
+.arow.w3 .t { font-size: var(--text-lg); }
+.arow .mk { color: inherit; opacity: 0.75; letter-spacing: 0.12em; }
+.arow.near { box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.arow.soon { opacity: 0.92; }
+.arow.mid  { background: color-mix(in srgb, var(--pc) 55%, var(--surface)); color: var(--text-primary); }
+.arow.far  {
+  background: color-mix(in srgb, var(--pc) 14%, var(--surface));
+  color: var(--pc);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 55%, var(--surface));
+}
+.arow.far .mk { color: var(--text-faint); }
+.arow.overdue { background: var(--ember); color: var(--ember-ink); }
+.arow.remind { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--border); }
+.arow.remind .t::before { content: "◌ "; color: var(--text-faint); }
+.asec { padding: 1.4rem 0 0.4rem; }
+.asec .mk.ember { color: var(--ember); }
+
+/* ============================================================
+   UNSCHEDULED TRAY
+   ============================================================ */
+.tray { margin-top: 2.5rem; background: var(--surface-sunken); border-radius: var(--radius); }
+.tray summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.75rem;
+  min-height: var(--tap-min); padding: 0 1rem;
+}
+.tray summary::-webkit-details-marker { display: none; }
+.tray summary .mk { color: var(--text-muted); }
+.tray[open] summary { border-bottom: 1px solid var(--border); }
+.trayrow {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+}
+.trayrow:last-child { border-bottom: none; }
+.dot { width: 10px; height: 10px; border-radius: 999px; background: var(--pc); flex: none; }
+.trayrow .proj { color: var(--text-faint); }
+.setdate {
+  margin-left: auto; font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px dashed var(--border-strong); min-height: 32px;
+}
+
+footer { margin-top: 3rem; color: var(--text-faint); font-size: var(--text-sm); max-width: 70ch; }
+.hidden { display: none !important; }
+@media (prefers-reduced-motion: reduce) { :root { --transition: 0ms; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="topline">
+    <span class="mk">Dash · Calendar exploration A — “Ledger”</span>
+    <div class="controls" role="group" aria-label="View controls">
+      <button class="ctl" id="btnMonth" aria-pressed="true">Month</button>
+      <button class="ctl" id="btnAgenda" aria-pressed="false">Agenda</button>
+      <button class="ctl" id="btnDark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <h1 id="title">August 2026
+    <span class="monthnav">
+      <button class="ctl" id="btnPrev" aria-label="Previous month">‹</button>
+      <button class="ctl" id="btnNext" aria-label="Next month">›</button>
+    </span>
+  </h1>
+  <p class="intro">Colour always means <em>which project</em>. How soon something is
+  is carried by its <em>material</em>: far away = a grainy outline barely settled on
+  the paper; approaching = solid ink; imminent = solid with a hard edge; past its
+  date = ember. Weight shows as size. Demo is pinned to Aug&nbsp;22.</p>
+</header>
+
+<main>
+  <section id="monthView" aria-label="Month"></section>
+  <section id="agendaView" class="hidden" aria-label="Agenda"></section>
+
+  <details class="tray" id="tray">
+    <summary><span class="mk" id="trayCount">Unscheduled · 0</span></summary>
+    <div id="trayBody"></div>
+  </details>
+</main>
+
+<footer>
+  <p>Grain is a tiled SVG-noise image (CSS only, vendorable in-repo — no build
+  step). All colours are theme tokens; ember appears only on overdue. Reminders
+  render as hollow ◌ marks — a nudge, not the thing itself.</p>
+</footer>
+
+<script>
+// ---------- pinned demo clock ----------
+const TODAY = "2026-08-22";
+
+// ---------- sample data (shape mirrors entries.js) ----------
+const PROJECTS = {
+  dash:   { title: "Dash renovation",        v: "--color-clay"  },
+  site:   { title: "Freelance site rebuild", v: "--color-blue"  },
+  zine:   { title: "Studio zine, issue 2",   v: "--color-plum"  },
+  garden: { title: "Garden overhaul",        v: "--color-green" },
+};
+const ENTRIES = [
+  { p:"garden", label:"Clear beds",       date:"2026-08-10", kind:"due", w:1, done:true },
+  { p:"dash",   label:"Board metadata",   date:"2026-08-16", kind:"due", w:2, done:true },
+  { p:"site",   label:"Wireframes",       date:"2026-08-18", kind:"due", w:2 },
+  { p:null,     label:"Renew domain",     date:"2026-08-20", kind:"due", w:1 },
+  { p:"dash",   label:"Calendar concept", date:"2026-08-22", kind:"due", w:2 },
+  { p:"zine",   label:"Draft interviews", date:"2026-08-24", kind:"due", w:2 },
+  { p:"site",   label:"Design comps",     date:"2026-08-24", kind:"remind", w:1 },
+  { p:null,     label:"Dentist forms",    date:"2026-08-25", kind:"due", w:1 },
+  { p:"site",   label:"Design comps",     date:"2026-08-27", kind:"due", w:2 },
+  { p:"garden", label:"Order bulbs",      date:"2026-09-01", kind:"due", w:1 },
+  { p:"dash",   label:"Flip component",   date:"2026-09-03", kind:"due", w:2 },
+  { p:"zine",   label:"Photo day",        date:"2026-09-03", kind:"due", w:2 },
+  { p:null,     label:"Quarterly taxes",  date:"2026-09-15", kind:"due", w:2 },
+  { p:"zine",   label:"Print deadline",   date:"2026-09-18", kind:"due", w:3 },
+  { p:"site",   label:"Launch",           date:"2026-09-25", kind:"due", w:3 },
+];
+const UNSCHEDULED = [
+  { p:"zine",   label:"Distribution plan" },
+  { p:"garden", label:"Fence repair" },
+  { p:"dash",   label:"Home panel maturation" },
+];
+
+// ---------- date helpers (date-only strings, per the addendum) ----------
+const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DOW = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
+function parse(s){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return {y:+m[1],mo:+m[2],d:+m[3]}; }
+function iso(y,mo,d){ return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+function noon(s){ const p=parse(s); return new Date(p.y,p.mo-1,p.d,12).getTime(); }
+function daysUntil(s){ return Math.round((noon(s)-noon(TODAY))/86400000); }
+function addDays(s,n){ const p=parse(s); const d=new Date(p.y,p.mo-1,p.d+n,12); return iso(d.getFullYear(),d.getMonth()+1,d.getDate()); }
+function fmtDay(s){ const p=parse(s); return `${p.d} ${MONTHS[p.mo-1]}`; }
+function dowOf(s){ const p=parse(s); return (new Date(p.y,p.mo-1,p.d,12).getDay()+6)%7; } // Mon=0
+
+// the distance ramp — the whole hypothesis in one function
+function rampClass(e){
+  if (e.done) return "done";
+  if (e.kind === "remind") return "remind";
+  const n = daysUntil(e.date);
+  if (n < 0)  return "overdue";
+  if (n <= 2) return "near";
+  if (n <= 7) return "soon";
+  if (n <= 14) return "mid";
+  return "far grain";
+}
+function grainToo(cls){ return cls === "mid" ? cls + " grain" : cls; }
+function pcVar(e){ return e.p ? `var(${PROJECTS[e.p].v})` : "var(--text-faint)"; }
+function ctxOf(e){ return e.p ? PROJECTS[e.p].title : null; }
+
+// ---------- state ----------
+let mode = "month";
+let cursor = { y: 2026, mo: 8 };
+
+// ---------- month render ----------
+function renderMonth(){
+  const root = document.getElementById("monthView");
+  root.innerHTML = "";
+  const dow = document.createElement("div"); dow.className = "dow-row";
+  for (const d of DOW){ const s=document.createElement("span"); s.className="mk"; s.textContent=d; dow.appendChild(s); }
+  root.appendChild(dow);
+
+  const first = iso(cursor.y, cursor.mo, 1);
+  let cur = addDays(first, -dowOf(first));            // back to Monday
+  const daysInMonth = new Date(cursor.y, cursor.mo, 0).getDate();
+  const last = iso(cursor.y, cursor.mo, daysInMonth);
+  const gridEnd = addDays(last, 6 - dowOf(last));
+
+  const byDay = new Map();
+  for (const e of ENTRIES){ (byDay.get(e.date) || byDay.set(e.date,[]).get(e.date)).push(e); }
+
+  while (cur <= gridEnd){
+    const week = document.createElement("div"); week.className = "week";
+    for (let i=0;i<7;i++){
+      const p = parse(cur);
+      const cell = document.createElement("div");
+      cell.className = "day" + (p.mo !== cursor.mo ? " out" : "") + (cur === TODAY ? " today" : "");
+      const num = document.createElement("span"); num.className="daynum";
+      num.textContent = p.d === 1 ? `1 ${MONTHS[p.mo-1]}` : p.d;
+      cell.appendChild(num);
+      for (const e of (byDay.get(cur)||[])){
+        const b = document.createElement("div");
+        b.className = `blk w${e.w} ${grainToo(rampClass(e))}`;
+        b.style.setProperty("--pc", pcVar(e));
+        b.title = (ctxOf(e) ? ctxOf(e) + " · " : "") + e.label + " · " + fmtDay(e.date);
+        b.textContent = e.label;
+        cell.appendChild(b);
+      }
+      week.appendChild(cell);
+      cur = addDays(cur, 1);
+    }
+    root.appendChild(week);
+  }
+  document.getElementById("title").firstChild.textContent = `${MONTHS_FULL[cursor.mo-1]} ${cursor.y} `;
+}
+
+// ---------- agenda render ----------
+function renderAgenda(){
+  const root = document.getElementById("agendaView");
+  root.innerHTML = "";
+  const horizon = addDays(TODAY, 35);
+  const live = ENTRIES.filter(e => !e.done);
+  const overdue = live.filter(e => e.date < TODAY).sort((a,b)=>a.date<b.date?-1:1);
+  const coming  = live.filter(e => e.date >= TODAY && e.date <= horizon);
+
+  if (overdue.length){
+    const h = document.createElement("div"); h.className="asec";
+    h.innerHTML = `<span class="mk ember">Overdue · ${overdue.length}</span>`;
+    root.appendChild(h);
+    for (const e of overdue) root.appendChild(agendaRow(e, true));
+  }
+  const byDay = new Map();
+  for (const e of coming){ (byDay.get(e.date) || byDay.set(e.date,[]).get(e.date)).push(e); }
+  const days = [...byDay.keys()].sort();
+  for (const d of days){
+    const p = parse(d);
+    const day = document.createElement("div");
+    day.className = "aday" + (d === TODAY ? " is-today" : "");
+    day.innerHTML = `<div class="datecell"><span class="dnum">${p.d}</span><span class="mk dmon">${MONTHS[p.mo-1]} · ${DOW[dowOf(d)]}</span></div>`;
+    const rows = document.createElement("div"); rows.className = "rows";
+    for (const e of byDay.get(d)) rows.appendChild(agendaRow(e, false));
+    day.appendChild(rows);
+    root.appendChild(day);
+  }
+}
+function agendaRow(e, forceOverdue){
+  const r = document.createElement("div");
+  r.className = `arow w${e.w} ${grainToo(rampClass(e))}`;
+  r.style.setProperty("--pc", pcVar(e));
+  const ctx = ctxOf(e);
+  r.innerHTML = (ctx ? `<span class="mk">${ctx}</span>` : `<span class="mk">Item</span>`) +
+    `<span class="t">${e.label}</span>` +
+    (forceOverdue ? `<span class="mk" style="margin-left:auto">${fmtDay(e.date)}</span>` : "");
+  return r;
+}
+
+// ---------- tray ----------
+function renderTray(){
+  document.getElementById("trayCount").textContent = `Unscheduled · ${UNSCHEDULED.length}`;
+  const body = document.getElementById("trayBody"); body.innerHTML = "";
+  for (const u of UNSCHEDULED){
+    const row = document.createElement("div"); row.className = "trayrow";
+    row.innerHTML = `<span class="dot" style="--pc:var(${PROJECTS[u.p].v})"></span>` +
+      `<span>${u.label}</span><span class="mk proj">${PROJECTS[u.p].title}</span>` +
+      `<button class="setdate">Set date →</button>`;
+    body.appendChild(row);
+  }
+}
+
+// ---------- wiring ----------
+function setMode(m){
+  mode = m;
+  document.getElementById("btnMonth").setAttribute("aria-pressed", String(m==="month"));
+  document.getElementById("btnAgenda").setAttribute("aria-pressed", String(m==="agenda"));
+  document.getElementById("monthView").classList.toggle("hidden", m!=="month");
+  document.getElementById("agendaView").classList.toggle("hidden", m!=="agenda");
+  document.querySelector(".monthnav").style.visibility = m==="month" ? "visible" : "hidden";
+  if (m==="agenda") document.getElementById("title").firstChild.textContent = "Next five weeks ";
+  else renderMonth();
+}
+document.getElementById("btnMonth").onclick = () => setMode("month");
+document.getElementById("btnAgenda").onclick = () => setMode("agenda");
+document.getElementById("btnPrev").onclick = () => { cursor.mo--; if(cursor.mo<1){cursor.mo=12;cursor.y--;} renderMonth(); };
+document.getElementById("btnNext").onclick = () => { cursor.mo++; if(cursor.mo>12){cursor.mo=1;cursor.y++;} renderMonth(); };
+document.getElementById("btnDark").onclick = (ev) => {
+  const root = document.documentElement;
+  const on = root.getAttribute("data-theme") === "dark";
+  if (on) root.removeAttribute("data-theme"); else root.setAttribute("data-theme","dark");
+  ev.currentTarget.setAttribute("aria-pressed", String(!on));
+};
+
+renderMonth(); renderAgenda(); renderTray();
+</script>
+</body>
+</html>

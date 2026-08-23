@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dash Calendar — The Instrument v3 · one screen</title>
+<style>
+
+:root {
+  --text-scale: 1;
+  --surface:        #f2ece0;
+  --surface-raised: #f8f4ea;
+  --surface-sunken: #e8e0d0;
+  --border:         #cfc6b2;
+  --border-strong:  #a89d84;
+  --mount:          #17150f;
+  --mount-soft:     #211e16;
+  --rule-mount:     #3a352a;
+  --ink-on-mount:       #efe8d8;
+  --ink-on-mount-muted: #a89f8a;
+  --text-primary:  #1c1a14;
+  --text-muted:    #4d4738;
+  --text-faint:    #6a6252;
+  --text-on-accent:#f8f4ea;
+  --ember:         #b23a14;
+  --ember-ink:     var(--text-on-accent);
+  --color-green:  #4a6353;
+  --color-clay:   #87502f;
+  --color-blue:   #4c6076;
+  --color-plum:   #5f4a5c;
+  --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-display: "Dash Canyon Local", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-base: calc(1.125rem * var(--text-scale));
+  --text-sm:   calc(1rem     * var(--text-scale));
+  --text-lg:   calc(1.375rem * var(--text-scale));
+  --text-2xl:  calc(2.5rem   * var(--text-scale));
+  --text-3xl:  calc(3.5rem   * var(--text-scale));
+  --text-label:calc(0.6875rem * var(--text-scale));
+  --radius: 2px;
+  --tap-min: 44px;
+  --transition: 140ms ease;
+
+  /* ---- proposed Calendar tokens (the dye ramp) ---- */
+  --cal-dye-near: 100%;   /* 0–2 days out: full dye, hard edge */
+  --cal-dye-soon: 100%;   /* 3–7 days: full dye, soft edge */
+  --cal-dye-mid:  55%;    /* 8–14 days: dye thinning, grain arrives */
+  --cal-dye-far:  24%;    /* beyond: mostly paper, grain */
+}
+:root[data-theme="dark"] {
+  --surface:        #17150f;
+  --surface-raised: #211e16;
+  --surface-sunken: #100e09;
+  --border:         #3a352a;
+  --border-strong:  #524c3d;
+  --mount:          #100e09;
+  --mount-soft:     #191710;
+  --ink-on-mount:       #efe8d8;
+  --ink-on-mount-muted: #a89f8a;
+  --text-primary: #efe8d8;
+  --text-muted:   #c3bba7;
+  --text-faint:   #928a76;
+  --text-on-accent:#17150f;
+  --ember:        #ef7a4e;
+  --color-green:  #7fa38c;
+  --color-clay:   #cf8a63;
+  --color-blue:   #7f9bb8;
+  --color-plum:   #a988a6;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { background: var(--surface); color: var(--text-primary); }
+body {
+  font-family: var(--font-body); font-size: var(--text-base); line-height: 1.5;
+  padding: 2.5rem clamp(1rem, 4vw, 3.5rem) 4rem; max-width: 1500px; margin: 0 auto;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+.mk { font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); }
+
+header { margin-bottom: 1.5rem; }
+.topline { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.controls { display: flex; gap: 0.5rem; }
+.ctl {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase;
+  min-height: var(--tap-min); padding: 0 1rem; border: 1px solid var(--border-strong);
+  border-radius: var(--radius); color: var(--text-muted); background: var(--surface-raised);
+}
+.ctl[aria-pressed="true"] { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.ctl:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary); }
+h1 { font-family: var(--font-display); font-size: var(--text-3xl); font-weight: 400; line-height: 1.05; margin-top: 0.75rem; }
+.monthnav { display: inline-flex; gap: 0.25rem; margin-left: 0.75rem; vertical-align: 0.5rem; }
+.monthnav .ctl { min-height: 36px; padding: 0 0.75rem; }
+.intro { color: var(--text-muted); max-width: 66ch; margin-top: 1rem; }
+
+/* grain — tiled SVG noise, would ship as dash/assets/grain.svg */
+.grain { position: relative; }
+.grain::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.45; mix-blend-mode: overlay;
+}
+
+/* ============================================================
+   THE MARK GRAMMAR — one ramp, everywhere
+   (hue = which project · dye/grain/edge = how soon · size = weight)
+   ============================================================ */
+.chit {
+  position: relative; overflow: hidden;
+  border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.09em; text-transform: uppercase; line-height: 1.35;
+  white-space: nowrap; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--pc) var(--dye, 100%), var(--surface));
+  color: var(--text-on-accent);
+}
+.chit.mid, .chit.far { color: var(--text-primary); }
+.chit.near { box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.chit.overdue { background: var(--ember); color: var(--ember-ink); }
+.chit.done { background: var(--surface-sunken); color: var(--text-faint); text-decoration: line-through; }
+.chit.remind { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.chit.remind::before { content: "◌ "; }
+
+/* ============================================================
+   MONTH — THE FACE: dial + register, one instrument
+   ============================================================ */
+.facewrap { display: grid; grid-template-columns: minmax(420px, 7fr) minmax(300px, 5fr); gap: 2.5rem; align-items: start; }
+.dial { width: 100%; display: block; }
+.sweepgrp { transform-origin: 50% 50%; animation: sweep 75s linear infinite; }
+:root[data-motion="off"] .sweepgrp { display: none; }
+@keyframes sweep { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+@media (prefers-reduced-motion: reduce) { .sweepgrp { display: none; } }
+.dial .mark { cursor: pointer; }
+.dial .mark.hot { stroke: var(--text-primary); stroke-width: 2.5; }
+
+/* the register — the month's entries as a readable column */
+.register { border-top: 1px solid var(--border-strong); }
+.reg-row {
+  display: grid; grid-template-columns: 64px 1fr; gap: 0.9rem; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+}
+.reg-row .d { text-align: right; }
+.reg-row .dnum { font-family: var(--font-mono); font-size: var(--text-lg); color: var(--text-faint); letter-spacing: 0.02em; }
+.reg-row.is-today .dnum { background: var(--text-primary); color: var(--surface); padding: 1px 7px; border-radius: var(--radius); }
+.reg-row .chit { display: flex; align-items: baseline; gap: 0.6rem; padding: 7px 11px; overflow: hidden; }
+.reg-row .chit .ctx { opacity: 0.75; font-size: var(--text-label); }
+.reg-row .chit .t { font-family: var(--font-body); font-size: var(--text-base); text-transform: none; letter-spacing: 0; }
+.reg-row .chit.w3 .t { font-size: var(--text-lg); }
+.reg-row.hot .chit { box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.reg-head { padding: 0.9rem 0 0.5rem; }
+.reg-head .mk.ember { color: var(--ember); }
+
+/* ============================================================
+   AGENDA — THE REGISTER FEED (same rows, rolling five weeks)
+   ============================================================ */
+.feed { border-top: 1px solid var(--border-strong); }
+.feed .reg-row { grid-template-columns: 110px 1fr; padding: 10px 0; }
+.feed .reg-row .dnum { font-size: var(--text-2xl); color: var(--text-primary); white-space: nowrap; }
+.feed .reg-row.is-today .dnum { color: var(--surface); }
+.dmon { display: block; margin-top: 2px; }
+.feed .rows { display: flex; flex-direction: column; gap: 6px; }
+.hidden { display: none !important; }
+
+/* ============================================================
+   UNSCHEDULED TRAY — with the flip mechanism in place
+   ============================================================ */
+.tray { margin-top: 2.5rem; background: var(--surface-sunken); border-radius: var(--radius); }
+.tray summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; min-height: var(--tap-min); padding: 0 1rem; }
+.tray summary::-webkit-details-marker { display: none; }
+.tray[open] summary { border-bottom: 1px solid var(--border); }
+.trayrow { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.trayrow:last-child { border-bottom: none; }
+.dot { width: 10px; height: 10px; border-radius: 999px; flex: none; }
+.setdate { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px dashed var(--border-strong); min-height: 32px; }
+.flip-slot { flex-basis: 100%; }
+
+/* ============================================================
+   FLIP-NUMERAL DATE — the setting mechanism
+   ============================================================ */
+.flipdate {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px 14px; margin: 10px 0 4px;
+}
+.fd-unit {
+  position: relative; border-radius: 4px; background: var(--mount);
+  color: var(--ink-on-mount); font-family: var(--font-mono);
+  text-align: center; user-select: none; touch-action: none; cursor: ns-resize;
+  perspective: 260px;
+}
+.fd-unit:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary); }
+.fd-day   { width: 64px; height: 76px; font-size: 40px; }
+.fd-month { width: 84px; height: 76px; font-size: 30px; letter-spacing: 0.06em; }
+.fd-year  { width: 96px; height: 76px; font-size: 30px; }
+.fd-half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: flex; justify-content: center; }
+.fd-top { top: 0; border-radius: 4px 4px 0 0; background: var(--mount); border-bottom: 1px solid var(--rule-mount); }
+.fd-bottom { bottom: 0; border-radius: 0 0 4px 4px; background: var(--mount-soft); }
+.fd-half > span { flex: none; line-height: 76px; height: 76px; }
+.fd-bottom > span { transform: translateY(-50%); }
+.fd-flap { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: none; justify-content: center; backface-visibility: hidden; }
+.fd-flap > span { flex: none; line-height: 76px; height: 76px; }
+.fd-flap-top { top: 0; transform-origin: bottom; background: var(--mount); border-radius: 4px 4px 0 0; border-bottom: 1px solid var(--rule-mount); }
+.fd-flap-bottom { top: 50%; transform-origin: top; background: var(--mount-soft); border-radius: 0 0 4px 4px; }
+.fd-flap-bottom > span { transform: translateY(-50%); }
+.fd-unit .fd-hint {
+  position: absolute; left: 0; right: 0; bottom: -22px;
+  font-size: 10px; letter-spacing: 0.16em; color: var(--text-faint); line-height: 1;
+}
+.flipdate .fd-actions { display: flex; flex-direction: column; gap: 6px; margin-left: 4px; }
+.fd-btn {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.12em; text-transform: uppercase;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  min-height: 34px; padding: 0 0.8rem; color: var(--text-muted); background: var(--surface-raised);
+}
+.fd-btn.primary { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.fd-typed { display: none; margin-left: 6px; }
+.flipdate.typing .fd-typed { display: inline-block; }
+.fd-typed input { font: inherit; font-family: var(--font-mono); font-size: var(--text-base); padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-raised); color: var(--text-primary); min-height: var(--tap-min); }
+@media (prefers-reduced-motion: reduce) { .fd-flap { display: none !important; } }
+
+/* ================= v3: one screen, no page scroll ================= */
+html, body { height: 100%; overflow: hidden; }
+body { padding: 0; max-width: none; }
+.app { display: grid; height: 100vh; grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr); }
+.bar { display: flex; align-items: center; gap: 1.2rem; padding: 0.55rem 1.2rem; border-bottom: 1px solid var(--border-strong); }
+.bar .brand { color: var(--text-primary); }
+.bar .controls { margin-left: auto; display: flex; gap: 0.4rem; }
+.bar .ctl { min-height: 34px; padding: 0 0.7rem; }
+.bar .monthnav { margin-left: 0; vertical-align: 0; }
+.bar .monthnav .ctl { min-height: 30px; }
+
+.stripzone { position: relative; overflow: hidden; }
+.stripzone svg { display: block; }
+.strip-mark { cursor: pointer; }
+.strip-mark:focus { outline: none; }
+.strip-mark.hot { stroke: var(--text-primary) !important; stroke-width: 2.5 !important; }
+
+/* in-place tooltip */
+.tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: var(--mount); color: var(--ink-on-mount);
+  border-radius: 4px; padding: 8px 12px; max-width: 300px;
+  box-shadow: 0 6px 24px rgba(23,21,15,0.16);
+  display: none;
+}
+.tip .mk { color: var(--ink-on-mount-muted); display: block; margin-bottom: 1px; }
+.tip .t { font-family: var(--font-body); font-size: var(--text-base); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tip .when { font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.1em; display: block; margin-top: 2px; }
+.tip .when.ember { color: var(--ember); }
+.tip::after {
+  content: ""; position: absolute; top: 100%; left: var(--arrow-x, 50%);
+  transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--mount);
+}
+.tip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--mount); }
+
+/* the shelf: register · dial · year · tray, all visible */
+.shelf { display: grid; grid-template-columns: minmax(280px, 1.15fr) auto auto minmax(250px, 0.9fr); gap: 1.1rem; padding: 0.7rem 1.2rem 0.9rem; border-top: 1px solid var(--border-strong); min-height: 0; }
+.panel { display: flex; flex-direction: column; min-height: 0; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius); }
+.phead { padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--border); flex: none; }
+.pbody { overflow: auto; min-height: 0; padding: 0 0.8rem 0.5rem; }
+.pbody .reg-row { grid-template-columns: 58px 1fr; padding: 5px 0; }
+.pbody .reg-row .dnum { font-size: var(--text-sm); }
+.pbody .trayrow { padding: 0.5rem 0; }
+.pbody .flipdate { transform: scale(0.8); transform-origin: left top; }
+.instr { position: relative; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+.instr svg { height: calc(100% - 22px); width: auto; max-width: 100%; }
+.instr .cap { margin-top: 2px; flex: none; }
+@media (max-width: 1250px){ .instr-year { display: none; } .shelf { grid-template-columns: minmax(260px, 1.1fr) auto minmax(230px, 0.9fr); } }
+@media (max-width: 950px){ .instr-dial { display: none; } .shelf { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <span class="mk brand">Dash · Calendar</span>
+    <span class="mk" id="modeTitle">The approach</span>
+    <span class="monthnav" style="visibility:hidden">
+      <button class="ctl" id="btnPrev" aria-label="Previous month">‹</button>
+      <button class="ctl" id="btnNext" aria-label="Next month">›</button>
+    </span>
+    <div class="controls" role="group" aria-label="View controls">
+      <button class="ctl" id="btnApproach" aria-pressed="true">Approach</button>
+      <button class="ctl" id="btnMonth" aria-pressed="false">Month</button>
+      <button class="ctl" id="btnMotion" aria-pressed="true">Motion</button>
+      <button class="ctl" id="btnDark" aria-pressed="false">Dark</button>
+    </div>
+  </header>
+
+  <section class="stripzone" id="stripWrap" aria-label="The approach">
+    <svg id="stripSvg" role="list" aria-label="Dated entries approaching now"></svg>
+    <div class="tip" id="tip"></div>
+  </section>
+
+  <section class="shelf">
+    <div class="panel">
+      <div class="phead mk" id="regCount">Register · 0</div>
+      <div class="pbody" id="regBody"></div>
+    </div>
+    <div class="instr instr-dial">
+      <svg id="dialSvg" viewBox="0 0 720 720" role="img" aria-label="Month at a glance"></svg>
+      <div class="tip" id="tipDial"></div>
+      <span class="mk cap" id="dialCap">at a glance</span>
+    </div>
+    <div class="instr instr-year">
+      <svg id="yearSvg" viewBox="0 0 240 240" role="img" aria-label="The year, dense"></svg>
+      <span class="mk cap">2026 · the year</span>
+    </div>
+    <div class="panel">
+      <div class="phead mk" id="trayCount">Unscheduled · 0</div>
+      <div class="pbody" id="trayBody"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+
+const TODAY = "2026-08-22";
+const PROJECTS = {
+  dash:   { title: "Dash renovation",        v: "--color-clay"  },
+  site:   { title: "Freelance site rebuild", v: "--color-blue"  },
+  zine:   { title: "Studio zine, issue 2",   v: "--color-plum"  },
+  garden: { title: "Garden overhaul",        v: "--color-green" },
+};
+const LANES = ["dash","site","zine","garden",null];
+const ENTRIES = [
+  { p:"garden", label:"Clear beds",       date:"2026-08-10", kind:"due", w:1, done:true },
+  { p:"dash",   label:"Board metadata",   date:"2026-08-16", kind:"due", w:2, done:true },
+  { p:"site",   label:"Wireframes",       date:"2026-08-18", kind:"due", w:2 },
+  { p:null,     label:"Renew domain",     date:"2026-08-20", kind:"due", w:1 },
+  { p:"dash",   label:"Calendar concept", date:"2026-08-22", kind:"due", w:2 },
+  { p:"zine",   label:"Draft interviews", date:"2026-08-24", kind:"due", w:2 },
+  { p:"site",   label:"Design comps",     date:"2026-08-24", kind:"remind", w:1 },
+  { p:null,     label:"Dentist forms",    date:"2026-08-25", kind:"due", w:1 },
+  { p:"site",   label:"Design comps",     date:"2026-08-27", kind:"due", w:2 },
+  { p:"garden", label:"Order bulbs",      date:"2026-09-01", kind:"due", w:1 },
+  { p:"dash",   label:"Flip component",   date:"2026-09-03", kind:"due", w:2 },
+  { p:"zine",   label:"Photo day",        date:"2026-09-03", kind:"due", w:2 },
+  { p:null,     label:"Quarterly taxes",  date:"2026-09-15", kind:"due", w:2 },
+  { p:"zine",   label:"Print deadline",   date:"2026-09-18", kind:"due", w:3 },
+  { p:"site",   label:"Launch",           date:"2026-09-25", kind:"due", w:3 },
+];
+// the rest of 2026, for the year radar's density (in the build this is just a
+// wider entriesFor() window — same source layer, nothing new)
+const YEAR_EXTRA = [
+  { p:"dash",   label:"Repo setup",      date:"2026-02-08", kind:"due", w:1, done:true },
+  { p:"dash",   label:"Desk view",       date:"2026-03-14", kind:"due", w:2, done:true },
+  { p:"dash",   label:"Pet",             date:"2026-04-02", kind:"due", w:1, done:true },
+  { p:"garden", label:"Seed order",      date:"2026-03-01", kind:"due", w:1, done:true },
+  { p:"garden", label:"Beds built",      date:"2026-04-18", kind:"due", w:2, done:true },
+  { p:"site",   label:"Contract signed", date:"2026-05-09", kind:"due", w:2, done:true },
+  { p:"site",   label:"Content audit",   date:"2026-06-12", kind:"due", w:1, done:true },
+  { p:"zine",   label:"Issue 1 out",     date:"2026-05-30", kind:"due", w:3, done:true },
+  { p:"zine",   label:"Retro",           date:"2026-06-20", kind:"due", w:1, done:true },
+  { p:"dash",   label:"Milestones",      date:"2026-07-28", kind:"due", w:2, done:true },
+  { p:"garden", label:"Mulch",           date:"2026-07-05", kind:"due", w:1, done:true },
+  { p:"zine",   label:"Issue 2 ship",    date:"2026-10-06", kind:"due", w:3 },
+  { p:"site",   label:"Retainer review", date:"2026-10-20", kind:"due", w:1 },
+  { p:"dash",   label:"Calendar live",   date:"2026-10-12", kind:"due", w:3 },
+  { p:"garden", label:"Winterize",       date:"2026-11-07", kind:"due", w:2 },
+  { p:null,     label:"Passport renewal",date:"2026-11-16", kind:"due", w:1 },
+  { p:"zine",   label:"Holiday market",  date:"2026-12-05", kind:"due", w:2 },
+  { p:null,     label:"Year-end taxes",  date:"2026-12-30", kind:"due", w:2 },
+];
+const UNSCHEDULED = [
+  { p:"zine",   label:"Distribution plan" },
+  { p:"garden", label:"Fence repair" },
+  { p:"dash",   label:"Home panel maturation" },
+];
+
+const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function parse(s){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return {y:+m[1],mo:+m[2],d:+m[3]}; }
+function iso(y,mo,d){ return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+function noon(s){ const p=parse(s); return new Date(p.y,p.mo-1,p.d,12).getTime(); }
+function daysUntil(s){ return Math.round((noon(s)-noon(TODAY))/86400000); }
+function addDays(s,n){ const p=parse(s); const d=new Date(p.y,p.mo-1,p.d+n,12); return iso(d.getFullYear(),d.getMonth()+1,d.getDate()); }
+function fmtDay(s){ const p=parse(s); return `${p.d} ${MONTHS[p.mo-1]}`; }
+function daysInMonth(y,mo){ return new Date(y, mo, 0).getDate(); }
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function pcHex(e){ return e.p ? css(PROJECTS[e.p].v) : css("--text-faint"); }
+function pcVar(e){ return e.p ? `var(${PROJECTS[e.p].v})` : "var(--text-faint)"; }
+function ctxOf(e){ return e.p ? PROJECTS[e.p].title : "Item"; }
+function entryId(e){ return `${e.p||"item"}:${e.label}:${e.date}:${e.kind}`; }
+
+// ---- the one ramp (dye thins, grain arrives, edge hardens) ----
+function rampOf(e){
+  if (e.done) return { cls: "done", dye: 0 };
+  if (e.kind === "remind") return { cls: "remind", dye: 0 };
+  const n = daysUntil(e.date);
+  if (n < 0)   return { cls: "overdue", dye: 100 };
+  if (n <= 2)  return { cls: "near", dye: 100 };
+  if (n <= 7)  return { cls: "soon", dye: 100 };
+  if (n <= 14) return { cls: "mid grain", dye: 55 };
+  return { cls: "far grain", dye: 24 };
+}
+function markPaint(e){
+  const surface = css("--surface");
+  const ramp = rampOf(e);
+  if (ramp.cls === "done")   return { fill: surface, stroke: css("--border-strong"), sw: 1.4 };
+  if (ramp.cls === "remind") return { fill: surface, stroke: pcHex(e), sw: 1.6, dash: "3 3" };
+  if (ramp.cls === "overdue")return { fill: css("--ember") };
+  const fill = ramp.dye === 100 ? pcHex(e) : `color-mix(in srgb, ${pcHex(e)} ${ramp.dye}%, ${surface})`;
+  if (ramp.cls === "near") return { fill, stroke: css("--text-primary"), sw: 2 };
+  if (ramp.dye < 100) return { fill, stroke: `color-mix(in srgb, ${pcHex(e)} 55%, ${surface})`, sw: 1.2 };
+  return { fill };
+}
+function rOf(e){ return e.w === 3 ? 13 : e.w === 2 ? 9 : 6; }
+function whenText(e){
+  const n = daysUntil(e.date);
+  if (e.done) return { txt: `${fmtDay(e.date)} · done`, ember: false };
+  if (n < 0)  return { txt: `${fmtDay(e.date)} · ${-n} day${n===-1?"":"s"} overdue`, ember: true };
+  if (n === 0) return { txt: `${fmtDay(e.date)} · today`, ember: false };
+  return { txt: `${fmtDay(e.date)} · in ${n} day${n===1?"":"s"}${e.kind==="remind"?" · reminder":""}`, ember: false };
+}
+
+let mode = "approach";           // "approach" | "month"  (the two settled data windows)
+let cursor = { y: 2026, mo: 8 };
+
+/* ============================================================
+   THE TOOLTIP — speaks at the mark, for pointer AND keyboard
+   ============================================================ */
+function attachTips(svg, tipEl, entriesById, toLocal){
+  const show = (el) => {
+    const e = entriesById[el.dataset.eid];
+    if (!e) return;
+    const w = whenText(e);
+    tipEl.innerHTML = `<span class="mk">${ctxOf(e)}</span><span class="t">${e.label}</span>` +
+      `<span class="when${w.ember?" ember":""}">${w.txt}</span>`;
+    tipEl.style.display = "block";
+    const { x, y } = toLocal(+el.dataset.cx, +el.dataset.cy);
+    const host = tipEl.parentElement.getBoundingClientRect();
+    const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    let left = x - tw/2, below = false;
+    left = Math.max(6, Math.min(left, host.width - tw - 6));
+    let top = y - +el.dataset.r * (toLocal(1,0).x - toLocal(0,0).x) - th - 12;
+    if (top < 2){ top = y + +el.dataset.r + 12; below = true; }
+    tipEl.classList.toggle("below", below);
+    tipEl.style.left = left + "px";
+    tipEl.style.top = top + "px";
+    tipEl.style.setProperty("--arrow-x", (x - left) + "px");
+    el.classList.add("hot");
+  };
+  const hide = (el) => { tipEl.style.display = "none"; el && el.classList.remove("hot"); };
+  svg.querySelectorAll(".strip-mark").forEach(el => {
+    el.addEventListener("mouseenter", () => show(el));
+    el.addEventListener("mouseleave", () => hide(el));
+    el.addEventListener("focus", () => show(el));
+    el.addEventListener("blur", () => hide(el));
+  });
+}
+
+/* ============================================================
+   THE HERO — log-compressed approach: six months on one screen.
+   The NOW line stays anchored; the overdue zone breathes with
+   how much debt is actually in it.
+   ============================================================ */
+const CAL_HORIZON_DAYS = 180;
+
+function renderStrip(){
+  const wrap = document.getElementById("stripWrap");
+  const svg = document.getElementById("stripSvg");
+  const W = Math.max(640, wrap.clientWidth);
+  const H = Math.max(280, wrap.clientHeight);
+  const axisH = 30, top = 46;
+  const laneH = (H - top - axisH) / LANES.length;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const pool = ENTRIES.concat(YEAR_EXTRA);
+  let s = "", X = null, windowFilter, monthDayX = null;
+
+  if (mode === "approach"){
+    const live = pool.filter(e => !e.done);
+    const overdue = live.filter(e => daysUntil(e.date) < 0);
+    const maxOD = overdue.length ? Math.max(...overdue.map(e => -daysUntil(e.date))) : 0;
+    // the zone is sized by its contents: no debt, almost no zone
+    const zone = overdue.length ? Math.min(0.28 * W, 58 + 16*Math.sqrt(maxOD) + 26) : 26;
+    const nowX = zone;
+    const span = W - nowX - 26;
+    X = d => d < 0 ? nowX - 26 - 16*Math.sqrt(-d) : nowX + span * Math.log1p(d) / Math.log1p(CAL_HORIZON_DAYS);
+    windowFilter = e => !e.done && daysUntil(e.date) <= CAL_HORIZON_DAYS;
+
+    if (overdue.length){
+      s += `<rect x="0" y="0" width="${nowX}" height="${H}" fill="${css("--ember")}" opacity="0.09"/>`;
+      if (zone > 70) s += `<text x="${nowX/2}" y="${top-24}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="11" letter-spacing="2" fill="${css("--ember")}">OVERDUE</text>`;
+    }
+    // gridlines: daily for two weeks, weekly to two months, then the months themselves
+    for (let d = 1; d <= 14; d++){
+      const x = X(d);
+      s += `<line x1="${x}" y1="${top-14}" x2="${x}" y2="${H-axisH}" stroke="${css("--border")}" stroke-width="${d%7===0?1.5:0.75}"/>`;
+      if (d <= 7 || d === 14){
+        if (X(d) - X(d-1) >= 17 || d === 14 || d === 7)
+          s += `<text x="${x}" y="${H-12}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1" fill="${css("--text-faint")}">+${d}</text>`;
+      }
+    }
+    for (let d = 21; d <= 56; d += 7){
+      const x = X(d);
+      s += `<line x1="${x}" y1="${top-14}" x2="${x}" y2="${H-axisH}" stroke="${css("--border")}" stroke-width="${d%28===0?1.4:0.75}"/>`;
+      if (d === 28) s += `<text x="${x}" y="${H-12}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1" fill="${css("--text-faint")}">+28</text>`;
+    }
+    // month boundaries out to the horizon — a line between lines becomes a month
+    let mcur = { y: parse(TODAY).y, mo: parse(TODAY).mo };
+    for (;;){
+      mcur.mo++; if (mcur.mo > 12){ mcur.mo = 1; mcur.y++; }
+      const d = daysUntil(iso(mcur.y, mcur.mo, 1));
+      if (d > CAL_HORIZON_DAYS) break;
+      const x = X(d);
+      s += `<line x1="${x}" y1="${top-18}" x2="${x}" y2="${H-axisH}" stroke="${css("--border-strong")}" stroke-width="1.2"/>`;
+      s += `<text x="${x+4}" y="${H-12}" text-anchor="start" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1.5" fill="${css("--text-muted")}">${MONTHS[mcur.mo-1]}</text>`;
+    }
+    s += `<line x1="${nowX}" y1="${top-26}" x2="${nowX}" y2="${H-axisH+4}" stroke="${css("--text-primary")}" stroke-width="2.5"/>`;
+    s += `<text x="${nowX}" y="${top-34}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="12" letter-spacing="3" fill="${css("--text-primary")}" font-weight="700">NOW</text>`;
+  } else {
+    const N = daysInMonth(cursor.y, cursor.mo), pad = 56;
+    monthDayX = d => pad + (d - 1) / (N - 1) * (W - 2*pad);
+    const pre = `${cursor.y}-${String(cursor.mo).padStart(2,"0")}-`;
+    windowFilter = e => e.date.startsWith(pre);
+    for (let d = 1; d <= N; d++){
+      const x = monthDayX(d);
+      const t = parse(TODAY);
+      const today = t.y===cursor.y && t.mo===cursor.mo && t.d===d;
+      s += `<line x1="${x}" y1="${top-14}" x2="${x}" y2="${H-axisH}" stroke="${today?css("--text-primary"):css("--border")}" stroke-width="${today?2.5:(d%7===1?1.5:0.75)}"/>`;
+      s += `<text x="${x}" y="${H-12}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1" fill="${today?css("--text-primary"):css("--text-faint")}" font-weight="${today?"700":"400"}">${d}</text>`;
+      if (today) s += `<text x="${x}" y="${top-34}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="12" letter-spacing="3" fill="${css("--text-primary")}" font-weight="700">NOW</text>`;
+    }
+  }
+
+  LANES.forEach((key, i) => {
+    const y = top + i * laneH + laneH/2;
+    s += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="${css("--border")}" stroke-width="0.75" stroke-dasharray="1 5"/>`;
+    const t = key ? PROJECTS[key].title : "Items";
+    s += `<text x="8" y="${y - 13}" font-family="${css("--font-mono")}" font-size="11" letter-spacing="2" fill="${css("--text-muted")}">${t.toUpperCase()}</text>`;
+  });
+
+  const byId = {};
+  const shown = pool.filter(windowFilter).sort((a,b)=> a.date < b.date ? -1 : 1);
+  const lastX = {};                          // per-lane collision bookkeeping
+  for (const e of shown){
+    const li = LANES.indexOf(e.p);
+    let y = top + li * laneH + laneH/2;
+    const x = mode === "approach" ? X(daysUntil(e.date)) : monthDayX(parse(e.date).d);
+    // compressed far field: nudge alternate colliding marks off the lane line
+    const prev = lastX[li];
+    if (prev != null && x - prev.x < 15){ y += (prev.flip ? -11 : 11); lastX[li] = { x, flip: !prev.flip }; }
+    else lastX[li] = { x, flip: false };
+    const p = markPaint(e), r = rOf(e);
+    const stroke = p.stroke ? `stroke="${p.stroke}" stroke-width="${p.sw}" ${p.dash?`stroke-dasharray="${p.dash}"`:""}` : "";
+    byId[entryId(e)] = e;
+    s += `<circle class="strip-mark" tabindex="0" role="listitem" aria-label="${ctxOf(e)}: ${e.label}, ${whenText(e).txt}" data-eid="${entryId(e)}" data-cx="${x}" data-cy="${y}" data-r="${r}" cx="${x}" cy="${y}" r="${r}" fill="${p.fill}" ${stroke}></circle>`;
+    const n = daysUntil(e.date);
+    if (!e.done && e.kind !== "remind" && (mode === "month" || n <= 14)){
+      if (mode === "approach" && n < 0){
+        s += `<text x="${x}" y="${y + r + 15}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1.5" fill="${css("--ember")}">${e.label.toUpperCase()}</text>`;
+      } else {
+        const flipEnd = x > W - 150;
+        const tx = flipEnd ? x - r - 6 : x + r + 6;
+        const fillc = n < 0 ? css("--ember") : css("--text-muted");
+        s += `<text x="${tx}" y="${y+4}" text-anchor="${flipEnd?"end":"start"}" font-family="${css("--font-mono")}" font-size="11" letter-spacing="1.5" fill="${fillc}">${e.label.toUpperCase()}</text>`;
+      }
+    }
+  }
+  svg.innerHTML = s;
+  attachTips(svg, document.getElementById("tip"), byId, (x,y)=>({x,y}));
+  renderRegister(Object.values(byId));
+}
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+class FlipDate {
+  constructor(value, onCommit){
+    this.v = parse(value || TODAY);
+    this.onCommit = onCommit;
+    this.queue = []; this.animating = false; this.settleTimer = null;
+    this.root = document.createElement("div");
+    this.root.className = "flipdate";
+    this.units = {
+      d:  this.makeUnit("fd-day",   "Day"),
+      mo: this.makeUnit("fd-month", "Month"),
+      y:  this.makeUnit("fd-year",  "Year"),
+    };
+    this.root.append(this.units.d.el, this.units.mo.el, this.units.y.el);
+    const actions = document.createElement("div"); actions.className = "fd-actions";
+    this.typeBtn = document.createElement("button");
+    this.typeBtn.className = "fd-btn"; this.typeBtn.textContent = "Type";
+    this.typeBtn.addEventListener("click", () => this.toggleTyped());
+    this.okBtn = document.createElement("button");
+    this.okBtn.className = "fd-btn primary"; this.okBtn.textContent = "Set";
+    this.okBtn.addEventListener("click", () => this.onCommit && this.onCommit(this.value()));
+    actions.append(this.okBtn, this.typeBtn);
+    this.root.appendChild(actions);
+    this.typed = document.createElement("span"); this.typed.className = "fd-typed";
+    const inp = document.createElement("input");
+    inp.type = "date"; inp.value = this.value(); inp.setAttribute("aria-label","Exact date");
+    inp.addEventListener("change", () => { if (inp.value){ this.v = parse(inp.value); this.paintAll(); } });
+    this.typed.appendChild(inp); this.typedInput = inp;
+    this.root.appendChild(this.typed);
+    this.paintAll();
+  }
+  value(){ return iso(this.v.y, this.v.mo, this.v.d); }
+  textFor(unit){
+    return unit === "d" ? String(this.v.d).padStart(2,"0")
+         : unit === "mo" ? MONTHS[this.v.mo-1]
+         : String(this.v.y);
+  }
+  makeUnit(cls, label){
+    const el = document.createElement("div");
+    el.className = "fd-unit " + cls;
+    el.tabIndex = 0; el.setAttribute("role","spinbutton"); el.setAttribute("aria-label", label);
+    el.innerHTML =
+      `<div class="fd-half fd-top"><span></span></div>` +
+      `<div class="fd-half fd-bottom"><span></span></div>` +
+      `<div class="fd-flap fd-flap-top"><span></span></div>` +
+      `<div class="fd-flap fd-flap-bottom"><span></span></div>` +
+      `<span class="fd-hint mk">${label}</span>`;
+    const key = cls === "fd-day" ? "d" : cls === "fd-month" ? "mo" : "y";
+    // scroll to tick
+    el.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const now = performance.now();
+      if (this._wheelAt && now - this._wheelAt < 80) return;
+      this._wheelAt = now;
+      this.tick(key, ev.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
+    // arrow keys + direct digits
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowUp"){ ev.preventDefault(); this.tick(key, 1); }
+      else if (ev.key === "ArrowDown"){ ev.preventDefault(); this.tick(key, -1); }
+      else if (/^\d$/.test(ev.key) && key !== "mo"){ this.typeDigit(key, ev.key); }
+    });
+    // hold-and-drag: value moves only while the pointer moves — no momentum
+    el.addEventListener("pointerdown", (ev) => {
+      el.setPointerCapture(ev.pointerId);
+      this._dragY = ev.clientY; this._dragged = 0;
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (this._dragY == null) return;
+      const dy = ev.clientY - this._dragY;
+      const steps = Math.trunc(dy / 28);
+      if (steps !== 0){
+        this._dragY += steps * 28;
+        this.tick(key, steps > 0 ? -steps : -steps); // drag down = earlier, drag up = later
+      }
+    });
+    const end = () => { this._dragY = null; };
+    el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+    return { el, key };
+  }
+  typeDigit(key, digit){
+    // typing digits on a focused card is the fast exact path
+    this._buf = ((this._buf || "") + digit).slice(key === "y" ? -4 : -2);
+    clearTimeout(this._bufTimer);
+    this._bufTimer = setTimeout(() => { this._buf = ""; }, 900);
+    const n = parseInt(this._buf, 10);
+    if (key === "d" && n >= 1 && n <= daysInMonth(this.v.y, this.v.mo)) { this.v.d = n; this.paintAll(); }
+    if (key === "y" && this._buf.length === 4) { this.v.y = n; this.clamp(); this.paintAll(); }
+  }
+  clamp(){ this.v.d = Math.min(this.v.d, daysInMonth(this.v.y, this.v.mo)); }
+  tick(key, delta){
+    // one discrete step at a time — a jump of five is five flips
+    const dir = Math.sign(delta) || 1;
+    for (let i = 0; i < Math.abs(delta); i++) this.queue.push({ key, dir });
+    this.drain();
+  }
+  step(key, dir){
+    const before = { ...this.v };
+    if (key === "d"){
+      const dim = daysInMonth(this.v.y, this.v.mo);
+      this.v.d += dir;
+      if (this.v.d > dim){ this.v.d = 1; this.v.mo++; }         // roll the month, like midnight
+      if (this.v.d < 1){ this.v.mo--; if (this.v.mo < 1){ this.v.mo = 12; this.v.y--; } this.v.d = daysInMonth(this.v.y, this.v.mo); }
+      if (this.v.mo > 12){ this.v.mo = 1; this.v.y++; }
+    } else if (key === "mo"){
+      this.v.mo += dir;
+      if (this.v.mo > 12){ this.v.mo = 1; this.v.y++; }
+      if (this.v.mo < 1){ this.v.mo = 12; this.v.y--; }
+      this.clamp();
+    } else {
+      this.v.y += dir; this.clamp();
+    }
+    return before;
+  }
+  drain(){
+    if (this.animating) return;
+    const job = this.queue.shift();
+    if (!job){ this.settle(); return; }
+    this.animating = true;
+    const before = this.step(job.key, job.dir);
+    const changed = [];
+    if (before.d  !== this.v.d)  changed.push("d");
+    if (before.mo !== this.v.mo) changed.push("mo");
+    if (before.y  !== this.v.y)  changed.push("y");
+    const fast = this.queue.length > 3;
+    let waiting = changed.length;
+    if (!waiting){ this.animating = false; this.drain(); return; }
+    for (const u of changed){
+      this.flip(u, fast ? 60 : 150, () => { if (--waiting === 0){ this.animating = false; this.drain(); } });
+    }
+  }
+  flip(unit, ms, done){
+    const el = this.units[unit].el;
+    const next = this.textFor(unit);
+    const top = el.querySelector(".fd-top > span");
+    const bottom = el.querySelector(".fd-bottom > span");
+    const flapT = el.querySelector(".fd-flap-top");
+    const flapB = el.querySelector(".fd-flap-bottom");
+    el.setAttribute("aria-valuenow", unit === "mo" ? this.v.mo : unit === "d" ? this.v.d : this.v.y);
+    el.setAttribute("aria-valuetext", next);
+    if (REDUCED){ top.textContent = next; bottom.textContent = next; done(); return; }
+    const prev = top.textContent;
+    flapT.firstChild.textContent = prev;
+    flapB.firstChild.textContent = next;
+    top.textContent = next;                       // revealed as the flap falls
+    flapT.style.display = "flex"; flapB.style.display = "flex";
+    flapT.style.transition = "none"; flapB.style.transition = "none";
+    flapT.style.transform = "rotateX(0deg)"; flapB.style.transform = "rotateX(90deg)";
+    requestAnimationFrame(() => {
+      flapT.style.transition = `transform ${ms/2}ms ease-in`;
+      flapT.style.transform = "rotateX(-90deg)";
+      setTimeout(() => {
+        flapB.style.transition = `transform ${ms/2}ms ease-out`;
+        flapB.style.transform = "rotateX(0deg)";
+        setTimeout(() => {
+          bottom.textContent = next;
+          flapT.style.display = "none"; flapB.style.display = "none";
+          done();
+        }, ms/2);
+      }, ms/2);
+    });
+  }
+  settle(){
+    clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => { this.typedInput.value = this.value(); }, 200);
+  }
+  paintAll(){
+    for (const u of ["d","mo","y"]){
+      const el = this.units[u].el;
+      const txt = this.textFor(u);
+      el.querySelector(".fd-top > span").textContent = txt;
+      el.querySelector(".fd-bottom > span").textContent = txt;
+      el.setAttribute("aria-valuenow", u === "mo" ? this.v.mo : u === "d" ? this.v.d : this.v.y);
+      el.setAttribute("aria-valuetext", txt);
+      el.setAttribute("aria-valuemin", u === "mo" ? 1 : u === "d" ? 1 : 2020);
+      el.setAttribute("aria-valuemax", u === "mo" ? 12 : u === "d" ? daysInMonth(this.v.y, this.v.mo) : 2100);
+    }
+    this.typedInput && (this.typedInput.value = this.value());
+  }
+  toggleTyped(){
+    this.root.classList.toggle("typing");
+    if (this.root.classList.contains("typing")) this.typedInput.focus();
+  }
+}
+
+/* ============================================================
+   THE REGISTER FOLD — plain readable list of the same window
+   ============================================================ */
+function renderRegister(list){
+  const sorted = list.slice().sort((a,b)=> a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  document.getElementById("regCount").textContent = `Register · ${sorted.length}`;
+  const box = document.getElementById("regBody"); box.innerHTML = "";
+  for (const e of sorted){
+    const p = parse(e.date);
+    const ramp = rampOf(e);
+    const row = document.createElement("div");
+    row.className = "reg-row" + (e.date === TODAY ? " is-today" : "");
+    row.innerHTML = `<div class="d"><span class="dnum">${p.d}</span><span class="mk dmon">${MONTHS[p.mo-1]}</span></div>`;
+    const chit = document.createElement("div");
+    chit.className = `chit w${e.w} ${ramp.cls}`;
+    chit.style.setProperty("--pc", pcVar(e));
+    chit.style.setProperty("--dye", ramp.dye + "%");
+    chit.style.cssText += ";display:flex;align-items:baseline;gap:0.6rem;padding:7px 11px;overflow:hidden";
+    chit.innerHTML = `<span class="mk ctx" style="color:inherit">${ctxOf(e)}</span><span class="t" style="font-family:var(--font-body);font-size:var(--text-base);text-transform:none;letter-spacing:0">${e.label}</span>` +
+      "";
+    row.appendChild(chit);
+    box.appendChild(row);
+  }
+}
+
+/* ============================================================
+   ACCENT 1 — the month dial, shrunk to an instrument
+   ============================================================ */
+function renderDial(){
+  const svg = document.getElementById("dialSvg");
+  const N = daysInMonth(cursor.y, cursor.mo);
+  const cx = 360, cy = 360;
+  const angle = d => ((d - 1) / N) * Math.PI * 2 - Math.PI / 2;
+  const pt = (d, r) => [cx + Math.cos(angle(d)) * r, cy + Math.sin(angle(d)) * r];
+  const laneR = { dash: 272, site: 228, zine: 184, garden: 140, null: 96 };
+  const t = parse(TODAY);
+  const isThisMonth = t.y === cursor.y && t.mo === cursor.mo;
+  const surface = css("--surface");
+
+  let s = "";
+  s += `<g class="sweepgrp"><path d="M ${cx} ${cy} L ${cx} ${cy-330} A 330 330 0 0 1 ${cx + 330*Math.sin(0.5)} ${cy - 330*Math.cos(0.5)} Z" fill="${css("--text-primary")}" opacity="0.045"/></g>`;
+  for (const key of LANES) s += `<circle cx="${cx}" cy="${cy}" r="${laneR[key]}" fill="none" stroke="${css("--border")}" stroke-width="1.4"/>`;
+  for (let d = 1; d <= N; d++){
+    const today = isThisMonth && d === t.d;
+    const showNum = today || d === 1 || d % 7 === 0;
+    const [x1,y1] = pt(d, 306), [x2,y2] = pt(d, 318);
+    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${today ? css("--text-primary") : css("--border-strong")}" stroke-width="${today?5:1.5}"/>`;
+    if (showNum){
+      const [tx,ty] = pt(d, 342);
+      s += `<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-family="${css("--font-mono")}" font-size="20" letter-spacing="1" fill="${today ? css("--text-primary") : css("--text-faint")}" font-weight="${today?"700":"400"}">${d}</text>`;
+    }
+    if (today){
+      const [hx,hy] = pt(d, 296);
+      s += `<line x1="${cx}" y1="${cy}" x2="${hx}" y2="${hy}" stroke="${css("--text-primary")}" stroke-width="1.5" opacity="0.35" stroke-dasharray="3 5"/>`;
+    }
+  }
+  const pre = `${cursor.y}-${String(cursor.mo).padStart(2,"0")}-`;
+  const inMonth = ENTRIES.concat(YEAR_EXTRA).filter(e => e.date.startsWith(pre));
+  const byId = {};
+  for (const e of inMonth){
+    const day = parse(e.date).d;
+    const ramp = rampOf(e);
+    const overdue = ramp.cls === "overdue";
+    const r = overdue ? 52 : laneR[e.p];
+    const [x,y] = pt(day, r);
+    const rr = rOf(e) + 3;                     // marks read at accent scale
+    if (overdue){
+      const [ox,oy] = pt(day, laneR[e.p]);
+      s += `<line x1="${ox}" y1="${oy}" x2="${x}" y2="${y}" stroke="${css("--ember")}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+      s += `<circle cx="${ox}" cy="${oy}" r="4" fill="none" stroke="${css("--ember")}" stroke-width="1.5"/>`;
+    }
+    const p = markPaint(e);
+    const stroke = p.stroke ? `stroke="${p.stroke}" stroke-width="${p.sw+0.6}" ${p.dash?`stroke-dasharray="${p.dash}"`:""}` : "";
+    byId[entryId(e)] = e;
+    s += `<circle class="strip-mark" tabindex="0" role="img" aria-label="${ctxOf(e)}: ${e.label}, ${whenText(e).txt}" data-eid="${entryId(e)}" data-cx="${x}" data-cy="${y}" data-r="${rr}" cx="${x}" cy="${y}" r="${rr}" fill="${p.fill}" ${stroke}></circle>`;
+  }
+  s += `<text x="${cx}" y="${cy-6}" text-anchor="middle" font-family="${css("--font-display")}" font-size="52" fill="${css("--text-primary")}">${MONTHS[cursor.mo-1]}</text>`;
+  const live = inMonth.filter(e=>!e.done && e.kind!=="remind");
+  const od = live.filter(e=>daysUntil(e.date)<0).length;
+  s += `<text x="${cx}" y="${cy+30}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="16" letter-spacing="2" fill="${od?css("--ember"):css("--text-faint")}">${od ? od+" OVERDUE · " : ""}${live.length} DATED</text>`;
+  svg.innerHTML = s;
+  document.getElementById("dialCap").textContent = `${MONTHS_FULL[cursor.mo-1]} · at a glance`;
+  attachTips(svg, document.getElementById("tipDial"), byId, (x,y) => {
+    const rect = svg.getBoundingClientRect();
+    const k = rect.width / 720;
+    return { x: x * k, y: y * k };
+  });
+}
+
+/* ============================================================
+   ACCENT 2 — the year radar: tiny, dense, true
+   ============================================================ */
+function renderYear(){
+  const svg = document.getElementById("yearSvg");
+  const cx = 120, cy = 120;
+  const doy = s => { const p = parse(s); return Math.round((noon(s) - new Date(p.y,0,1,12).getTime())/86400000); };
+  const angle = s => (doy(s) / 365) * Math.PI * 2 - Math.PI / 2;
+  const laneR = { dash: 92, site: 80, zine: 68, garden: 56, null: 44 };
+  let s = "";
+  // month spokes + initials
+  for (let m = 0; m < 12; m++){
+    const a = (doy(iso(2026, m+1, 1)) / 365) * Math.PI * 2 - Math.PI / 2;
+    s += `<line x1="${cx + Math.cos(a)*36}" y1="${cy + Math.sin(a)*36}" x2="${cx + Math.cos(a)*98}" y2="${cy + Math.sin(a)*98}" stroke="${css("--border")}" stroke-width="0.6"/>`;
+    const mid = a + Math.PI/12;
+    s += `<text x="${cx + Math.cos(mid)*108}" y="${cy + Math.sin(mid)*108}" text-anchor="middle" dominant-baseline="middle" font-family="${css("--font-mono")}" font-size="8" letter-spacing="1" fill="${css("--text-faint")}">${MONTHS[m][0]}</text>`;
+  }
+  for (const key of LANES) s += `<circle cx="${cx}" cy="${cy}" r="${laneR[key]}" fill="none" stroke="${css("--border")}" stroke-width="0.5"/>`;
+  // today hand
+  const ta = angle(TODAY);
+  s += `<line x1="${cx + Math.cos(ta)*26}" y1="${cy + Math.sin(ta)*26}" x2="${cx + Math.cos(ta)*98}" y2="${cy + Math.sin(ta)*98}" stroke="${css("--text-primary")}" stroke-width="1.2"/>`;
+  // every dated thing in 2026 — grains of the year
+  for (const e of ENTRIES.concat(YEAR_EXTRA)){
+    if (!e.date.startsWith("2026-")) continue;
+    const a = angle(e.date), r = laneR[e.p];
+    const x = cx + Math.cos(a)*r, y = cy + Math.sin(a)*r;
+    const n = daysUntil(e.date);
+    let fill, op = 1;
+    if (e.done){ fill = css("--border-strong"); op = 0.7; }
+    else if (n < 0){ fill = css("--ember"); }
+    else { fill = pcHex(e); op = n <= 14 ? 1 : 0.55; }
+    const rr = e.w === 3 ? 3.4 : e.w === 2 ? 2.6 : 1.9;
+    s += `<circle cx="${x}" cy="${y}" r="${rr}" fill="${fill}" opacity="${op}"/>`;
+  }
+  s += `<text x="${cx}" y="${cy+3}" text-anchor="middle" font-family="${css("--font-mono")}" font-size="10" letter-spacing="2" fill="${css("--text-faint")}">2026</text>`;
+  svg.innerHTML = s;
+}
+
+/* ============================================================
+   TRAY — “Set date” opens the mechanism
+   ============================================================ */
+function renderTray(){
+  document.getElementById("trayCount").textContent = `Unscheduled · ${UNSCHEDULED.length}`;
+  const body = document.getElementById("trayBody"); body.innerHTML = "";
+  UNSCHEDULED.forEach((u, idx) => {
+    const row = document.createElement("div"); row.className = "trayrow";
+    row.innerHTML = `<span class="dot" style="background:var(${PROJECTS[u.p].v})"></span>` +
+      `<span>${u.label}</span><span class="mk">${PROJECTS[u.p].title}</span>`;
+    const btn = document.createElement("button");
+    btn.className = "setdate"; btn.textContent = "Set date →";
+    const slot = document.createElement("div"); slot.className = "flip-slot";
+    btn.addEventListener("click", () => {
+      if (slot.firstChild){ slot.innerHTML = ""; return; }
+      const fd = new FlipDate(TODAY, (dateStr) => {
+        UNSCHEDULED.splice(idx, 1);
+        ENTRIES.push({ p: u.p, label: u.label, date: dateStr, kind: "due", w: 2 });
+        renderAll();
+      });
+      slot.appendChild(fd.root);
+      fd.units.d.el.focus();
+    });
+    row.append(btn, slot);
+    body.appendChild(row);
+  });
+}
+
+
+/* ============================================================
+   wiring — one screen, re-laid-out live as the window changes
+   ============================================================ */
+function renderAll(){ renderStrip(); renderDial(); renderYear(); renderTray(); }
+function setMode(m){
+  mode = m;
+  document.getElementById("btnApproach").setAttribute("aria-pressed", String(m==="approach"));
+  document.getElementById("btnMonth").setAttribute("aria-pressed", String(m==="month"));
+  document.querySelector(".monthnav").style.visibility = m==="month" ? "visible" : "hidden";
+  document.getElementById("modeTitle").textContent =
+    m === "month" ? `${MONTHS_FULL[cursor.mo-1]} ${cursor.y}` : "The approach · next six months";
+  renderStrip();
+}
+document.getElementById("btnApproach").onclick = () => setMode("approach");
+document.getElementById("btnMonth").onclick = () => setMode("month");
+document.getElementById("btnPrev").onclick = () => { cursor.mo--; if(cursor.mo<1){cursor.mo=12;cursor.y--;} setMode("month"); renderDial(); };
+document.getElementById("btnNext").onclick = () => { cursor.mo++; if(cursor.mo>12){cursor.mo=1;cursor.y++;} setMode("month"); renderDial(); };
+document.getElementById("btnDark").onclick = (ev) => {
+  const root = document.documentElement;
+  const on = root.getAttribute("data-theme") === "dark";
+  if (on) root.removeAttribute("data-theme"); else root.setAttribute("data-theme","dark");
+  ev.currentTarget.setAttribute("aria-pressed", String(!on));
+  renderAll();   // prototype bakes computed SVG colours; the build uses var() fills
+};
+document.getElementById("btnMotion").onclick = (ev) => {
+  const root = document.documentElement;
+  const off = root.getAttribute("data-motion") === "off";
+  if (off) root.removeAttribute("data-motion"); else root.setAttribute("data-motion","off");
+  ev.currentTarget.setAttribute("aria-pressed", String(off));
+};
+let _rt;
+window.addEventListener("resize", () => { clearTimeout(_rt); _rt = setTimeout(renderStrip, 120); });
+
+setMode("approach"); renderDial(); renderYear(); renderTray();
+</script>
+</body>
+</html>

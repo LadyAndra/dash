@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140">
+  <!-- grain.svg — the ONE grain tile, shared by the whole Calendar.
+       Used twice: by the dye ramp (architecture §1 rule 2 — grain arrives on
+       marks that are more than a week out) and by the load gauge's fog (§3b),
+       so the fog reads as the same material as the marks rather than as a
+       separate effect bolted on.
+
+       It carries no colour of its own on purpose. Every consumer paints it by
+       laying it over something with mix-blend-mode: overlay at
+       var(--cal-grain-opacity), which means it inherits whatever it sits on
+       and needs no dark-mode variant.
+
+       stitchTiles="stitch" is what lets it repeat without a visible seam. -->
+  <filter id="dash-grain" x="0" y="0" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/>
+  </filter>
+  <rect width="140" height="140" filter="url(#dash-grain)"/>
+</svg>

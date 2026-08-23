@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dash Calendar — Exploration C · Weave</title>
+<style>
+:root {
+  --text-scale: 1;
+  --surface:        #f2ece0;
+  --surface-raised: #f8f4ea;
+  --surface-sunken: #e8e0d0;
+  --border:         #cfc6b2;
+  --border-strong:  #a89d84;
+  --mount:          #17150f;
+  --text-primary:  #1c1a14;
+  --text-muted:    #4d4738;
+  --text-faint:    #6a6252;
+  --text-on-accent:#f8f4ea;
+  --ember:         #b23a14;
+  --ember-ink:     var(--text-on-accent);
+  --color-green:  #4a6353;
+  --color-clay:   #87502f;
+  --color-blue:   #4c6076;
+  --color-plum:   #5f4a5c;
+  --font-body:    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-display: "Dash Canyon Local", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-base: calc(1.125rem * var(--text-scale));
+  --text-sm:   calc(1rem     * var(--text-scale));
+  --text-lg:   calc(1.375rem * var(--text-scale));
+  --text-2xl:  calc(2.5rem   * var(--text-scale));
+  --text-3xl:  calc(3.5rem   * var(--text-scale));
+  --text-label:calc(0.6875rem * var(--text-scale));
+  --radius: 2px;
+  --tap-min: 44px;
+  --transition: 140ms ease;
+}
+:root[data-theme="dark"] {
+  --surface:        #17150f;
+  --surface-raised: #211e16;
+  --surface-sunken: #100e09;
+  --border:         #3a352a;
+  --border-strong:  #524c3d;
+  --text-primary: #efe8d8;
+  --text-muted:   #c3bba7;
+  --text-faint:   #928a76;
+  --text-on-accent:#17150f;
+  --ember:        #ef7a4e;
+  --color-green:  #7fa38c;
+  --color-clay:   #cf8a63;
+  --color-blue:   #7f9bb8;
+  --color-plum:   #a988a6;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { background: var(--surface); color: var(--text-primary); }
+body {
+  font-family: var(--font-body); font-size: var(--text-base); line-height: 1.5;
+  padding: 2.5rem clamp(1rem, 4vw, 3.5rem) 4rem; max-width: 1500px; margin: 0 auto;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+.mk { font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); }
+header { margin-bottom: 2rem; }
+.topline { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.controls { display: flex; gap: 0.5rem; }
+.ctl {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase;
+  min-height: var(--tap-min); padding: 0 1rem; border: 1px solid var(--border-strong);
+  border-radius: var(--radius); color: var(--text-muted); background: var(--surface-raised);
+}
+.ctl[aria-pressed="true"] { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.ctl:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary); }
+h1 { font-family: var(--font-display); font-size: var(--text-3xl); font-weight: 400; line-height: 1.05; margin-top: 0.75rem; }
+.monthnav { display: inline-flex; gap: 0.25rem; margin-left: 0.75rem; vertical-align: 0.5rem; }
+.monthnav .ctl { min-height: 36px; padding: 0 0.75rem; }
+.intro { color: var(--text-muted); max-width: 62ch; margin-top: 1rem; }
+
+/* grain — same vendorable SVG noise as exploration A */
+.grain { position: relative; overflow: hidden; }
+.grain::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.45; mix-blend-mode: overlay;
+}
+
+/* ============================================================
+   MONTH — weeks as woven bands. No rules; the cloth is the structure.
+   ============================================================ */
+.dowrow { display: grid; grid-template-columns: 96px repeat(7, 1fr); gap: 3px; margin-bottom: 0.6rem; }
+.dowrow .mk { text-align: left; padding-left: 2px; }
+.band { display: grid; grid-template-columns: 96px repeat(7, 1fr); gap: 3px; margin-bottom: 3px; }
+.bandlabel {
+  display: flex; align-items: flex-end;
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint);
+  padding-bottom: 4px;
+}
+.slot { min-height: 104px; display: flex; flex-direction: column; gap: 3px; }
+.slot .dnum {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.1em;
+  color: var(--text-faint); padding: 1px 2px; margin-bottom: 1px;
+}
+.slot.today .dnum { background: var(--text-primary); color: var(--surface); align-self: flex-start; padding: 2px 6px; border-radius: var(--radius); }
+.slot .weft { margin-top: auto; height: 3px; background: var(--surface-sunken); border-radius: 999px; }
+.thread {
+  border-radius: var(--radius);
+  padding: 3px 7px;
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.09em; text-transform: uppercase; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center;
+}
+.thread.w1 { min-height: 22px; }
+.thread.w2 { min-height: 36px; }
+.thread.w3 { min-height: 54px; font-size: calc(var(--text-label) * 1.15); }
+
+/* ============================================================
+   CLOTH (agenda) — days as weft rows; entries as warp segments
+   ============================================================ */
+.cloth { border-top: 1px solid var(--border-strong); padding-top: 1rem; }
+.crow { display: grid; grid-template-columns: 96px 1fr; gap: 1rem; align-items: center; min-height: 40px; }
+.crow .datecell { text-align: right; }
+.crow .dnum { font-family: var(--font-mono); font-size: var(--text-base); color: var(--text-faint); letter-spacing: 0.06em; }
+.crow.is-today .dnum { background: var(--text-primary); color: var(--surface); padding: 2px 8px; border-radius: var(--radius); }
+.crow.month-break { margin-top: 1.2rem; }
+.crow .segs { display: flex; gap: 4px; align-items: center; min-height: 34px; }
+.crow .weftline { height: 2px; background: var(--surface-sunken); border-radius: 999px; flex: 1; }
+.seg {
+  border-radius: var(--radius); padding: 6px 10px;
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.09em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.seg.w1 { flex: 0 1 150px; }
+.seg.w2 { flex: 0 1 280px; }
+.seg.w3 { flex: 0 1 460px; padding-top: 10px; padding-bottom: 10px; font-size: calc(var(--text-label) * 1.15); }
+.hidden { display: none !important; }
+
+/* ---- tray ---- */
+.tray { margin-top: 2.5rem; background: var(--surface-sunken); border-radius: var(--radius); }
+.tray summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; min-height: var(--tap-min); padding: 0 1rem; }
+.tray summary::-webkit-details-marker { display: none; }
+.tray[open] summary { border-bottom: 1px solid var(--border); }
+.trayrow { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.trayrow:last-child { border-bottom: none; }
+.dot { width: 10px; height: 10px; border-radius: 999px; flex: none; }
+.setdate { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px dashed var(--border-strong); min-height: 32px; }
+footer { margin-top: 3rem; color: var(--text-faint); font-size: var(--text-sm); max-width: 70ch; }
+</style>
+</head>
+<body>
+<header>
+  <div class="topline">
+    <span class="mk">Dash · Calendar exploration C — “Weave”</span>
+    <div class="controls" role="group" aria-label="View controls">
+      <button class="ctl" id="btnMonth" aria-pressed="true">Month</button>
+      <button class="ctl" id="btnAgenda" aria-pressed="false">Cloth</button>
+      <button class="ctl" id="btnDark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <h1 id="title">August 2026
+    <span class="monthnav">
+      <button class="ctl" id="btnPrev" aria-label="Previous month">‹</button>
+      <button class="ctl" id="btnNext" aria-label="Next month">›</button>
+    </span>
+  </h1>
+  <p class="intro">The month as fabric. No grid lines — weeks are woven bands, and how
+  <em>packed</em> a band is, is the information: a quiet week is nearly bare cloth, a heavy
+  week is dense with thread. Colour = project, fading toward cream as a date sits
+  further out; ember = past its date. Weight shows as thickness. Demo is pinned
+  to Aug&nbsp;22.</p>
+</header>
+
+<main>
+  <section id="monthView" aria-label="Month"></section>
+  <section id="agendaView" class="cloth hidden" aria-label="Cloth"></section>
+
+  <details class="tray" id="tray">
+    <summary><span class="mk" id="trayCount">Unscheduled · 0</span></summary>
+    <div id="trayBody"></div>
+  </details>
+</main>
+
+<footer>
+  <p>Empty days keep a bare weft thread, so absence is drawn rather than blank —
+  a calm day is something you can see. Distance is a colour-mix toward the paper
+  (plus grain past a week out); the mix percentages would become theme tokens.</p>
+</footer>
+
+<script>
+const TODAY = "2026-08-22";
+const PROJECTS = {
+  dash:   { title: "Dash renovation",        v: "--color-clay"  },
+  site:   { title: "Freelance site rebuild", v: "--color-blue"  },
+  zine:   { title: "Studio zine, issue 2",   v: "--color-plum"  },
+  garden: { title: "Garden overhaul",        v: "--color-green" },
+};
+const ENTRIES = [
+  { p:"garden", label:"Clear beds",       date:"2026-08-10", kind:"due", w:1, done:true },
+  { p:"dash",   label:"Board metadata",   date:"2026-08-16", kind:"due", w:2, done:true },
+  { p:"site",   label:"Wireframes",       date:"2026-08-18", kind:"due", w:2 },
+  { p:null,     label:"Renew domain",     date:"2026-08-20", kind:"due", w:1 },
+  { p:"dash",   label:"Calendar concept", date:"2026-08-22", kind:"due", w:2 },
+  { p:"zine",   label:"Draft interviews", date:"2026-08-24", kind:"due", w:2 },
+  { p:"site",   label:"Design comps",     date:"2026-08-24", kind:"remind", w:1 },
+  { p:null,     label:"Dentist forms",    date:"2026-08-25", kind:"due", w:1 },
+  { p:"site",   label:"Design comps",     date:"2026-08-27", kind:"due", w:2 },
+  { p:"garden", label:"Order bulbs",      date:"2026-09-01", kind:"due", w:1 },
+  { p:"dash",   label:"Flip component",   date:"2026-09-03", kind:"due", w:2 },
+  { p:"zine",   label:"Photo day",        date:"2026-09-03", kind:"due", w:2 },
+  { p:null,     label:"Quarterly taxes",  date:"2026-09-15", kind:"due", w:2 },
+  { p:"zine",   label:"Print deadline",   date:"2026-09-18", kind:"due", w:3 },
+  { p:"site",   label:"Launch",           date:"2026-09-25", kind:"due", w:3 },
+];
+const UNSCHEDULED = [
+  { p:"zine",   label:"Distribution plan" },
+  { p:"garden", label:"Fence repair" },
+  { p:"dash",   label:"Home panel maturation" },
+];
+
+const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DOW = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
+function parse(s){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return {y:+m[1],mo:+m[2],d:+m[3]}; }
+function iso(y,mo,d){ return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+function noon(s){ const p=parse(s); return new Date(p.y,p.mo-1,p.d,12).getTime(); }
+function daysUntil(s){ return Math.round((noon(s)-noon(TODAY))/86400000); }
+function addDays(s,n){ const p=parse(s); const d=new Date(p.y,p.mo-1,p.d+n,12); return iso(d.getFullYear(),d.getMonth()+1,d.getDate()); }
+function dowOf(s){ const p=parse(s); return (new Date(p.y,p.mo-1,p.d,12).getDay()+6)%7; }
+function fmtDay(s){ const p=parse(s); return `${p.d} ${MONTHS[p.mo-1]}`; }
+function pcVar(e){ return e.p ? `var(${PROJECTS[e.p].v})` : "var(--text-faint)"; }
+function ctxOf(e){ return e.p ? PROJECTS[e.p].title : null; }
+
+// the fade-toward-cream ramp — thread losing its dye with distance
+function threadStyle(e){
+  if (e.done) return { bg: "var(--surface-sunken)", ink: "var(--text-faint)", extra: "text-decoration:line-through", grain: false };
+  if (e.kind === "remind") return { bg: "transparent", ink: "var(--text-muted)", extra: `box-shadow: inset 0 0 0 1px var(--border-strong)`, grain: false };
+  const n = daysUntil(e.date);
+  if (n < 0)  return { bg: "var(--ember)", ink: "var(--ember-ink)", grain: false };
+  let pct, grain = false;
+  if (n <= 2) pct = 100;
+  else if (n <= 7) pct = 82;
+  else if (n <= 14) { pct = 52; grain = true; }
+  else { pct = 26; grain = true; }
+  const bg = pct === 100 ? pcVar(e) : `color-mix(in srgb, ${pcVar(e)} ${pct}%, var(--surface))`;
+  const ink = pct >= 82 ? "var(--text-on-accent)" : "var(--text-primary)";
+  return { bg, ink, grain };
+}
+function threadEl(e, cls){
+  const t = threadStyle(e);
+  const div = document.createElement("div");
+  div.className = `${cls} w${e.w}` + (t.grain ? " grain" : "");
+  div.style.cssText = `background:${t.bg};color:${t.ink};` + (t.extra || "");
+  div.title = (ctxOf(e) ? ctxOf(e) + " · " : "") + e.label + " · " + fmtDay(e.date);
+  div.textContent = (e.kind === "remind" ? "◌ " : "") + e.label;
+  return div;
+}
+
+let cursor = { y: 2026, mo: 8 };
+
+function renderMonth(){
+  const root = document.getElementById("monthView");
+  root.innerHTML = "";
+  const dow = document.createElement("div"); dow.className = "dowrow";
+  dow.appendChild(document.createElement("span"));
+  for (const d of DOW){ const s=document.createElement("span"); s.className="mk"; s.textContent=d; dow.appendChild(s); }
+  root.appendChild(dow);
+
+  const first = iso(cursor.y, cursor.mo, 1);
+  let cur = addDays(first, -dowOf(first));
+  const daysInMonth = new Date(cursor.y, cursor.mo, 0).getDate();
+  const last = iso(cursor.y, cursor.mo, daysInMonth);
+  const gridEnd = addDays(last, 6 - dowOf(last));
+
+  const byDay = new Map();
+  for (const e of ENTRIES){ (byDay.get(e.date) || byDay.set(e.date,[]).get(e.date)).push(e); }
+
+  while (cur <= gridEnd){
+    const band = document.createElement("div"); band.className = "band";
+    const a = parse(cur), b = parse(addDays(cur, 6));
+    const lbl = document.createElement("div"); lbl.className = "bandlabel";
+    lbl.textContent = a.mo === b.mo ? `${a.d}–${b.d} ${MONTHS[a.mo-1]}` : `${a.d} ${MONTHS[a.mo-1]} – ${b.d} ${MONTHS[b.mo-1]}`;
+    band.appendChild(lbl);
+    for (let i = 0; i < 7; i++){
+      const p = parse(cur);
+      const slot = document.createElement("div");
+      slot.className = "slot" + (cur === TODAY ? " today" : "");
+      const num = document.createElement("span"); num.className = "dnum";
+      num.textContent = p.d === 1 ? `1 ${MONTHS[p.mo-1]}` : p.d;
+      if (p.mo !== cursor.mo) num.style.opacity = "0.4";
+      slot.appendChild(num);
+      const dayEntries = byDay.get(cur) || [];
+      for (const e of dayEntries) slot.appendChild(threadEl(e, "thread"));
+      const weft = document.createElement("div"); weft.className = "weft";
+      slot.appendChild(weft);
+      band.appendChild(slot);
+      cur = addDays(cur, 1);
+    }
+    root.appendChild(band);
+  }
+  document.getElementById("title").firstChild.textContent = `${MONTHS_FULL[cursor.mo-1]} ${cursor.y} `;
+}
+
+function renderCloth(){
+  const root = document.getElementById("agendaView");
+  root.innerHTML = "";
+  const byDay = new Map();
+  for (const e of ENTRIES){ if (!e.done) (byDay.get(e.date) || byDay.set(e.date,[]).get(e.date)).push(e); }
+
+  // overdue first, as loose ember threads above the cloth
+  const overdue = ENTRIES.filter(e => !e.done && e.date < TODAY);
+  if (overdue.length){
+    const head = document.createElement("div"); head.className = "crow";
+    head.innerHTML = `<div class="datecell"><span class="mk" style="color:var(--ember)">Overdue</span></div>`;
+    const segs = document.createElement("div"); segs.className = "segs";
+    for (const e of overdue){
+      const el = threadEl(e, "seg");
+      el.textContent += " · " + fmtDay(e.date);
+      segs.appendChild(el);
+    }
+    head.appendChild(segs);
+    root.appendChild(head);
+  }
+
+  let cur = TODAY;
+  for (let i = 0; i <= 35; i++){
+    const p = parse(cur);
+    const row = document.createElement("div");
+    row.className = "crow" + (cur === TODAY ? " is-today" : "") + (p.d === 1 ? " month-break" : "");
+    row.innerHTML = `<div class="datecell"><span class="dnum">${p.d === 1 || cur === TODAY ? p.d + " " + MONTHS[p.mo-1] : p.d}</span></div>`;
+    const segs = document.createElement("div"); segs.className = "segs";
+    for (const e of (byDay.get(cur) || [])) segs.appendChild(threadEl(e, "seg"));
+    const weft = document.createElement("div"); weft.className = "weftline";
+    segs.appendChild(weft);
+    row.appendChild(segs);
+    root.appendChild(row);
+    cur = addDays(cur, 1);
+  }
+}
+
+function renderTray(){
+  document.getElementById("trayCount").textContent = `Unscheduled · ${UNSCHEDULED.length}`;
+  const body = document.getElementById("trayBody"); body.innerHTML = "";
+  for (const u of UNSCHEDULED){
+    const row = document.createElement("div"); row.className = "trayrow";
+    row.innerHTML = `<span class="dot" style="background:var(${PROJECTS[u.p].v})"></span>` +
+      `<span>${u.label}</span><span class="mk">${PROJECTS[u.p].title}</span>` +
+      `<button class="setdate">Set date →</button>`;
+    body.appendChild(row);
+  }
+}
+
+function setMode(m){
+  document.getElementById("btnMonth").setAttribute("aria-pressed", String(m==="month"));
+  document.getElementById("btnAgenda").setAttribute("aria-pressed", String(m==="agenda"));
+  document.getElementById("monthView").classList.toggle("hidden", m!=="month");
+  document.getElementById("agendaView").classList.toggle("hidden", m!=="agenda");
+  document.querySelector(".monthnav").style.visibility = m==="month" ? "visible" : "hidden";
+  if (m==="agenda"){ document.getElementById("title").firstChild.textContent = "The next five weeks "; renderCloth(); }
+  else renderMonth();
+}
+document.getElementById("btnMonth").onclick = () => setMode("month");
+document.getElementById("btnAgenda").onclick = () => setMode("agenda");
+document.getElementById("btnPrev").onclick = () => { cursor.mo--; if(cursor.mo<1){cursor.mo=12;cursor.y--;} renderMonth(); };
+document.getElementById("btnNext").onclick = () => { cursor.mo++; if(cursor.mo>12){cursor.mo=1;cursor.y++;} renderMonth(); };
+document.getElementById("btnDark").onclick = (ev) => {
+  const root = document.documentElement;
+  const on = root.getAttribute("data-theme") === "dark";
+  if (on) root.removeAttribute("data-theme"); else root.setAttribute("data-theme","dark");
+  ev.currentTarget.setAttribute("aria-pressed", String(!on));
+};
+
+renderMonth(); renderCloth(); renderTray();
+</script>
+</body>
+</html>

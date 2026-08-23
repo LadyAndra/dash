@@ -208,9 +208,55 @@
      accessibility requirement, it's just three chunky buttons eating
      the row before any text gets drawn. That reclaimed width is what
      stops labels being clipped on the desktop. */
+  /* ============================================================
+     CALENDAR (M3) — the dye ramp and the instruments
+     ------------------------------------------------------------
+     "Material is time-distance" (calendar architecture §1 rule 2).
+     A mark's HUE is its project and only its project; how SOON it is
+     reads as how much of that hue has settled into the paper. These
+     four percentages are that ramp, and they are percentages rather
+     than colours on purpose: every mark is drawn as
+       color-mix(in srgb, <the project's colour> N%, var(--surface))
+     so the whole ramp re-themes for free, dark mode included, with
+     no second set of tokens to keep in sync.
+
+     The DAY boundaries those percentages belong to (0–2 / 3–7 /
+     8–14 / 15+) are deliberately NOT here: they are behaviour, not
+     appearance, and live as constants beside the one ramp classifier
+     in js/views/calendar.js so a test can walk them.
+     ============================================================ */
+  --cal-dye-near: 100%;   /* 0–2 days  — full dye, hard 2px ink edge */
+  --cal-dye-soon: 100%;   /* 3–7 days  — full dye, no edge */
+  --cal-dye-mid:   55%;   /* 8–14 days — dye thinning, grain arrives */
+  --cal-dye-far:   24%;   /* 15+ days  — mostly paper, grain
+                             (checked against an 18/24/32% swatch
+                             comparison in two project colours; 24 is
+                             the one that reads faint but not lost) */
+  --cal-grain-opacity: 0.45;   /* the shared assets/grain.svg overlay */
+
+  /* The approach strip's overdue field. It is TINTED, not filled: the
+     zone's WIDTH is what carries the signal (it is sized by how old
+     the oldest debt is), so the colour only has to say "this side of
+     the line is late". */
+  --cal-overdue-tint: 9%;
+
+  /* The load gauge's ceiling (§3b). Even at maximum load roughly a
+     fifth of the landscape stays visible — the hills are never fully
+     gone. Deliberately a token: this is the one number in the gauge
+     that is a judgement about how loud the instrument is allowed to
+     be, and it was corrected twice before it landed here. */
+  --cal-fog-ceiling: 0.8;
+
+  /* The flip widget's housing (§4). The ONE place Dash's 2px
+     sharpness relaxes, because the setting mechanism is deliberately
+     an OBJECT sitting on the surface rather than a region of it. */
+  --radius-housing: 6px;
+
   --tap-min: 44px;
   --control-min: var(--tap-min);
-  /* Focus is interface state, not an alert. Keep ember reserved for\n     overdue/error/sync meaning and draw keyboard focus in neutral Dash ink. */\n  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);
+  /* Focus is interface state, not an alert. Keep ember reserved for
+     overdue/error/sync meaning and draw keyboard focus in neutral Dash ink. */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);
   --transition: 140ms ease;
 }
 

@@ -1,0 +1,434 @@
+/* ============================================================
+   calendar.css — the Calendar view (milestones addendum M3)
+   ------------------------------------------------------------
+   Deliberately its own stylesheet, the same way projects.css and
+   desk-images.css are: Calendar is one screen with its own layout
+   rules, and keeping it out of app.css means a change here is a
+   small file to upload rather than a 165KB one.
+
+   NO LITERAL COLOURS, SIZES OR FONTS. Every value below is a token
+   from tokens.css or geometry (a stroke width, a viewBox offset).
+   That is what makes a theme swap re-paint the whole instrument
+   with no re-render — and it is why every fill on this screen is a
+   CSS rule here rather than an attribute written by calendar.js.
+
+   THE MARK GRAMMAR lives in one block (search "THE RAMP"). A mark's
+   HUE arrives as --pc, an inline custom property carrying its
+   project's own colour, because that is DATA and CSS cannot know it
+   in advance. Everything else — how much of that hue has settled
+   into the paper, whether grain has arrived, how hard the edge is —
+   is decided by the ramp class and the --cal-dye-* tokens.
+   ============================================================ */
+
+/* ---- the page gives up its scroll for this one view ----
+   Calendar is a single-viewport instrument panel (§2): no page scroll in
+   any direction, long lists scrolling inside their own panels. :has() is
+   how that is asked for without app.js needing to know Calendar exists —
+   the same mechanism already used a dozen times in app.css. */
+.viewport:has(.cal-root) { overflow: hidden; }
+.viewport:has(.cal-root) > .catalog-layout { height: 100%; min-height: 0; }
+.viewport:has(.cal-root) #view-host { padding: 0; height: 100%; min-height: 0; }
+
+.cal-root {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  /* bar · the approach · the shelf · the tray's line of chrome */
+  grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr) auto;
+  background: var(--surface);
+}
+
+/* Calendar's captions are labels, not marks — no dot. */
+.cal-root .mk::before { display: none; }
+
+/* ---------- the bar ---------- */
+.cal-bar {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.cal-title { color: var(--text-primary); }
+.cal-controls { margin-left: auto; display: flex; gap: var(--space-1); }
+.cal-monthnav { display: flex; gap: var(--space-1); }
+.cal-monthnav[hidden] { display: none; }
+.cal-ctl {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  min-height: var(--control-min); padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  color: var(--text-muted); background: var(--surface-raised); cursor: pointer;
+}
+.cal-ctl:hover { color: var(--text-primary); }
+.cal-ctl[aria-pressed="true"] {
+  background: var(--text-primary); color: var(--surface); border-color: var(--text-primary);
+}
+.cal-ctl:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ============================================================
+   THE APPROACH STRIP  (§2a)
+   ============================================================ */
+.cal-stripzone { position: relative; overflow: hidden; min-height: 0; }
+.cal-strip { display: block; }
+
+/* The overdue field. Its WIDTH is the signal — it is sized by how old the
+   oldest debt is — so the tint only has to say "this side of the line is
+   late" without shouting over the marks standing in it. */
+.cal-overdue-zone { fill: color-mix(in srgb, var(--ember) var(--cal-overdue-tint), transparent); }
+.cal-zone-label {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.18em; fill: var(--ember);
+}
+
+.cal-now { stroke: var(--text-primary); stroke-width: 2.5; }
+.cal-now-label {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.25em; font-weight: 700; fill: var(--text-primary);
+}
+.cal-grid { stroke: var(--border); stroke-width: 0.75; }
+.cal-grid.is-week { stroke-width: 1.5; }
+.cal-grid.is-month { stroke: var(--border-strong); stroke-width: 1.2; }
+.cal-lane { stroke: var(--border); stroke-width: 0.75; stroke-dasharray: 1 5; }
+
+.cal-axis-num, .cal-axis-month, .cal-lane-label, .cal-mark-label {
+  font-family: var(--font-mono); font-size: var(--text-label); letter-spacing: 0.12em;
+}
+.cal-axis-num { fill: var(--text-faint); }
+.cal-axis-num.is-today { fill: var(--text-primary); font-weight: 700; }
+.cal-axis-month { fill: var(--text-muted); letter-spacing: 0.18em; }
+.cal-lane-label { fill: var(--text-muted); letter-spacing: 0.2em; }
+.cal-mark-label { fill: var(--text-muted); letter-spacing: 0.18em; }
+.cal-mark-label.is-overdue { fill: var(--ember); }
+
+/* A paper halo behind the two kinds of label that sit ON the field rather
+   than under it. With nothing overdue the NOW line stands almost at the left
+   edge and would otherwise cut straight through a lane's name; gridlines do
+   the same to a mark's label out in the compressed far field. Drawing the
+   surface colour as a stroke UNDER the fill knocks a small clearing out of
+   whatever is behind the words, in whichever theme is on. */
+.cal-lane-label, .cal-mark-label {
+  paint-order: stroke fill;
+  stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
+}
+
+/* ============================================================
+   THE RAMP — hue is identity, material is time-distance (§1)
+   ------------------------------------------------------------
+   --pc  the project's own colour, written inline by calendar.js
+   --dye how much of it has settled into the paper, from tokens
+   Mixing into var(--surface) rather than into white is what makes
+   the whole ramp re-theme for free, dark mode included.
+   ============================================================ */
+.cal-mark {
+  fill: color-mix(in srgb, var(--pc, var(--text-faint)) var(--dye, 100%), var(--surface));
+  cursor: pointer;
+}
+.cal-mark.ramp-near {                          /* 0–2 days: hard ink edge */
+  --dye: var(--cal-dye-near);
+  stroke: var(--text-primary); stroke-width: 2;
+}
+.cal-mark.ramp-soon { --dye: var(--cal-dye-soon); }        /* 3–7: full dye, no edge */
+.cal-mark.ramp-mid,                                        /* 8–14: dye thinning */
+.cal-mark.ramp-far {                                       /* 15+ : mostly paper */
+  stroke: color-mix(in srgb, var(--pc, var(--text-faint)) 55%, var(--surface));
+  stroke-width: 1.2;
+}
+.cal-mark.ramp-mid { --dye: var(--cal-dye-mid); }
+.cal-mark.ramp-far { --dye: var(--cal-dye-far); }
+
+/* Ember is not in the ramp's colour logic at all. It means past its date,
+   and nothing else — the one thing on this screen whose hue is not identity. */
+.cal-mark.ramp-overdue { fill: var(--ember); stroke: none; }
+
+/* Finished things are hollow or struck: still on the face, no longer weight. */
+.cal-mark.ramp-done { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; }
+
+/* A reminder is a nudge, not a deadline — hollow, dashed, never filled. */
+.cal-mark.ramp-remind {
+  fill: var(--surface); stroke: var(--pc, var(--text-faint));
+  stroke-width: 1.6; stroke-dasharray: 3 3;
+}
+
+/* Grain arrives with the thinned dye and never before it. One tile, shared
+   with the load gauge, laid over the mark rather than mixed into it. */
+.cal-mark-grain {
+  opacity: var(--cal-grain-opacity);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* The mark gets a "hot" ring while it is being spoken — on hover AND focus,
+   because the tooltip follows both. */
+.cal-mark.is-hot { stroke: var(--text-primary); stroke-width: 2.5; }
+.cal-mark:focus { outline: none; }
+.cal-mark:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+/* ============================================================
+   THE TOOLTIP — at the mark, in the mount material
+   ------------------------------------------------------------
+   Made of the same near-black board as the flip clock, so the two
+   mechanisms on this screen rhyme through shared material.
+   ============================================================ */
+.cal-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: var(--mount); color: var(--ink-on-mount);
+  border-radius: var(--radius); padding: var(--space-2) var(--space-3);
+  max-width: 300px; box-shadow: var(--shadow-2);
+}
+.cal-tip[hidden] { display: none; }
+.cal-tip .mk { color: var(--ink-on-mount-muted); display: block; }
+.cal-tip-t {
+  font-family: var(--font-body); font-size: var(--text-base);
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-tip-when {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.1em; display: block; color: var(--ink-on-mount-muted);
+}
+.cal-tip-when.is-overdue { color: var(--ember-on-mount); }
+.cal-tip::after {
+  content: ""; position: absolute; top: 100%; left: var(--cal-arrow-x, 50%);
+  transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--mount);
+}
+.cal-tip.is-below::after {
+  top: auto; bottom: 100%;
+  border-top-color: transparent; border-bottom-color: var(--mount);
+}
+
+/* ============================================================
+   THE ACCENT SHELF  (§3, §3a)
+   ------------------------------------------------------------
+   Glances, not workspaces. Nothing is ONLY reachable through them.
+   The shedding order is decided in calendar.js (shelfShedFor) and
+   arrives here as data-shed, so there is one authority for it and a
+   test can walk it — these rules only obey.
+   ============================================================ */
+.cal-shelf {
+  display: flex; align-items: stretch; gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  min-height: 0; min-width: 0;
+}
+.cal-panel {
+  position: relative;
+  /* bottom-aligned, so the instruments hang from the shelf and their captions
+     land on ONE line however differently tall the instruments themselves are */
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  min-height: 0; min-width: 0;
+}
+.cal-cap { flex: none; margin-top: var(--space-1); color: var(--text-faint); }
+
+.cal-shelf[data-shed~="year"] .cal-panel-year { display: none; }
+.cal-shelf[data-shed~="open"] .cal-panel-open { display: none; }
+
+/* The open slot. Andra's call and a real decision, not a placeholder — the
+   same density language the ramp is built on. It holds nothing on purpose. */
+.cal-panel-open { flex: 1 1 auto; min-width: 0; }
+
+/* ---------- the month dial ---------- */
+.cal-panel-dial { flex: 0 1 auto; }
+.cal-dial { height: calc(100% - 1.4rem); width: auto; max-width: 100%; max-height: 420px; display: block; }
+
+.cal-orbit { fill: none; stroke: var(--border); stroke-width: 1.4; }
+.cal-tick { stroke: var(--border-strong); stroke-width: 1.5; }
+.cal-tick.is-today { stroke: var(--text-primary); stroke-width: 5; }
+.cal-dial-num {
+  font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.05em; fill: var(--text-faint);
+}
+.cal-dial-num.is-today { fill: var(--text-primary); font-weight: 700; }
+.cal-dial-hand { stroke: var(--text-primary); stroke-width: 1.5; opacity: 0.35; stroke-dasharray: 3 5; }
+.cal-dial-month { font-family: var(--font-display); font-size: 52px; fill: var(--text-primary); }
+.cal-dial-count {
+  font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.15em; fill: var(--text-faint);
+}
+.cal-dial-count.is-overdue { fill: var(--ember); }
+
+/* Overdue FALLS OUT OF ORBIT — pulled to the centre in ember, still tethered
+   to where it belongs, with a hollow ring left in its place. A month with
+   debt in it looks structurally wrong before you have read a word of it. */
+.cal-tether { stroke: var(--ember); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.cal-vacancy { fill: none; stroke: var(--ember); stroke-width: 1.5; }
+.cal-mark-dial { stroke-width: 2; }
+
+/* The slow sweep: 75 seconds a turn. An instrument idling, not an animation
+   asking for attention — which is exactly why it is the first thing to go. */
+.cal-sweep { transform-origin: 50% 50%; animation: cal-sweep 75s linear infinite; }
+.cal-sweep-arm { fill: var(--text-primary); opacity: 0.045; }
+@keyframes cal-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.cal-root[data-motion="off"] .cal-sweep { display: none; }
+@media (prefers-reduced-motion: reduce) { .cal-sweep { display: none; } }
+
+/* ---------- the year radar ---------- */
+.cal-panel-year { flex: 0 1 auto; }
+.cal-year { height: calc(100% - 1.4rem); width: auto; max-width: 100%; max-height: 260px; display: block; }
+.cal-year-spoke { stroke: var(--border); stroke-width: 0.6; }
+.cal-year-orbit { fill: none; stroke: var(--border); stroke-width: 0.5; }
+.cal-year-hand { stroke: var(--text-primary); stroke-width: 1.2; }
+.cal-year-letter, .cal-year-label {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.12em; fill: var(--text-faint);
+}
+.cal-year-label { font-size: 10px; letter-spacing: 0.2em; }
+.cal-grain-mark { fill: var(--pc, var(--text-faint)); }
+.cal-grain-mark.is-done { fill: var(--border-strong); opacity: 0.7; }
+.cal-grain-mark.is-overdue { fill: var(--ember); }
+.cal-grain-mark.is-far { opacity: 0.55; }
+
+/* ============================================================
+   THE LOAD GAUGE — "the fog, windowed"  (§3b)
+   ============================================================ */
+.cal-panel-gauge { flex: 0 1 auto; }
+.cal-window {
+  position: relative;
+  height: calc(100% - 1.9rem); max-height: 300px;
+  aspect-ratio: 4 / 3.1;
+  background: var(--mount);
+  border-radius: 4px; padding: 10px;
+  /* the hairline ring is not decoration: on the dark theme --mount and
+     --surface are almost the same tone, and without it the window frame
+     disappears into the shelf entirely */
+  box-shadow: var(--shadow-2), 0 0 0 1px var(--border-strong);
+}
+.cal-glass {
+  position: relative; width: 100%; height: 100%; overflow: hidden;
+  border-radius: var(--radius);
+}
+.cal-scene { display: block; width: 100%; height: 100%; }
+
+/* The fog is DARK — dusk or smoke settling into a valley, not pale weather.
+   It is the mount's own tone, which is what ties it to the flip clock and the
+   tooltip cards through shared material rather than shared mechanism. */
+.cal-fog-stop-a { stop-color: var(--mount); stop-opacity: 0; }
+.cal-fog-stop-b { stop-color: var(--mount); stop-opacity: 0.92; }
+.cal-fog-stop-c { stop-color: var(--mount); stop-opacity: 1; }
+.cal-fog-veil { fill: var(--mount); }
+
+/* the same grain tile the marks carry, at a load-scaled opacity */
+.cal-gauge-grain {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background-image: url("../assets/grain.svg");
+  opacity: var(--cal-fog-grain, 0.03);
+  mix-blend-mode: overlay;
+}
+.cal-mullion-v, .cal-mullion-h { position: absolute; background: var(--mount); z-index: 3; pointer-events: none; }
+.cal-mullion-v { top: 0; bottom: 0; left: 50%; width: 8px; margin-left: -4px; }
+.cal-mullion-h { left: 0; right: 0; top: 50%; height: 8px; margin-top: -4px; }
+.cal-sill {
+  flex: none; height: 10px; width: 92%; margin-top: -3px;
+  background: var(--mount-soft); border-radius: 0 0 3px 3px;
+}
+
+/* ============================================================
+   THE UNSCHEDULED TRAY  (§5, footprint per §3a)
+   ------------------------------------------------------------
+   One line of chrome at the bottom edge, not a shelf panel: its
+   contents are phase placeholders, not tasks waiting on a date.
+   ============================================================ */
+.cal-tray {
+  display: flex; flex-direction: column; min-height: 0; max-height: 30vh;
+  border-top: 1px solid var(--border-strong); background: var(--surface-sunken);
+}
+.cal-tray-head {
+  flex: none; text-align: left; cursor: pointer;
+  min-height: var(--control-min); padding: 0 var(--space-5);
+  border: none; background: none; color: var(--text-muted);
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.cal-tray-head:hover:not(:disabled) { color: var(--text-primary); }
+.cal-tray-head:disabled { cursor: default; opacity: 0.6; }
+.cal-tray-head:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cal-tray-body { overflow: auto; min-height: 0; border-top: 1px solid var(--border); }
+.cal-tray-row {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-5); border-bottom: 1px solid var(--border);
+}
+.cal-tray-row:last-child { border-bottom: none; }
+.cal-dot { width: 10px; height: 10px; border-radius: var(--radius-pill); flex: none; }
+.cal-tray-label { font-size: var(--text-base); }
+.cal-tray-ctx { color: var(--text-faint); }
+.cal-setdate {
+  margin-left: auto; cursor: pointer;
+  min-height: var(--control-min); padding: 0 var(--space-2);
+  border: none; border-bottom: 1px dashed var(--border-strong); background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.cal-setdate:hover { color: var(--text-primary); }
+.cal-setdate:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cal-flip-slot { flex-basis: 100%; }
+
+/* ============================================================
+   THE FLIP-NUMERAL DATE INPUT — "the setting mechanism" (§4)
+   ------------------------------------------------------------
+   Lives here because the widget is Calendar-scoped this pass. When
+   a second surface adopts js/widgets/flipdate.js, move this block
+   to app.css unchanged — it depends on nothing in this file.
+
+   A date being READ stays quiet. A date being SET becomes a machine:
+   split-flap cards in the mount material, with a housing that is the
+   one place Dash's 2px sharpness relaxes, because this is deliberately
+   an OBJECT sitting on the surface rather than a region of it.
+   ============================================================ */
+.flipdate {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-housing);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  margin: var(--space-2) 0;
+}
+.fd-unit {
+  position: relative; border-radius: 4px;
+  background: var(--mount); color: var(--ink-on-mount);
+  font-family: var(--font-mono); text-align: center;
+  user-select: none; touch-action: none; cursor: ns-resize;
+  perspective: 260px;
+}
+.fd-unit:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* every unit is over --tap-min in both directions (§4's a11y contract) */
+.fd-day   { width: 64px; height: 76px; font-size: 40px; }
+.fd-month { width: 84px; height: 76px; font-size: 30px; letter-spacing: 0.06em; }
+.fd-year  { width: 96px; height: 76px; font-size: 30px; }
+
+.fd-half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: flex; justify-content: center; }
+.fd-top { top: 0; border-radius: 4px 4px 0 0; background: var(--mount); border-bottom: 1px solid var(--rule-mount); }
+.fd-bottom { bottom: 0; border-radius: 0 0 4px 4px; background: var(--mount-soft); }
+.fd-half > span { flex: none; line-height: 76px; height: 76px; }
+.fd-bottom > span { transform: translateY(-50%); }
+
+.fd-flap { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; display: none; justify-content: center; backface-visibility: hidden; }
+.fd-flap > span { flex: none; line-height: 76px; height: 76px; }
+.fd-flap-top { top: 0; transform-origin: bottom; background: var(--mount); border-radius: 4px 4px 0 0; border-bottom: 1px solid var(--rule-mount); }
+.fd-flap-bottom { top: 50%; transform-origin: top; background: var(--mount-soft); border-radius: 0 0 4px 4px; }
+.fd-flap-bottom > span { transform: translateY(-50%); }
+
+/* Reduced motion: the flaps never appear. flipdate.js carries the matching
+   JS guard, so the timers do not run either — the value simply lands. */
+@media (prefers-reduced-motion: reduce) { .fd-flap { display: none !important; } }
+
+.fd-hint {
+  position: absolute; left: 0; right: 0; bottom: -20px;
+  color: var(--text-faint); letter-spacing: 0.16em; line-height: 1;
+  display: block; text-align: center;
+}
+.fd-actions { display: flex; flex-direction: column; gap: var(--space-1); margin-left: var(--space-1); }
+.fd-btn {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  min-height: 34px; padding: 0 var(--space-3);
+  color: var(--text-muted); background: var(--surface-raised);
+}
+.fd-btn:hover { color: var(--text-primary); }
+.fd-btn-primary { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+.fd-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.fd-typed { display: none; margin-left: var(--space-2); }
+.flipdate.typing .fd-typed { display: inline-block; }
+.fd-typed input {
+  font-family: var(--font-mono); font-size: var(--text-base);
+  padding: var(--space-2); min-height: var(--tap-min);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface-raised); color: var(--text-primary);
+}
+.fd-typed input:focus-visible { outline: none; box-shadow: var(--focus-ring); }

@@ -366,7 +366,7 @@ Wonder symbols (D3) and highlights (D4). `"dk"` already carries symbols as one m
 - **Blur is not proof the user left the field.** `container.innerHTML = ""` detaches the focused element and Chrome fires `blur` on the way out. Home's capture box cleared its "was focused" flag in `onblur`, which defeated its own focus-restore pass — text survived the re-render, the cursor didn't. The guard is `if (document.contains(e.target))`. Cursor position is preserved too, via `viewLocal.captureSel`. Any field that has to survive a re-render needs the same guard
 - **Renders are coalesced to one per animation frame** (`scheduleRender` in `app.js`). Added July 31, 2026 because bulk actions emit one store change per item, and redrawing the whole screen dozens of times in a row locked the UI. Views needing an immediate redraw still call `ctx.rerender()`
 - **"Today" changes at midnight while the app is open.** Every grouping on the Home sheet is computed against it, so `watchDayRollover()` in `app.js` re-renders on `visibilitychange`, on window focus, and on a once-a-minute check that only fires when the calendar date has actually changed. A no-op minute costs one string comparison and redraws nothing. Any future date-derived surface inherits this for free by living in the normal render pass — but must not add its own timer
-- **Per-device `localStorage` keys now in use** (none of these are synced, on purpose): `dash.groupBy`, `dash.collapsed`, `dash.theme`, `dash.textScale`, `dash.dark`, `dash.rail` (index rail open/closed on List/Board — replaced `dash.sidebar`, which is now abandoned in place and read by nothing), `dash.sortBy` (the catalog band's sort order), `dash.cluster.pos` (widget positions — dormant while the cluster is shelved), `dash.pet.streak`, `dash.pet.lastOpen`, `dash.mergeNotes` (this device's unread merge notes), `dash.mergeNotesResolved` (the keys of notes this device has dismissed, cleared or restored — tombstones, added v39, capped at 1000; **it is what stops a dismissed note coming back**, and it must never be cleared alongside `dash.mergeNotes`, because the two records exist precisely so that shortening one does not shorten the other). The rule they follow: UI arrangement and per-device nudges stay local; anything that is *content* goes in the synced log
+- **Per-device `localStorage` keys now in use** (none of these are synced, on purpose): `dash.groupBy`, `dash.collapsed`, `dash.theme`, `dash.textScale`, `dash.dark`, `dash.rail` (index rail open/closed on List/Board — replaced `dash.sidebar`, which is now abandoned in place and read by nothing), `dash.sortBy` (the catalog band's sort order), `dash.cluster.pos` (widget positions — dormant while the cluster is shelved), `dash.pet.streak`, `dash.pet.lastOpen`, `dash.mergeNotes` (this device's unread merge notes), `dash.calendar.mode` / `dash.calendar.cursor` / `dash.calendar.motion` (the Calendar's last window, the month it was parked on, and whether the dial's sweep is running — all per device, added M3), `dash.mergeNotesResolved` (the keys of notes this device has dismissed, cleared or restored — tombstones, added v39, capped at 1000; **it is what stops a dismissed note coming back**, and it must never be cleared alongside `dash.mergeNotes`, because the two records exist precisely so that shortening one does not shorten the other). The rule they follow: UI arrangement and per-device nudges stay local; anything that is *content* goes in the synced log
   - **Two keys are abandoned in place and read by nothing:** `dash.sidebar` (the old drawer's open/closed state, superseded by `dash.rail`) and `dash.view` (written on every view switch until the code-health pass, but never read — Dash always opens on Home by design). Both may still be sitting in your devices' storage; neither does anything. If a future feature wants "remember the last view", **use a new key** rather than inheriting a stale value from `dash.view`, for the same reason `dash.rail` didn't reuse `dash.sidebar`
 - Deployment uses GitHub's web uploader: upload exactly the complete files/folders named in the handoff, keep folder paths intact, commit, wait for the automatic **Check Dash** action to go green, then verify Dash while online. `sw.js` is **not** part of ordinary uploads anymore; include it only when its own logic changed. Full steps are in `docs/deploy-runbook.md`
 
@@ -390,3 +390,72 @@ The item editor now uses one shared **capture-first hierarchy** on phone and des
 A **new item starts with More details collapsed**, so quick capture no longer begins with the full long-form editor. An **existing item starts with More details open**. That is deliberately conservative: the presentation module does not reach into the Store, and opening edits guarantees that information already recorded in projects/tags/files/connections/sketches can never appear to have disappeared behind the new hierarchy. The disclosure can still be closed manually while editing.
 
 This is progressive disclosure only. `editor.js` still owns every field, every autosave operation, Done/Delete, attachment handling, project assignment, links and sketch persistence. `editor-details.js` moves the existing field nodes after the editor is built; it does not clone controls or introduce a second save path. The phone full-screen capture sheet and the fine-pointer desktop framed sticky cap remain unchanged around it.
+
+
+### The Calendar view — Phase M3, August 23, 2026
+
+Calendar is live, registered in `js/app.js`'s `VIEWS` after Project, and
+**gated off phone-class screens** by the same coarse-pointer / 600px short-side
+rule Project uses — `PHONE_HIDDEN_VIEWS` in `app.js` now names both, and there
+is still exactly one `isPhoneUI()` in that file. Home remains the phone's
+surface for dates, and Home's own "Due & coming up" panel is unchanged:
+Calendar is an additional reader, not a replacement.
+
+Built to `docs/calendar-design/dash-calendar-visual-architecture.md`, which is
+the design of record and closed out. In short: a single-viewport instrument
+panel with no page scroll — an approach strip on a log-compressed axis
+(`CAL_HORIZON_DAYS = 120`) with an anchored NOW line and an overdue field sized
+by its own contents, a shelf of three instruments plus one deliberately empty
+slot, and the unscheduled tray as one line of bottom-edge chrome.
+
+**New files:** `js/views/calendar.js`, `js/widgets/flipdate.js`,
+`css/calendar.css`, and a new top-level `assets/` folder holding `grain.svg`
+and `window-scene.svg`. `index.html` gained one stylesheet line. `sw.js` is at
+`dash-v101` with all five in `SHELL`.
+
+Things a future session should know before touching it:
+
+- **`js/entries.js` was not modified.** The weight rule needs to know whether a
+  milestone is its project's *final* one, and dated milestone entries carry no
+  `.order` (only the unscheduled ones do, for the tray's pipeline sort). Rather
+  than widening that shared emit, finality is derived at render time from the
+  project itself — `visibleMilestones(project).at(-1)` — memoised once per
+  frame in `finalMilestoneIndex()`. Finality is a property of the project, not
+  of the entry, and it changes the moment a phase is added, so this is also the
+  more correct place for it.
+- **One archive pass per frame.** A single `calendarData()` call with an open
+  lower bound (so nothing overdue is ever dropped) and an end covering the
+  strip's horizon, the radar's year and the cursor month feeds the strip, Month
+  mode, the dial, the load gauge and the radar. Everything after that is
+  filtering in memory. Do not add a second query for a new instrument.
+- **No colour is ever baked.** Every fill is a `var()` or a `color-mix()` of one,
+  set by a CSS class in `calendar.css`; the project's own hue arrives as an
+  inline `--pc` because it is data. That is what lets a theme swap re-paint the
+  whole instrument with no re-render, and `tests/calendar.test.mjs` fails the
+  build if a literal creeps in. There is exactly one `getComputedStyle` read in
+  the view and it reads a number (`--cal-fog-ceiling`), not a colour.
+- **The DOM is kept, not rebuilt.** Dash re-renders the active view on every
+  store change; rebuilding the shell would destroy an open flip widget mid-edit
+  and restart the dial's sweep. Same rule the Projects index rail follows.
+- **The strip is measured, and re-measured.** Its size comes from its
+  container's real box, watched with a `ResizeObserver` — opening the tray, or
+  the flip mechanism appearing inside an already-open tray, changes how much
+  height the strip has, and without that watcher the strip stays drawn at its
+  old height and clips its bottom lane and its whole day axis off the screen.
+  `paint()` also renders the tray *before* the strip for the same reason.
+- **Only one Calendar is ever mounted**, tracked at module scope so that leaving
+  the view tears down its resize observer and its once-a-minute day check.
+  `state.viewLocal` is thrown away on a view switch and cannot be relied on for
+  this.
+- **`assets/window-scene.svg` is art and is allowed literal colours.** It is
+  fetched and inlined rather than used as an `<img>` so the fog can reach each
+  ridge individually (distant hills fade first). Andra's hand-drawn replacement
+  is still a one-file swap; the only contract is that each hill carries
+  `class="ridge"` and `data-depth`, farthest first. The file says so itself.
+
+**Also repaired in this pass:** `css/tokens.css` had a line whose two newlines
+had been saved as the literal characters `\n`, which made `--focus-ring` a CSS
+parse error and dropped it app-wide. Nothing looked broken because most focus
+styles are written longhand, but the token existed and was reaching nothing.
+`tests/calendar.test.mjs` now checks that stylesheet for balanced braces and
+stray `\n`, so it cannot happen again quietly.

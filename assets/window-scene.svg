@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A view over layered hills">
+  <!-- ===================================================================
+       window-scene.svg — the load gauge's landscape (architecture §3b).
+       ===================================================================
+       THIS FILE IS ART, NOT A COMPONENT. It is the only place in the
+       Calendar that names literal colours, and that is deliberate: it is a
+       picture seen through a window, not a themed surface. It looks the same
+       in dark mode for the same reason a real window does.
+
+       v1 is the fog-window prototype's own hand-placed ridges — four hills,
+       back to front, a wheat-country palette (Kansas was the reference) using
+       real atmospheric perspective: distance desaturates and cools, so the
+       farthest ridge is a hazy lavender-blue and the nearest field is a warm
+       saturated amber-gold.
+
+       ---- SWAPPING IN THE REAL ART (the one-file swap, §3.4) ----
+       Replace this whole file and change nothing else. The fog layer never
+       touches it; js/views/calendar.js only needs two things to stay true:
+
+         1. The viewBox stays "0 0 400 320".
+         2. Every ridge is a shape carrying  class="ridge"  and
+            data-depth="0"…"3", ordered 0 = FARTHEST, 3 = NEAREST.
+
+       That data-depth is what makes the distant hills disappear into the fog
+       first (§3b, "fog reads as rolling in from the distance"). A ridge with
+       no data-depth is treated as depth 0. Extra ridges are fine — number
+       them in order and the gauge weights them across whatever range it finds.
+       Anything without class="ridge" (the sky, a barn, a fence) is left alone
+       and simply dims under the flat veil like the rest of the scene.
+       =================================================================== -->
+  <defs>
+    <linearGradient id="scene-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7ecd9"/>
+      <stop offset="1" stop-color="#ecdcb6"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="sky" x="0" y="0" width="400" height="320" fill="url(#scene-sky)"/>
+
+  <path class="ridge" data-depth="0" fill="#b7b6c9"
+        d="M0,110 C60,88 120,128 200,102 C280,80 340,112 400,94 L400,320 L0,320 Z"/>
+  <path class="ridge" data-depth="1" fill="#c9b98a"
+        d="M0,150 C70,122 140,164 210,140 C290,112 350,154 400,136 L400,320 L0,320 Z"/>
+  <path class="ridge" data-depth="2" fill="#d3a24c"
+        d="M0,196 C80,168 150,206 230,182 C300,158 350,196 400,178 L400,320 L0,320 Z"/>
+  <path class="ridge" data-depth="3" fill="#b9762c"
+        d="M0,246 C90,216 160,254 240,230 C310,210 360,244 400,228 L400,320 L0,320 Z"/>
+</svg>

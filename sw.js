@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v100";
+const CACHE_VERSION = "dash-v101";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const SHELL = [
   "./css/interaction.css",
   "./css/desk-images.css",
   "./css/ui-cleanup.css",
+  "./css/calendar.css",
   "./js/app.js",
   "./js/desk-images-bootstrap.js",
   "./js/desk-images-runtime.js",
@@ -56,6 +57,17 @@ const SHELL = [
   "./js/views/project.js",
   "./js/views/desk.js",
   "./js/views/milestone-editor.js",
+  "./js/views/calendar.js",
+  // The Calendar's setting mechanism. Dynamically imported the first time a
+  // date is set from the tray, so nothing fetches it on a cold boot — which is
+  // exactly why it has to be listed here by hand: the crawler in
+  // tests/release-safety.test.mjs can see a static import, and this is not one.
+  "./js/widgets/flipdate.js",
+  // The Calendar's two vendored assets. grain.svg is reached from
+  // css/calendar.css; window-scene.svg is fetched by js/views/calendar.js, so
+  // it too is only ever offline because it is named here.
+  "./assets/grain.svg",
+  "./assets/window-scene.svg",
   "./Delete_Scribble.svg",
   "./icon.svg",
   "./icon-180.png",
