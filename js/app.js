@@ -436,6 +436,7 @@ function updateCatalogBand(view, result) {
 // Text search isn't included: the search box itself already shows that.
 function activeFilterLabel() {
   const f = state.filter;
+  if (f.inbox) return "Unfiled";
   if (f.type) return store.typeDef(f.type)?.label || f.type;
   if (f.status) return store.statusDef(f.status)?.label || f.status;
   if (f.tag) return `#${f.tag}`;
@@ -654,11 +655,13 @@ function railCounts() {
   const byStatus = new Map();
   const byTag = new Map();
   let total = 0;
+  let inbox = 0;
 
   const bump = (map, key) => map.set(key, (map.get(key) || 0) + 1);
 
   for (const it of store.all()) {          // THE one pass
     total++;
+    if (it.inbox === true) inbox++;         // the Unfiled box's count
     bump(byType, it.type);
     bump(byStatus, it.status);
 
@@ -675,7 +678,7 @@ function railCounts() {
     }
   }
 
-  return { total, byType, byStatus, byTag };
+  return { total, inbox, byType, byStatus, byTag };
 }
 
 function renderSidebarFilters() {
@@ -683,7 +686,7 @@ function renderSidebarFilters() {
   if (!nav) return;
   nav.innerHTML = "";
 
-  const { total, byType, byStatus, byTag } = railCounts();
+  const { total, inbox, byType, byStatus, byTag } = railCounts();
 
   const mk = (label, active, onClick, count, markColor = null) => el("button", {
     class: "nav-btn",
@@ -712,8 +715,17 @@ function renderSidebarFilters() {
   ]);
 
   nav.appendChild(el("h2", { text: "All" }));
-  nav.appendChild(mk("Everything", !state.filter.type && !state.filter.status && !state.filter.tag,
+  nav.appendChild(mk("Everything", !state.filter.inbox && !state.filter.type && !state.filter.status && !state.filter.tag,
     () => applyFilter({ text: state.filter.text }), total));
+
+  // The Unfiled box, as a filter over the same archive. Home's panel is where
+  // you clear it; this is for looking through the whole pile, searching it, or
+  // sorting it a different way. It appears only when there is something in it,
+  // so a cleared box costs nothing in the rail.
+  if (inbox) {
+    nav.appendChild(mk("Unfiled", !!state.filter.inbox,
+      () => applyFilter({ text: state.filter.text, inbox: true }), inbox));
+  }
 
   // types — listed in registry order, so the rail follows the order you set
   nav.appendChild(el("h2", { text: "Types" }));

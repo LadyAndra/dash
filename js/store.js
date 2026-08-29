@@ -111,7 +111,13 @@ export { DESK_KEY_PREFIX, deskKey, projectIdFromDeskKey } from "./desk.js";
 // op applies it harmlessly and simply doesn't draw it. The value is a NAME
 // from the palette ("clay", "plum"…), never a hex code, so it re-themes with
 // everything else (see colorToken in js/theme.js).
-const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color"]);
+// `inbox` (August 2026, Phase B) is the ONE bit that says "this arrived from a
+// phone or iPad and hasn't been looked at yet". It is a plain scalar so it
+// rides the ordinary SET op with ordinary last-write-wins, and it is set only
+// when true — an item that never went through quick capture simply doesn't
+// have the key, which is why the whole existing archive stays out of the
+// Unfiled box with no migration and no cutoff date.
+const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color", "inbox"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
 
 // `due` and `remind` live INSIDE item.dates, not at the top level.
@@ -393,6 +399,9 @@ export class Store {
     skeleton.status = partial.status || this.registry.statuses[0]?.key || "active";
     skeleton.title = partial.title || "";
     skeleton.body = partial.body || "";
+    // Only written when it's true (see SCALAR_FIELDS above): an ordinary item
+    // stays byte-identical to one written before the Unfiled box existed.
+    if (partial.inbox) skeleton.inbox = true;
     skeleton.dates.created = iso;
     skeleton.dates.modified = iso;
     skeleton.dates.touched = iso;

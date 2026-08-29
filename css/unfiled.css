@@ -1,0 +1,93 @@
+/* ============================================================
+   unfiled.css — the Unfiled box on Home (Phase B, August 2026)
+   ------------------------------------------------------------
+   Kept in its own file, following css/projects.css and
+   css/phone-capture.css: one self-contained surface, so it can be
+   changed or removed without going near app.css's 4,800 lines.
+
+   Everything here is the ordinary item row plus one button beside
+   it. Values come from tokens.css; the row itself is styled by
+   app.css exactly as it is in the list, on purpose — an entry
+   should not look like a different kind of thing depending on
+   which panel it is sitting in.
+   ============================================================ */
+
+.unfiled-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* Row on the left, the verb on the right. Below a narrow panel the button
+   drops under the row rather than squeezing the title. */
+.unfiled-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.unfiled-entry:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.unfiled-entry > .item-row { min-width: 0; }
+
+.unfiled-file.btn {
+  align-self: center;
+  white-space: nowrap;
+  min-height: var(--control-min);
+  padding: var(--space-2) var(--space-4);
+  /* In the dark theme the mount and the panel are close enough in tone that a
+     mount-coloured button loses its edge. A hairline mixed out of the ink
+     already on it gives it one there and is invisible on the paper theme.
+     Same treatment the phone's File away button gets. */
+  border-color: color-mix(in srgb, var(--ink-on-mount) 30%, var(--mount));
+}
+
+@media (max-width: 720px) {
+  .unfiled-entry { grid-template-columns: minmax(0, 1fr); }
+  .unfiled-file.btn { justify-self: stretch; }
+}
+
+/* The undo strip. Quiet on purpose: it is a receipt for something that has
+   already happened, not a row competing with the ones still waiting. */
+.unfiled-done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.unfiled-done-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+
+.unfiled-undo.btn {
+  flex: none;
+  min-height: var(--control-min);
+  padding: var(--space-1) var(--space-3);
+}
+
+.unfiled-more.btn {
+  margin-top: var(--space-3);
+  width: 100%;
+  min-height: var(--control-min);
+}
+
+.unfiled-empty {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}

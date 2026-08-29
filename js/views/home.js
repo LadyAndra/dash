@@ -46,7 +46,7 @@
 // viewLocal preserves the capture box across re-renders so a background sync
 // never eats what you're typing.
 
-import { el, catalogNo, typeChip, statusChip, renderPanel } from "./shared.js";
+import { el, catalogNo, typeChip, statusChip, renderPanel, itemRow } from "./shared.js";
 import { toast } from "../ui/toast.js";
 import { todayGroups } from "../entries.js";
 import { formatDay, daysUntil } from "../milestones.js";
@@ -94,6 +94,10 @@ function daysSince(iso) {
 //           same shape views already use. ctx is the view ctx plus `groups`,
 //           the one archive scan this render already did — so a panel never
 //           re-scans the store for something that's already been computed.
+// How many unfiled entries the panel shows before it offers "Show all". Eight
+// is about a screenful; the point of the box is to be cleared, not scrolled.
+const UNFILED_PREVIEW = 8;
+
 const PANELS = [
   {
     id: "today",
@@ -102,6 +106,21 @@ const PANELS = [
     right: (ctx) => String(ctx.groups.total).padStart(2, "0"),
     render(container, ctx) {
       container.appendChild(todayPanel(ctx.store, ctx, ctx.groups));
+    },
+  },
+  // Unfiled comes AFTER the dated picture on purpose. Home opens to answer
+  // "what's late, what's today" — that question keeps the top of the column.
+  // The right column is a single track at ordinary window widths, so a full
+  // Unfiled box placed first would push Due & coming up a whole screen down.
+  {
+    id: "unfiled",
+    title: "Unfiled",
+    span: 1,
+    // The count comes off the list Home already built this render (see
+    // homeView.render). Nothing here re-scans the archive.
+    right: (ctx) => String(ctx.unfiled.length).padStart(2, "0"),
+    render(container, ctx) {
+      unfiledPanel(container, ctx);
     },
   },
   {
@@ -139,6 +158,14 @@ export const homeView = {
     // per panel.
     const groups = todayGroups(store);
 
+    // The Unfiled box, computed ONCE here for the same reason todayGroups is:
+    // the panel's header count and its rows must be the same list, and neither
+    // is allowed to walk the archive on its own. Newest first — the thing you
+    // captured five minutes ago is the thing you are most able to judge.
+    const unfiled = store.all()
+      .filter((it) => it.inbox === true)
+      .sort((a, b) => (b.dates?.created || "").localeCompare(a.dates?.created || ""));
+
     // The counts that used to run along under the masthead as a plain text
     // line now live in the rail as blocked readouts — same numbers, read as
     // instruments instead of as a sentence.
@@ -150,7 +177,7 @@ export const homeView = {
     ]));
 
     const grid = el("div", { class: "dash-grid" });
-    const panelCtx = Object.assign({}, ctx, { groups });
+    const panelCtx = Object.assign({}, ctx, { groups, unfiled });
 
     // ---------------- left rail ----------------
     // Capture is deliberately first and deliberately NOT a panel: a thought you
@@ -298,7 +325,10 @@ function captureWell(ctx) {
     const nl = text.indexOf("\n");
     const title = (nl === -1 ? text : text.slice(0, nl)).trim();
     const body = nl === -1 ? "" : text.slice(nl + 1).trim();
-    store.createItem({ title, body });          // defaults: Quick idea · Active
+    // defaults: Quick idea · Active. On a phone or iPad it also goes into the
+    // Unfiled box; captured at the desk, it doesn't, because you are already
+    // sitting where filing happens.
+    store.createItem({ title, body, inbox: capturesToInbox() });
     ctx.viewLocal.captureText = "";
     ctx.viewLocal.captureFocused = true;         // keep capturing after re-render
     // store change triggers a re-render; the box comes back empty and focused
@@ -308,7 +338,10 @@ function captureWell(ctx) {
   const recordBtn = el("button", { class: "btn", text: "● Record",
     onclick: () => toast("Voice capture arrives in a later phase — for now, jot it or sketch it.", "info") });
   const sketchBtn = el("button", { class: "btn", text: "✎ Sketch", onclick: () => {
-    const id = store.createItem({ type: store.typeDef("sketch") ? "sketch" : undefined });
+    const id = store.createItem({
+      type: store.typeDef("sketch") ? "sketch" : undefined,
+      inbox: capturesToInbox(),
+    });
     ctx.onOpen(id);
   }});
   const editorBtn = el("button", { class: "btn", text: "Full editor", onclick: () => ctx.onNew() });
@@ -319,6 +352,123 @@ function captureWell(ctx) {
       fileBtn, recordBtn, sketchBtn, editorBtn,
       el("span", { class: "lbl lbl-faint capture-note", text: "Files as Quick idea · Active" }),
     ]),
+  ]);
+}
+
+// ===================================================================
+//  THE UNFILED BOX  (Phase B, August 2026)
+// ===================================================================
+// Where everything captured away from the desk waits. Phone capture puts
+// entries here (js/views/phone-capture.js); so does this page's own capture
+// well and Sketch button WHEN YOU ARE ON A TOUCH DEVICE — the iPad. At the
+// Mac they don't, because you are already sitting where filing happens.
+//
+// The only thing that takes an entry out is the File away button on its row.
+// It does not ask for a project, a tag or a type: the question the box asks is
+// "is this good as it is, or does it need more from me?", and answering it is
+// the whole interaction. Clicking the row opens the entry as usual if the
+// answer is "it needs more" — it stays in the box until you say otherwise.
+//
+// `inbox` is one scalar on the item (see SCALAR_FIELDS in js/store.js) and is
+// only ever written when true, so nothing in the existing archive appears in
+// here and no migration or cutoff date was needed.
+
+// A phone or an iPad. Deliberately NOT the phone gate: this is about which
+// devices capture away from the desk, and the iPad is one of them. A
+// touchscreen laptop reports its trackpad as the primary pointer and so reads
+// as "fine" here, which is the answer we want.
+function capturesToInbox() {
+  try { return window.matchMedia("(pointer: coarse)").matches; }
+  catch { return false; }
+}
+
+function unfiledPanel(container, ctx) {
+  const store = ctx.store;
+  const local = ctx.viewLocal;
+  // Ids filed during this visit to Home, newest first. Per-visit and in memory
+  // only: it is an undo strip for the tap you just made, not a history.
+  if (!Array.isArray(local.justFiled)) local.justFiled = [];
+
+  const waiting = ctx.unfiled;
+  const showAll = !!local.unfiledShowAll;
+  const shown = showAll ? waiting : waiting.slice(0, UNFILED_PREVIEW);
+
+  // Anything filed a moment ago that really did leave the box, so the row can
+  // offer its way back rather than simply vanishing under your finger.
+  const undoable = local.justFiled
+    .map((id) => store.get(id))
+    .filter((it) => it && !it._deleted && it.inbox !== true);
+
+  if (!waiting.length && !undoable.length) {
+    container.appendChild(el("p", {
+      class: "unfiled-empty",
+      text: "Nothing waiting. Whatever you capture on your phone or iPad turns up here.",
+    }));
+    return;
+  }
+
+  const list = el("div", { class: "unfiled-list" });
+  for (const it of shown) list.appendChild(unfiledEntry(store, it, ctx, local));
+  for (const it of undoable) list.appendChild(unfiledUndo(store, it, local, ctx));
+  container.appendChild(list);
+
+  if (!showAll && waiting.length > shown.length) {
+    container.appendChild(el("button", {
+      class: "btn unfiled-more",
+      text: `Show all ${waiting.length}`,
+      onclick: () => { local.unfiledShowAll = true; ctx.rerender(); },
+    }));
+  } else if (showAll && waiting.length > UNFILED_PREVIEW) {
+    container.appendChild(el("button", {
+      class: "btn unfiled-more",
+      text: "Show fewer",
+      onclick: () => { local.unfiledShowAll = false; ctx.rerender(); },
+    }));
+  }
+}
+
+// The same name the row itself shows. A sketch carries no title, and itemRow
+// falls back to the word "Sketch" for it — so "Filed - Untitled" would have
+// been the one place in Dash calling a drawing untitled.
+function unfiledName(item) {
+  if (item.title) return item.title;
+  return (item.attachments || []).some((a) => a.role === "sketch") ? "Sketch" : "Untitled";
+}
+
+function unfiledEntry(store, item, ctx, local) {
+  // The row itself is the ordinary itemRow every other surface draws, so an
+  // entry looks the same here as it does in the list. File away sits BESIDE
+  // it rather than inside it, so the button and the open-the-entry click can
+  // never be mistaken for each other.
+  const fileBtn = el("button", {
+    class: "btn btn-primary unfiled-file",
+    text: "File away",
+    "aria-label": `File away ${unfiledName(item)}`,
+    onclick: () => {
+      store.setField(item.id, "inbox", false);
+      local.justFiled = [item.id, ...local.justFiled.filter((id) => id !== item.id)].slice(0, 6);
+      // setField changes the store, which re-renders Home on the next frame.
+    },
+  });
+
+  return el("div", { class: "unfiled-entry" }, [
+    itemRow(store, item, ctx.onOpen),
+    fileBtn,
+  ]);
+}
+
+function unfiledUndo(store, item, local, ctx) {
+  return el("div", { class: "unfiled-done" }, [
+    el("span", { class: "unfiled-done-label", text: `Filed · ${unfiledName(item)}` }),
+    el("button", {
+      class: "btn unfiled-undo",
+      text: "Undo",
+      "aria-label": `Put ${unfiledName(item)} back in the Unfiled box`,
+      onclick: () => {
+        local.justFiled = local.justFiled.filter((id) => id !== item.id);
+        store.setField(item.id, "inbox", true);
+      },
+    }),
   ]);
 }
 

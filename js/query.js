@@ -22,6 +22,9 @@ export function query(store, opts = {}) {
   if (filter.status) items = items.filter(it => it.status === filter.status);
   if (filter.tag) items = items.filter(it => it.tags.includes(filter.tag));
   if (filter.untagged) items = items.filter(it => it.tags.length === 0);
+  // The Unfiled box's filter. `inbox` is only ever true or absent, so this is
+  // "captured on a phone or iPad and not yet filed away".
+  if (filter.inbox) items = items.filter(it => it.inbox === true);
 
   // ---- sort ----
   items = sortItems(items, sortBy);

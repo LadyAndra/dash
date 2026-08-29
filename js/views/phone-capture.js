@@ -163,7 +163,9 @@ function openTextCapture(ctx) {
       const nl = text.indexOf("\n");
       const title = (nl === -1 ? text : text.slice(0, nl)).trim();
       const body = nl === -1 ? "" : text.slice(nl + 1).trim();
-      store.createItem({ title, body });
+      // inbox: true is what puts it in the Unfiled box on the Mac. Nothing
+      // else about the item changes — no project, no tags, no pickers.
+      store.createItem({ title, body, inbox: true });
       return true;
     },
   });
@@ -193,7 +195,7 @@ function openSketchCapture(ctx) {
       const rec = await ingestSketchPNG(await blob.arrayBuffer());
       // Same shape the Home Sketch button creates, so a phone sketch and a
       // desktop sketch are the same kind of thing in the archive.
-      const id = store.createItem({ type: store.typeDef("sketch") ? "sketch" : undefined });
+      const id = store.createItem({ type: store.typeDef("sketch") ? "sketch" : undefined, inbox: true });
       store.addToSet(id, "attachments", rec);
       ctx.sync?.queueBlob(rec.hash, rec.ext);
       return true;
@@ -264,7 +266,7 @@ function openImageCapture(ctx, file) {
       // A blank title reads as "Untitled" everywhere in Dash, which makes a
       // photo indistinguishable from an empty note in a list. "Photo" is the
       // smallest honest label; nothing is guessed from the file name.
-      const id = store.createItem({ title: "Photo" });
+      const id = store.createItem({ title: "Photo", inbox: true });
       store.addToSet(id, "attachments", rec);
       ctx.sync?.queueBlob(rec.hash, rec.ext);
       return true;
