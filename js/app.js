@@ -25,6 +25,9 @@ import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { projectView } from "./views/project.js";
 import { calendarView } from "./views/calendar.js";
+// The phone's ONLY screen. Deliberately not in VIEWS: it is not a destination
+// you can switch to, it is what a phone gets instead of the tab strip.
+import { phoneCaptureView } from "./views/phone-capture.js";
 
 // ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
 // Andra doesn't use either one, so they've come out of the view switcher.
@@ -279,6 +282,15 @@ function buildChrome() {
     viewTabs.appendChild(tab);
   }
 
+  // On a phone there is exactly one screen, so a strip that switches between
+  // screens has nothing to say. The element STAYS in the DOM: js/mobile-chrome.js
+  // anchors its action row to it, and app.js's render() still writes aria-current
+  // onto the tabs. It is only invisible.
+  if (isPhoneUI()) {
+    viewTabs.style.display = "none";
+    document.documentElement.classList.add("phone-capture-on");
+  }
+
   const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
 
   // The Select/Organise toggle. A plain visible button on purpose — not a
@@ -448,7 +460,15 @@ function applyCatalogChrome(view) {
 //  RENDER
 // ===================================================
 function activeView() {
+  // PHONE CAPTURE (August 2026). A phone gets one screen — Text / Sketch /
+  // Image — and nothing else. Home, List and Board are not hidden or deleted;
+  // they are simply not what a phone opens. Everything below this line is
+  // still exactly what desktop and iPad do.
+  if (isPhoneUI()) return phoneCaptureView;
+
   const requested = VIEWS.find(v => v.name === state.viewName) || listView;
+  // Kept as-is. Unreachable while phone capture is on (the gate above returns
+  // first), and it is the rule again the moment that gate is removed.
   if (PHONE_HIDDEN_VIEWS.has(requested.name) && isPhoneUI()) {
     state.viewName = "home";
     return homeView;
@@ -833,7 +853,11 @@ function readCurrentView() {
   // what's coming. That's the daily brief made audible (proposal §10), and it
   // serves the eye-strain constraint directly — you can hear where you stand
   // without reading anything.
-  if (view.name === "home") { readAloud(speakToday(store)); return; }
+  //
+  // The phone capture screen has no list of its own either, and reciting the
+  // whole archive is not what "read this view" could usefully mean there — so
+  // it gets the same daily brief.
+  if (view.name === "home" || view.name === "phone-capture") { readAloud(speakToday(store)); return; }
 
   const groupBy = view.forceGroupBy || state.groupBy;
   const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });

@@ -1,0 +1,240 @@
+/* ============================================================
+   phone-capture.css — the phone's only screen (August 2026)
+   ------------------------------------------------------------
+   Kept in its own file for the same reason projects.css and
+   ui-cleanup.css are: this is one self-contained surface, and
+   nothing outside a phone should ever be able to feel it. Every
+   rule here is scoped under .phone-capture-on, a class js/app.js
+   puts on <html> ONLY when the phone gate says so, so there is
+   no path by which any of this reaches desktop or iPad.
+
+   Values come from tokens.css. Where a size needed to be bigger
+   than an existing token it is a multiple of --tap-min rather
+   than a number, so the whole screen still scales with the
+   accessibility floor instead of drifting away from it.
+   ============================================================ */
+
+/* The view host's desktop inset is far too wide for a phone, and this screen
+   wants the width for its buttons. */
+.phone-capture-on #view-host {
+  padding: var(--space-5) var(--space-4);
+}
+
+/* mobile-chrome.js keeps the ••• menu (Read / Settings / Sync / Merge) and the
+   sync dot. "＋ New" is hidden here on purpose: it opens the full item editor,
+   with all the filing controls this phase exists to get out of the way. The
+   three buttons below ARE the phone's way to make something new. Delete this
+   one rule to bring it back. */
+.phone-capture-on .phone-new-btn { display: none; }
+.phone-capture-on .phone-action-row { grid-template-columns: 1fr auto; }
+
+/* ---------- the three buttons ---------- */
+.pcap {
+  display: grid;
+  gap: var(--space-5);
+  max-width: var(--panel-max);
+  margin: 0 auto;
+}
+
+.pcap-buttons {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.pcap-btn {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+  text-align: left;
+  width: 100%;
+  /* Twice the touch floor. The guardrail is 44px; this screen has three
+     targets and all the room in the world, so it spends it. */
+  min-height: calc(var(--tap-min) * 2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.pcap-btn:active {
+  background: var(--mount);
+  border-color: var(--mount);
+  color: var(--ink-on-mount);
+}
+
+.pcap-btn-label {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: 1.1;
+  color: inherit;
+}
+
+.pcap-btn-hint {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.pcap-btn:active .pcap-btn-hint { color: var(--ink-on-mount-muted); }
+
+.pcap-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+/* ---------- the full-screen capture surface ---------- */
+.pcap-surface {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  /* index.html asks for viewport-fit=cover, so the notch and the home
+     indicator have to be accounted for by the thing that covers the screen. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.pcap-surface-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.pcap-back {
+  width: var(--tap-min);
+  min-width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pcap-back:active {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.pcap-surface-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.pcap-surface-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+}
+
+.pcap-surface-foot {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.pcap-file-btn.btn {
+  width: 100%;
+  /* Comfortably past the 44px floor, and the one thing on the strip. */
+  min-height: calc(var(--tap-min) * 1.25);
+  font-size: var(--text-sm);
+  letter-spacing: 0.16em;
+  /* In the dark theme the mount and the page ground are almost the same
+     material, so a mount-coloured button loses its edge and stops reading as a
+     button. A hairline mixed out of the ink that is already on it gives it one
+     on the dark theme and is invisible on the paper theme. */
+  border-color: color-mix(in srgb, var(--ink-on-mount) 30%, var(--mount));
+}
+
+.pcap-file-btn.btn[disabled] { opacity: 0.6; }
+
+/* ---------- text ---------- */
+.pcap-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  /* Bigger than Dash's base text on purpose: this is the one thing on the
+     screen and it is usually being read back while dictating. */
+  font-size: var(--text-lg);
+  line-height: var(--leading);
+}
+
+.pcap-textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- sketch ---------- */
+/* The pad sizes its paper to min(58vh, 460px) inside the item editor, where it
+   shares a scrolling page with the rest of the form. Here it is the page. */
+.pcap-surface-sketch .sketch-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.pcap-surface-sketch .sketch-paper {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* ---------- image ---------- */
+.pcap-preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.pcap-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* The picker's own input never shows; it only has to be in the document for
+   the tap to reach the phone's photo sheet. */
+.pcap-file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  left: 0;
+  top: 0;
+}

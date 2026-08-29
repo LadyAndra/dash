@@ -42,7 +42,20 @@ function installPhoneChrome() {
 
   // app.js builds chrome synchronously, but the module can finish downloading
   // first on a very cold cache. If anything is missing, try again next frame.
-  if (!topbar || !tabs || !selectBtn || !syncBtn || !syncPill || !bandTop || !newBtn || !readBtn || !settingsBtn) {
+  //
+  // WHAT IS AND ISN'T REQUIRED (August 2026, phone capture)
+  // ------------------------------------------------------
+  // Select and the catalog band belong to List and Board — the collection
+  // views. A phone no longer opens either one, so waiting for them here meant
+  // waiting forever: this function would sit in its retry loop, silently, and
+  // the ••• menu (Settings, Sync, Read, Merge) would never appear at all.
+  //
+  // So the readiness check now asks only for what a phone still has: the
+  // topbar, the tab strip element it anchors to (present but hidden), the sync
+  // pill and button, Read, Settings and + New. selectBtn and bandTop are
+  // OPTIONAL — if they happen to be there they are still moved, and if they
+  // are not, everything else installs normally.
+  if (!topbar || !tabs || !syncBtn || !syncPill || !newBtn || !readBtn || !settingsBtn) {
     requestAnimationFrame(installPhoneChrome);
     return;
   }
@@ -108,8 +121,11 @@ function installPhoneChrome() {
 
   // Select belongs to the collection currently on screen, not the app-wide
   // verb strip. app.js still shows/hides and relabels this same button.
-  selectBtn.classList.add("band-select-btn");
-  bandTop.append(selectBtn);
+  // Both halves are optional now (see the readiness note above).
+  if (selectBtn && bandTop) {
+    selectBtn.classList.add("band-select-btn");
+    bandTop.append(selectBtn);
+  }
 
   // When sync is healthy, the phone needs only the green dot. When something
   // needs attention, app.js changes the status class/label and the text comes

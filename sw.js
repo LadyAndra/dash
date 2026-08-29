@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v102";
+const CACHE_VERSION = "dash-v103";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,6 +13,9 @@ const SHELL = [
   "./css/interaction.css",
   "./css/desk-images.css",
   "./css/ui-cleanup.css",
+  // The phone capture screen. Both halves must be here or the phone's only
+  // screen is the one thing that doesn't work offline.
+  "./css/phone-capture.css",
   "./css/calendar.css",
   "./css/dateinput.css",
   "./js/app.js",
@@ -46,6 +49,7 @@ const SHELL = [
   "./js/ui/readaloud.js",
   "./js/views/shared.js",
   "./js/views/home.js",
+  "./js/views/phone-capture.js",
   "./js/views/list.js",
   "./js/views/board.js",
   // Kanban and Columns are UNREGISTERED (August 2026) — app.js no longer

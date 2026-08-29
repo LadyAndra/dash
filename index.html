@@ -24,6 +24,11 @@
   <link rel="stylesheet" href="css/desk-images.css" />
   <!-- Small additive pass: quiet desktop utilities + lighter Projects register. -->
   <link rel="stylesheet" href="css/ui-cleanup.css" />
+  <!-- The phone's only screen (Text / Sketch / Image). Every rule inside is
+       scoped to the .phone-capture-on class app.js sets on a phone, so this
+       file is inert on desktop and iPad. Loaded last so it can quiet the one
+       phone-chrome control it hides. -->
+  <link rel="stylesheet" href="css/phone-capture.css" />
 </head>
 <body>
   <div id="app"><!-- app.js builds the UI here --></div>
