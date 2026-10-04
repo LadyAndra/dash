@@ -41,6 +41,7 @@ export const boardView = {
         {
           selection: ctx.selection,
           statusControl: true,
+          trash: true,
           hideType: typeIsTheHeading,
 
           // Filing is not state. A card's type mark drops its registry

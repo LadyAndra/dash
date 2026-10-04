@@ -59,6 +59,7 @@ export const listView = {
           selection: ctx.selection,
           statusControl: true,
           quietType: true,
+          trash: true,
         });
 
         // PROJECT IDENTITY — List experiment, round two.

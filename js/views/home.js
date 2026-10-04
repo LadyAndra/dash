@@ -47,6 +47,7 @@
 // never eats what you're typing.
 
 import { el, catalogNo, typeChip, statusChip, renderPanel, itemRow } from "./shared.js";
+import { trashButton } from "../trash-actions.js";
 import { toast } from "../ui/toast.js";
 import { todayGroups } from "../entries.js";
 import { formatDay, daysUntil } from "../milestones.js";
@@ -453,7 +454,7 @@ function unfiledEntry(store, item, ctx, local) {
   });
 
   return el("div", { class: "unfiled-entry" }, [
-    itemRow(store, item, ctx.onOpen),
+    itemRow(store, item, ctx.onOpen, { trash: true }),
     fileBtn,
   ]);
 }
@@ -628,6 +629,15 @@ function entryRow(store, ctx, e, today) {
         else store.setField(e.itemId, "remind", null);
       },
     }));
+  }
+
+  // Move to trash (Round 1.1): an entry's or a date mark's own row only. Not on
+  // a milestone row (a milestone is not an item; its project's editor has the
+  // recoverable "Removed milestones" drawer), and not on a reminder row, whose
+  // one job is "Dismiss" — two buttons that both make the row go away would be
+  // a guess waiting to happen.
+  if (item && e.source !== "milestone" && !isRemind) {
+    actions.appendChild(trashButton(store, item));
   }
 
   const open = () => {

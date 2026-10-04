@@ -21,9 +21,11 @@
 //   tags     -> store.addToSet(id, "tags", tag)
 //   status   -> store.setField(id, "status", key)
 //   project  -> store.assignToProject(id, projectId)   (multi-project safe)
+//   trash    -> store.trash(id), via js/trash-actions.js (Round 1.1)
 
 import { el } from "./views/shared.js";
 import { toast } from "./ui/toast.js";
+import { moveToTrash } from "./trash-actions.js";
 
 // ---------------------------------------------------------------------------
 // The controller. app.js owns one of these for the whole session.
@@ -81,6 +83,21 @@ export function createSelection(store, onChange) {
         // is idempotent, so re-adding something is harmless.
         (id) => { store.assignToProject(id, projectId); },
         (n, noun) => `Added ${n} ${noun} to "${label}".`);
+    },
+    // Move every picked entry to the trash: one ordinary op each, no confirm
+    // (it's reversible), and a message whose Undo restores exactly this batch.
+    // The trashed ones leave the selection, because they have left the view —
+    // a count that includes things you can no longer see would be a lie.
+    applyTrash() {
+      const targets = api.ids();
+      if (targets.length === 0) {
+        toast("Nothing is selected yet — tap some entries first.", "info", 5000);
+        return [];
+      }
+      const done = moveToTrash(store, targets);
+      for (const id of done) ids.delete(id);
+      notify();
+      return done;
     },
   };
 
@@ -154,6 +171,11 @@ function renderActionBar(sel, store, container) {
     act("＋ Tags", () => openTagSheet(sel, store)),
     act("Status", () => openStatusSheet(sel, store)),
     act("Project", () => openProjectSheet(sel, store)),
+    el("button", {
+      class: "btn btn-danger select-trash", text: "Move to trash",
+      onclick: () => sel.applyTrash(),
+      disabled: n === 0 ? "true" : null,
+    }),
     el("div", { class: "spacer" }),
     el("button", { class: "btn btn-primary", text: "Done", onclick: () => sel.exit() }),
   ]);

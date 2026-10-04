@@ -254,6 +254,11 @@
 
   --tap-min: 44px;
   --control-min: var(--tap-min);
+  /* The per-item trash button (Round 1.1): the drawn mark inside the
+     44px target, and how quiet it sits until the row is hovered or the
+     button itself is focused. Never below the tap floor. */
+  --trash-mark-size: 22px;
+  --trash-mark-rest: 0.7;   /* 3:1+ against the ground in both themes */
   /* Focus is interface state, not an alert. Keep ember reserved for
      overdue/error/sync meaning and draw keyboard focus in neutral Dash ink. */
   --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);

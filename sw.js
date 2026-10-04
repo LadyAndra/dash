@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v105";
+const CACHE_VERSION = "dash-v106";
 const SHELL = [
   "./",
   "./index.html",
@@ -71,6 +71,9 @@ const SHELL = [
   "./js/views/milestone-editor.js",
   "./js/views/calendar.js",
   "./js/views/trash.js",
+  // Round 1.1: the one shared "move to trash, with Undo" helper behind every
+  // trash button, the desk card's right-click and Select mode's bulk action.
+  "./js/trash-actions.js",
   "./js/views/datemark-editor.js",
   "./js/views/desktop-only.js",
   // The flip-numeral date input. Every date field in Dash goes through it —

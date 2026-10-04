@@ -101,3 +101,98 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
+/* ============================================================
+   Round 1.1 — trash everywhere
+   ------------------------------------------------------------
+   The small per-item button on List rows, Board cards, Search,
+   the desk's drawers and cards, and Home. Always present, always
+   a full 44px target, but drawn quietly: the authored delete
+   scribble (the same mark as the desk's right-click delete), in
+   faint ink at rest, full ink on hover or keyboard focus.
+   ============================================================ */
+
+.item-trash {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  min-width: var(--tap-min);
+  height: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.item-trash::before {
+  content: "";
+  display: block;
+  width: var(--trash-mark-size);
+  height: var(--trash-mark-size);
+  background: currentColor;
+  -webkit-mask: url("../Delete_Scribble.svg") center / contain no-repeat;
+  mask: url("../Delete_Scribble.svg") center / contain no-repeat;
+  opacity: var(--trash-mark-rest);
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.item-row:hover .item-trash::before,
+.card:hover .item-trash::before,
+.dcard:hover .item-trash::before,
+.today-row:hover .item-trash::before,
+.item-trash:hover::before,
+.item-trash:focus-visible::before {
+  opacity: 1;
+}
+
+.item-trash:hover,
+.item-trash:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-sunken);
+}
+
+.item-trash:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* List / Search / drawer rows: a third column at the row's end. */
+.item-row.has-trash {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.item-row.has-trash > .item-trash {
+  align-self: start;
+}
+
+/* Board cards: the top-right corner, clear of the header line. */
+.card.has-trash .card-trash {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  z-index: 1;
+}
+.card.has-trash .card-head {
+  padding-right: var(--tap-min);
+}
+
+/* Desk cards: at the end of the foot line. The full 44px target is kept,
+   but pulled into the line's own height with negative margins so a card
+   is no taller than it was before the button existed. */
+.dcard-foot .dcard-trash {
+  margin-left: auto;
+  margin-block: calc((var(--tap-min) - var(--trash-mark-size)) / -2);
+  margin-right: calc((var(--tap-min) - var(--trash-mark-size)) / -2);
+}
+
+/* The Undo on the "Moved to trash" message: a real target, not a link. */
+.toast .toast-undo {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  color: var(--text-primary);
+  font-weight: 600;
+}

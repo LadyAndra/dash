@@ -4,6 +4,30 @@
 
 **Last updated:** August 1, 2026 — later the same day. Phase M1 milestones + the stage chip + merge notes; Home became the Today panel and the corner cluster was shelved; then a **visual-system pass**: Home and Project rebuilt as panel layouts, colour allowed to be a ground, per-project and custom accent colours, and the spatial parameters (control sizing, column widths) reworked; then a **navigation-streamlining pass**: Kanban and Columns unregistered and a quick status control added to rows and cards; then the **catalog band**: search / group / sort moved out of the toolbar onto the page, the tag index became a permanent rail on List and Board, and Sort got a control for the first time; then a **code-health pass** — a structural review of the whole codebase before starting M3, and thirteen cleanups from it: the app stopped re-reading the archive ~30 times per redraw, `js/entries.js` gained the query the Calendar's Unscheduled tray needs, a real bug in the item editor was fixed, two colours that were frozen in the code now come from the theme and from your data, the last literal colours left `app.css`, and eleven dead tokens plus a pile of dead code came out. Live at `dash-v29`.
 
+**Updated October 4, 2026 — Round 1.1: trash everywhere.** Built on Round 1 (`dash-v105`), against GitHub main `8abe070`. Buttons and wiring only: **no new op kind, no `formatVersion` bump (still 3), no migration, no store change.** Live at `dash-v106`.
+
+- **Rule now in force: every delete of an entry or project goes to the Trash. The only permanent delete is the Trash drawer's Empty trash.** `store.deleteItem()` has exactly one caller, `emptyTrash()`, and `emptyTrash()` is only called from `js/views/trash.js`. A test scans all of `js/` for any other `deleteItem(` call or delete op and fails the build if it finds one.
+- **One helper, `js/trash-actions.js`:** `moveToTrash(store, ids)` trashes each live id with the ordinary `store.trash()` op and shows a message with **Undo**; `undoTrash(store, ids)` restores exactly that batch (only ids still in the trash, so it is harmless after Empty trash); `trashButton(store, item)` builds the per-item button. No confirm anywhere on the way in, because it is reversible.
+- **B, per-item button.** `itemRow` / `itemCard` in `shared.js` take an opt-in `trash: true`. Opted in: List rows (search included), Board cards, the desk's Filed drawer rows and the desk-less project page's rows, Home's Unfiled box, and Home's due panel (entries and date marks only — not milestone rows, which aren't items and have their own Removed milestones drawer, and not reminder rows, which keep Dismiss). Desk cards draw it at the end of the foot line. Never drawn in Select mode, while picking cards for a clip, or on a card inside a **closed** clip (the stack is one object; open it to trash a single card). Always a 44px button labelled "Move to trash: <title>", stops its events so it never opens or drags the card, and draws Andra's delete scribble quietly (`--trash-mark-size`, `--trash-mark-rest` in `tokens.css`; styles in `css/trash.css`). The retired Kanban and Columns views were not touched.
+- **C, desk right-click.** Right-clicking a desk card (loose, or inside an open clip) opens the command slip with **Move to trash**. The existing slip's "Delete" turned out to belong to **post-its**, not cards; it is unchanged this round, pending Andra's answer (see the list below).
+- **D, bulk.** Select mode's bar has **Move to trash** (disabled with nothing picked). One op per item; the trashed ones leave the selection; the message's Undo restores that batch only.
+- **A project trashed from a button** behaves exactly as from the editor: members keep their `in project` link and simply show no project until it is restored (tested).
+
+**Every place something can be deleted, and where it goes now (Round 1.1 audit):**
+
+| What | How | Where it goes |
+|---|---|---|
+| Entry, project, date mark | Editor's Move to trash, row/card trash button, desk card right-click, Select mode bulk, date-mark form | Trash (restorable) |
+| Anything in the Trash | Empty trash (asks first) | Gone for good — the only permanent delete |
+| Milestone | Milestone editor's remove | Removed milestones drawer (restorable) |
+| Post-it | Right-click scribble on the desk | Gone from the desk, no way back in the app (kept as a record underneath) — **open question** |
+| Desk image | Right-click scribble on the image | Gone, and its image file is erased if nothing else uses it — **open question** |
+| Clip | Unclip | The grouping ends; every card stays on the desk |
+| Blank post-it | Escape or clicking away while empty | Discarded (nothing was written in it) |
+| Tag, project chip, link, attachment on an entry | The ✕ on the chip in the editor | Removed from that entry (the tag, project, linked entry or file itself is untouched) |
+| A sketch's drawing | Clear, inside the sketch pad (asks first) | Erased |
+| Card off the desk | Return to tray, or drag to the Unplaced drawer | Unplaced drawer, keeps its spot |
+
 **Updated October 4, 2026 — Round 1: desktop only, Trash, hand-sorted projects, Mark a date.** Built from the Round 1 handoff plus Fable's architecture decisions, against GitHub main `9ff7e02`. **No new op kind, no `formatVersion` bump (still 3), no migration.** Live at `dash-v105`.
 
 - **Dash is desktop only for now.** A phone (coarse pointer, short side ≤600px) gets one plain screen, "Dash is desktop only. Open it on your Mac." (`js/views/desktop-only.js`, `css/desktop-only.css`), with the topbar hidden under the `.desktop-only-on` class. The phone capture screen is **unregistered, not deleted**: `js/views/phone-capture.js` is still on disk and in `SHELL`; its import in `app.js` is commented out. iPad already ran the desktop UI and is unchanged. Sync, the store and the logs were not touched — phones and iPad return next year as connected companions, so the data model stays device-agnostic.

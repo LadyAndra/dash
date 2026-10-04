@@ -42,6 +42,7 @@ import { renderMilestoneEditor } from "./milestone-editor.js";
 import { PROJECT_LINK } from "../store.js";
 import { stageOf, milestoneProgress, formatDay } from "../milestones.js";
 import { toast } from "../ui/toast.js";
+import { trashButton, moveToTrash } from "../trash-actions.js";
 import { CLIP_BANNER_SVG, CLIP_MARK_SVG } from "../icons.js";
 import * as D from "../desk.js";
 
@@ -532,7 +533,7 @@ function filedShelf(store, ctx, data) {
     return box;
   }
   for (const it of data.members) {
-    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
+    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, trash: true }));
   }
   return box;
 }
@@ -958,9 +959,17 @@ function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
     children.push(full);
   }
 
+  // Move to trash (Round 1.1). Not while picking cards for a clip (a tap
+  // there means "pick this", like Select mode), and not on a card inside a
+  // CLOSED clip: closed, the stack is one object, and a bin on its top sheet
+  // would read as "throw the whole stack away". Open the clip and every card
+  // gets its own. The desk's pointerdown already ignores real buttons, so the
+  // press can never start a drag.
+  const canTrash = !state.clipping && (!clipped || open);
   children.push(el("div", { class: "dcard-foot" }, [
     overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : statusChip(store, it),
     el("span", { class: "num", text: shortDate(it) }),
+    canTrash ? trashButton(store, it, "dcard-trash") : null,
   ]));
   node.replaceChildren(...children);
   return node;
@@ -1657,13 +1666,35 @@ function wireDesk(runtime, state, dom) {
     runtime.ctx.rerender();
   }
 
-  // ---- right-click: unclip, or throw a post-it away (§5.4) ----
+  // ---- right-click: unclip, move a card to trash, or throw a post-it away (§5.4) ----
   // Desktop only, and honestly so: the desk itself is behind a `pointer: fine`
   // gate, so there is no device that can reach a clip and cannot right-click.
   deskEl.addEventListener("contextmenu", (e) => {
     const mark = e.target.closest(".dclip-mark");
     const note = e.target.closest(".dnote");
-    if (!mark && !note) return;
+    const card = !mark && !note ? e.target.closest(".dcard") : null;
+    if (!mark && !note && !card) return;
+    // ---- a CARD: Move to trash (Round 1.1) ----
+    // The same single op the editor, the card's own button and Select mode
+    // use, with the same Undo. Skipped (the browser's own menu shows, as it
+    // always did) while picking cards for a clip, and on a card inside a
+    // CLOSED clip, where the stack is one object — the mark is its handle.
+    if (card) {
+      if (state.clipping) return;
+      const cid = card.dataset.clip;
+      if (cid && state.clipOpen !== cid) return;
+      const id = card.dataset.id;
+      if (!runtime.store.get(id)) return;
+      e.preventDefault();
+      deskMenu(e, [{
+        label: "Move to trash",
+        run: () => {
+          if (state.expanded === id) state.expanded = null;
+          moveToTrash(runtime.store, [id]);
+        },
+      }]);
+      return;
+    }
     e.preventDefault();
     if (mark) {
       const clip = runtime.clipByCid.get(mark.dataset.cid);
@@ -2065,7 +2096,7 @@ function peekPage(store, project, ctx, data) {
       null, null));
   } else {
     for (const it of data.members) {
-      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
+      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, trash: true }));
     }
   }
   return wrap;

@@ -5,6 +5,7 @@
 import { colorToken, inkFor, resolveHex } from "../theme.js";
 import { blobObjectURL } from "../blobs.js";
 import { stageOf } from "../milestones.js";
+import { trashButton } from "../trash-actions.js";
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -277,6 +278,8 @@ function sketchThumb(item, cls) {
 // lists stay a quiet read-only index.
 // opts.quietType — draw the type mark in plain faint mono instead of its
 // registry colour (see typeChip above). Opt-in for the same reason.
+// opts.trash — draw a small "Move to trash" button at the row's end (never in
+// select mode). Opt-in, so read-only indexes stay read-only.
 export function itemRow(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
   const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
@@ -294,14 +297,15 @@ export function itemRow(store, item, onOpen, opts = {}) {
     item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
   ]);
 
+  const bin = showTrash(opts) ? trashButton(store, item) : null;
   const row = el("div", {
-    class: "item-row",
+    class: "item-row" + (bin ? " has-trash" : ""),
     role: "button",
     tabindex: "0",
     "data-id": item.id,
     onclick: () => onOpen(item.id),
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
-  }, [left, main]);
+  }, [left, main, bin]);
 
   return applySelectable(row, item, opts.selection);
 }
@@ -325,8 +329,9 @@ export function itemCard(store, item, onOpen, opts = {}) {
     stageChip(item),                 // projects only; null for everything else
   ]);
 
+  const bin = showTrash(opts) ? trashButton(store, item, "card-trash") : null;
   const card = el("div", {
-    class: "card",
+    class: "card" + (bin ? " has-trash" : ""),
     role: "button",
     tabindex: "0",
     "data-id": item.id,
@@ -339,6 +344,7 @@ export function itemCard(store, item, onOpen, opts = {}) {
     item.body ? el("p", { class: "item-body-preview", text: item.body }) : null,
     marks,
     item.tags.length ? el("div", { class: "item-foot" }, tagChips(item)) : null,
+    bin,
   ]);
 
   return applySelectable(card, item, opts.selection);
@@ -352,6 +358,14 @@ export function itemCard(store, item, onOpen, opts = {}) {
 // during select mode.) The read-only mark takes its place, so nothing moves.
 function editableStatus(opts) {
   return !!opts.statusControl && !(opts.selection && opts.selection.active);
+}
+
+// The per-item trash button (October 2026, Round 1.1). Opt-in with
+// opts.trash, and hidden in select mode for the same reason as the status
+// control above: while you're picking, a tap means "pick this", never "throw
+// this away". See js/trash-actions.js for what the button does.
+function showTrash(opts) {
+  return !!opts.trash && !(opts.selection && opts.selection.active);
 }
 
 // ---- select mode (the Pinterest-style "organise" toggle) ----
