@@ -183,9 +183,45 @@ const itemDueSource = {
   },
 };
 
+// ---- date marks (October 2026, Round 1) ----
+// "Just a date on the calendar." The first source that is NOT item-derived in
+// the fromItem sense: the store fences date marks out of store.all() (so no
+// List, Board or count ever sees one), which means the shared archive walk
+// never meets them. So this source declares entriesFor() — the non-item path
+// the registry was written to support — and asks the store for its marks.
+//
+// PAST marks are emitted as `done`. A marked date that has gone by is history,
+// not debt: nothing about "Mom's birthday" was missed because the day passed.
+// That one choice keeps marks out of Home's Overdue band and the Home tab's
+// overdue badge (both ask for live entries only), while the Calendar — which
+// draws done entries muted, as history — still shows them in a past month.
+const dateMarkSource = {
+  name: "datemark",
+  entriesFor(start, end, ctx) {
+    const store = ctx.store;
+    if (!store || typeof store.dateMarks !== "function") return [];
+    const out = [];
+    for (const m of store.dateMarks()) {
+      const day = dayOfTimestamp(m.dates?.due);
+      if (!day || !within(day, start, end)) continue;
+      const project = store.dateMarkProject(m.id);
+      out.push({
+        id: `dm:${m.id}`,
+        source: "datemark", kind: "due",
+        itemId: m.id, mid: null,
+        label: m.title || "Untitled date",
+        context: project ? (project.title || "Untitled project") : null,
+        start: day, end: null, allDay: true,
+        done: day < ctx.today, overdue: false,
+      });
+    }
+    return out;
+  },
+};
+
 // Registered sources. Adding one here is the whole job of adding a new kind of
 // date to Dash — no view changes anywhere.
-export const SOURCES = [milestoneSource, itemDueSource];
+export const SOURCES = [milestoneSource, itemDueSource, dateMarkSource];
 
 // ===================================================================
 //  THE QUERY
@@ -229,7 +265,8 @@ function collect(store, start, end, opts, want) {
       }
     }
   }
-  // Sources that aren't item-derived fetch their own way (none ship yet).
+  // Sources that aren't item-derived fetch their own way (date marks, from
+  // October 2026).
   if (want.entries) {
     for (const s of SOURCES) {
       if (typeof s.entriesFor === "function") {

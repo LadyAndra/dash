@@ -11,6 +11,7 @@ import { el, emptyState, groundStyle, catalogNo } from "./shared.js";
 import { openEditor } from "../editor.js";
 import { createProjectPageController } from "./desk.js";
 import { stageOf, formatDay } from "../milestones.js";
+import { openDateMarkEditor } from "./datemark-editor.js";
 
 export const projectView = {
   name: "project",
@@ -120,9 +121,12 @@ function memberCounts(store) {
 //   index   = what projects do I have?
 //   next up = which open project stage reaches me first?
 //
-// The index keeps Store.projects() order because it is a stable library. Next
-// up is the dynamic register. Nothing here stores priority: the order is
-// derived from the same milestone data stageOf() already uses everywhere.
+// The index keeps Store.projects() order because it is a stable library —
+// and since October 2026 that order is HAND-SORTED: Andra puts the projects
+// that matter most at the top (the rank field, js/store.js), and the index
+// shows exactly that. Next up is still the dynamic register: its order is
+// derived from the same milestone data stageOf() already uses everywhere, and
+// nothing about it is stored.
 //
 // Ordering is intentionally boring and legible:
 //   1. overdue current stages
@@ -227,8 +231,130 @@ function buildPicker(store, state, ctx) {
     ]),
   ]);
 
+  // Spoken feedback for reordering. Polite, so it never talks over anything.
+  const announcer = el("p", { class: "project-order-announcer", role: "status", "aria-live": "polite" });
+  rail.appendChild(announcer);
+  const say = (text) => { announcer.textContent = ""; announcer.textContent = text; };
+
   const layout = el("div", { class: "project-index-layout" }, [rail, focus]);
   wrap.appendChild(layout);
+
+  // ---- HAND-SORTING (October 2026) ----------------------------------------
+  // Two ways to move a project, both writing through store.moveProject():
+  //
+  //   1. The ▲ ▼ buttons on every row (44px targets): one step per press.
+  //   2. The keyboard: focus a row, SPACE picks it up, UP/DOWN move it, SPACE
+  //      or ENTER drops it, ESCAPE puts it back where it was. Plain arrow keys
+  //      do nothing at all unless a row has been picked up.
+  //
+  // While a row is picked up, the new order exists ONLY here, in view-local
+  // memory (`picked`), never in data — nothing is written until the drop, and
+  // the drop is one move. A redraw that happens mid-pick (a sync landing)
+  // draws the picked order, so the row cannot jump out from under you.
+  let picked = null;          // { id, ids: [...current order], from }
+  let suppressClickUntil = 0; // the Space/Enter that drops must not also OPEN
+
+  const titleOf = (id) => store.get(id)?.title || "Untitled project";
+
+  function pickUp(id) {
+    const ids = store.projects().map(p => p.id);
+    const from = ids.indexOf(id);
+    if (from < 0) return;
+    picked = { id, ids, from };
+    draw();
+    say(`Picked up ${titleOf(id)}, position ${from + 1} of ${ids.length}. ` +
+        `Use the up and down arrow keys to move it, Space or Enter to drop it, Escape to cancel.`);
+  }
+
+  function shiftPicked(delta) {
+    const i = picked.ids.indexOf(picked.id);
+    const j = i + delta;
+    if (j < 0 || j >= picked.ids.length) {
+      say(`${titleOf(picked.id)} is already ${j < 0 ? "at the top" : "at the bottom"}.`);
+      return;
+    }
+    picked.ids.splice(i, 1);
+    picked.ids.splice(j, 0, picked.id);
+    draw();
+    say(`${titleOf(picked.id)}, position ${j + 1} of ${picked.ids.length}.`);
+  }
+
+  function drop() {
+    const { id, ids, from } = picked;
+    const to = ids.indexOf(id);
+    picked = null;
+    if (to !== from) store.moveProject(id, to);
+    draw();
+    say(to === from
+      ? `${titleOf(id)} dropped, position unchanged.`
+      : `${titleOf(id)} dropped at position ${to + 1} of ${ids.length}.`);
+  }
+
+  function cancelPick({ quiet = false } = {}) {
+    if (!picked) return;
+    const { id, from, ids } = picked;
+    picked = null;
+    draw();
+    if (!quiet) say(`Move cancelled. ${titleOf(id)} is back at position ${from + 1} of ${ids.length}.`);
+  }
+
+  railList.addEventListener("keydown", (e) => {
+    const button = railButtonFromEvent(e);
+    if (!button) return;
+    const id = button.dataset.id;
+    if (e.key === " " || e.key === "Spacebar") {
+      e.preventDefault();
+      suppressClickUntil = Date.now() + 400;
+      if (!picked) pickUp(id);
+      else if (picked.id === id) drop();
+      return;
+    }
+    if (!picked || picked.id !== id) return;          // arrows are untouched otherwise
+    if (e.key === "ArrowUp") { e.preventDefault(); shiftPicked(-1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); shiftPicked(1); }
+    else if (e.key === "Enter") { e.preventDefault(); suppressClickUntil = Date.now() + 400; drop(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelPick(); }
+    else if (e.key === "Tab") { cancelPick(); }
+  });
+  // Space activates a button on key UP in some browsers; keep that from
+  // opening the project we just picked up or dropped.
+  railList.addEventListener("keyup", (e) => {
+    if ((e.key === " " || e.key === "Spacebar") && railButtonFromEvent(e)) e.preventDefault();
+  });
+  // Walking away from a picked-up row (clicking elsewhere, the window losing
+  // focus) puts it back. Deferred a frame so a focus move caused by our own
+  // redraw doesn't count as walking away.
+  railList.addEventListener("focusout", () => {
+    if (!picked) return;
+    requestAnimationFrame(() => {
+      if (!picked) return;
+      const row = railList.querySelector(`[data-project-index-item][data-id="${picked.id}"]`);
+      if (row && document.activeElement !== row) cancelPick({ quiet: true });
+    });
+  });
+
+  // The ▲ ▼ buttons. Delegated, like every other rail control.
+  railList.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-move]");
+    if (!btn || !railList.contains(btn) || btn.disabled) return;
+    e.stopPropagation();
+    const id = btn.dataset.id;
+    const dir = btn.dataset.move;
+    const ids = store.projects().map(p => p.id);
+    const from = ids.indexOf(id);
+    const to = from + (dir === "up" ? -1 : 1);
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    if (picked) cancelPick({ quiet: true });
+    store.moveProject(id, to);
+    draw();
+    say(`${titleOf(id)} moved ${dir}, now position ${to + 1} of ${ids.length}.`);
+    // Keep the keyboard where it was: on the same arrow if it can still move,
+    // otherwise on its partner (the top row's ▲ is disabled).
+    const row = rowFor(id);
+    const same = row?.querySelector(`[data-move="${dir}"]`);
+    const other = row?.querySelector(`[data-move="${dir === "up" ? "down" : "up"}"]`);
+    (same && !same.disabled ? same : other)?.focus();
+  }, true);
 
   function openProject(id) {
     if (!id) return;
@@ -288,6 +414,10 @@ function buildPicker(store, state, ctx) {
   railList.addEventListener("click", (e) => {
     const button = railButtonFromEvent(e);
     if (!button) return;
+    // A click made BY the keyboard (detail 0) right after a Space/Enter is that
+    // key's echo, not a request to open. A real mouse click always opens —
+    // except mid-pick, where it simply ends the pick (see focusout).
+    if (picked || (e.detail === 0 && Date.now() < suppressClickUntil)) { e.preventDefault(); return; }
     openProject(button.dataset.id);
   });
 
@@ -300,8 +430,11 @@ function buildPicker(store, state, ctx) {
     if (button && nextItems.contains(button)) openProject(button.dataset.id);
   });
 
+  // One rail row = the project button (opens it) + its ▲ ▼ move buttons.
+  // The wrapper carries data-row-id, NOT data-id, so a query for
+  // `[data-id=…]` inside the list still lands on the project button itself.
   function makeIndexItem(it) {
-    return el("button", {
+    const button = el("button", {
       class: "project-index-item on-ground",
       type: "button",
       "data-project-index-item": "1",
@@ -311,6 +444,18 @@ function buildPicker(store, state, ctx) {
       el("span", { class: "project-index-title", "aria-hidden": "true" }),
       el("span", { class: "project-index-overdue", "aria-hidden": "true" }),
     ]);
+    const move = (dir, glyph) => el("button", {
+      class: "project-move-btn", type: "button",
+      "data-move": dir, "data-id": it.id,
+    }, [el("span", { "aria-hidden": "true", text: glyph })]);
+    return el("div", { class: "project-index-row", "data-project-row": "1", "data-row-id": it.id }, [
+      button,
+      el("span", { class: "project-move" }, [move("up", "▲"), move("down", "▼")]),
+    ]);
+  }
+
+  function rowFor(id) {
+    return [...railList.querySelectorAll("[data-project-row]")].find(r => r.dataset.rowId === id) || null;
   }
 
   function dressIndexItem(node, it, count, selected) {
@@ -336,6 +481,12 @@ function buildPicker(store, state, ctx) {
     // the one you are looking at" on a row that OPENS on click rather than
     // toggling; aria-pressed would claim a two-state button this is not.
     node.dataset.previewed = selected ? "true" : "false";
+    // Picked up for a keyboard move: say so to assistive tech as well as
+    // drawing it (aria-pressed is the honest word for a held state here).
+    const isPicked = !!(picked && picked.id === it.id);
+    if (isPicked) node.setAttribute("aria-pressed", "true");
+    else node.removeAttribute("aria-pressed");
+    node.parentElement?.classList.toggle("is-picked", isPicked);
     if (selected) node.setAttribute("aria-current", "true");
     else node.removeAttribute("aria-current");
 
@@ -460,8 +611,31 @@ function buildPicker(store, state, ctx) {
     focusMeta.replaceChildren(...rows);
   }
 
+  function dressMoveButtons(row, it, index, total) {
+    const name = it.title || "Untitled project";
+    for (const btn of row.querySelectorAll("[data-move]")) {
+      const up = btn.dataset.move === "up";
+      const label = `Move ${name} ${up ? "up" : "down"}`;
+      if (btn.getAttribute("aria-label") !== label) { btn.setAttribute("aria-label", label); btn.title = label; }
+      const off = up ? index === 0 : index === total - 1;
+      if (btn.disabled !== off) btn.disabled = off;
+    }
+  }
+
   function draw() {
-    const items = store.projects();
+    let items = store.projects();
+    // Mid-pick, draw the order being chosen rather than the stored one.
+    if (picked) {
+      if (!items.some(p => p.id === picked.id)) picked = null;   // it went away
+      else {
+        const pos = new Map(picked.ids.map((id, i) => [id, i]));
+        items = [...items].sort((a, b) =>
+          (pos.has(a.id) ? pos.get(a.id) : Infinity) - (pos.has(b.id) ? pos.get(b.id) : Infinity));
+      }
+    }
+    // Reordering moves DOM nodes, and moving the node that has focus drops
+    // focus on the floor. Remember who had it and hand it straight back.
+    const hadFocus = railList.contains(document.activeElement) ? document.activeElement : null;
     const counts = memberCounts(store); // ONE archive pass for all overview counts
     if (railCount.textContent !== String(items.length)) railCount.textContent = String(items.length);
 
@@ -478,23 +652,30 @@ function buildPicker(store, state, ctx) {
 
     // Reconcile by project id. A rail item that is still wanted is DRESSED,
     // never replaced — preserving the stable-DOM fix that removed hover shake.
+    // (Since October 2026 each item lives in a row wrapper with its ▲ ▼
+    // buttons; the wrapper is what gets reconciled and reordered.)
     const have = new Map();
-    for (const node of railList.querySelectorAll("[data-project-index-item]")) {
-      have.set(node.dataset.id, node);
+    for (const row of railList.querySelectorAll("[data-project-row]")) {
+      have.set(row.dataset.rowId, row);
     }
 
     const wanted = [];
-    for (const it of items) {
-      let node = have.get(it.id);
-      if (node) have.delete(it.id); else node = makeIndexItem(it);
+    items.forEach((it, index) => {
+      let row = have.get(it.id);
+      if (row) have.delete(it.id); else row = makeIndexItem(it);
+      const node = row.querySelector("[data-project-index-item]");
       dressIndexItem(node, it, counts.get(it.id) || 0, it.id === state.focusProjectId);
-      wanted.push(node);
-    }
-    for (const [, node] of have) node.remove();
-
-    wanted.forEach((node, i) => {
-      if (railList.children[i] !== node) railList.insertBefore(node, railList.children[i] || null);
+      dressMoveButtons(row, it, index, items.length);
+      wanted.push(row);
     });
+    for (const [, row] of have) row.remove();
+
+    wanted.forEach((row, i) => {
+      if (railList.children[i] !== row) railList.insertBefore(row, railList.children[i] || null);
+    });
+    if (hadFocus && hadFocus.isConnected && document.activeElement !== hadFocus) {
+      try { hadFocus.focus({ preventScroll: true }); } catch { hadFocus.focus(); }
+    }
 
     const focusedPosition = focused ? items.findIndex(it => it.id === focused.id) + 1 : 0;
     drawFocus(
@@ -542,6 +723,7 @@ function buildDetail(store, state, ctx, project) {
       openEditor(store, newId, { onClose: reload, sync: currentCtx.sync });
     },
     onAdd: () => openAssignPicker(store, currentProject.id, reload),
+    onMarkDate: () => openDateMarkEditor(store, { projectId: currentProject.id, onClose: reload }),
   };
 
   const desk = createProjectPageController(store, currentProject, currentCtx, actions);

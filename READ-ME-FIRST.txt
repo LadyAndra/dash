@@ -1,0 +1,13 @@
+Dash, Round 1 upload (October 4, 2026)
+
+Upload EVERYTHING in this folder (except this note) to GitHub in one go,
+keeping the folders as they are: css, docs, js, tests, index.html, sw.js.
+
+1. Open github.com/LadyAndra/dash
+2. Click "Add file", then "Upload files"
+3. Drag the css, docs, js and tests folders plus index.html and sw.js
+   from this folder into the upload box
+4. Commit message: Round 1: desktop only, Trash, hand-sorted projects, Mark a date
+5. Click "Commit changes"
+
+Existing files are replaced, new files are added. Nothing gets deleted.

@@ -25,7 +25,7 @@
 
 import { ulid } from "./ulid.js";
 import { now as clockNow, compare as clockCompare } from "./clock.js";
-import { nextOrder } from "./milestones.js";
+import { nextOrder, orderBetween, ORDER_STEP } from "./milestones.js";
 import { deskKey } from "./desk.js";
 
 // 1 -> 2 in August 2026: adds the "ms" op kind and the optional milestones
@@ -48,6 +48,27 @@ export const FORMAT_VERSION = 3;
 // membership apart from generic "see also" connections.
 export const PROJECT_TYPE = "project";
 export const PROJECT_LINK = "in project";
+
+// ---- date marks (October 2026, Round 1) ----
+// A date mark is "just a date on the calendar": a title, a day, and an
+// optional project. It is an ordinary Item with this type — everything in
+// Dash is an Item — so it syncs, merges and tombstones with no new op kind
+// and no formatVersion bump.
+//
+// It is deliberately NOT in defaultRegistry(): the registry is replaced
+// wholesale by the saved snapshot's on load, so a new default type would never
+// reach existing data anyway. Instead the store FENCES date marks off: all()
+// leaves them out, so List, Board, counts, search, link pickers and the desk
+// never see one. They surface only through dateMarks() -> the "datemark"
+// source in js/entries.js -> Calendar and Home.
+//
+// The project link uses its own label, NOT PROJECT_LINK. Member counts, the
+// project index, the desk's unplaced drawer and deskData() all key on the
+// literal "in project", so a different label keeps marks out of every one of
+// them for free. (A milestone was ruled out because stage is derived from the
+// earliest unfinished milestone — a date mark would silently move it.)
+export const DATEMARK_TYPE = "datemark";
+export const DATEMARK_LINK = "marked for";
 
 // ---- entries attached to a milestone (August 2026) ----
 // An entry joins a PHASE of a project the same way it joins the project: with
@@ -117,7 +138,23 @@ export { DESK_KEY_PREFIX, deskKey, projectIdFromDeskKey } from "./desk.js";
 // when true — an item that never went through quick capture simply doesn't
 // have the key, which is why the whole existing archive stays out of the
 // Unfiled box with no migration and no cutoff date.
-const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color", "inbox"]);
+//
+// October 2026, Round 1 — two more, on exactly the same precedent:
+// `trashed`  ISO timestamp, or null/missing = not in the trash. Reversible on
+//            purpose, which is why it is NOT `_deleted`: that tombstone is
+//            one-way by design (no undelete op exists, and fillCreateBlanks
+//            never clears it). Making it reversible would be a merge-rule
+//            change on the most sensitive flag in the store. "Empty trash" is
+//            what calls deleteItem() — the existing permanent tombstone.
+// `rank`     a project's hand-sorted position (lower = higher on the list).
+//            Synced content, not per-device state, so the order is the same
+//            on every device. Missing = unranked: those sort after the ranked
+//            ones, alphabetically, so the starting order is the old
+//            alphabetical one with zero writes and a new project lands at the
+//            bottom with no code. See projects() and moveProject().
+// An older build receives either `set` op harmlessly and simply doesn't act
+// on it, exactly as with `color` and `inbox`.
+const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color", "inbox", "trashed", "rank"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
 
 // `due` and `remind` live INSIDE item.dates, not at the top level.
@@ -306,12 +343,64 @@ export class Store {
   // =====================================================
   //  READING
   // =====================================================
-  get(id) { const it = this.items.get(id); return it && !it._deleted ? it : null; }
+  // THE FENCE (October 2026). Every List, Board, Home count, rail count,
+  // finder, link list, member count, desk card and search reads through all()
+  // or get(), so these two lines are what make the trash and date marks work
+  // everywhere at once, instead of view by view:
+  //
+  //   get(id)  hides TRASHED items (a trashed item's links then resolve to
+  //            nothing, exactly like a deleted one's do today). It still
+  //            returns a date mark, so tapping one on the Calendar can open it.
+  //   all()    hides trashed items AND date marks.
+  //
+  // Anything that needs to see past the fence says so by name: getAny(),
+  // trashed(), dateMarks().
+  get(id) {
+    const it = this.items.get(id);
+    return it && !it._deleted && !it.trashed ? it : null;
+  }
 
   all() {
     const out = [];
-    for (const it of this.items.values()) if (!it._deleted) out.push(it);
+    for (const it of this.items.values()) {
+      if (it._deleted || it.trashed || it.type === DATEMARK_TYPE) continue;
+      out.push(it);
+    }
     return out;
+  }
+
+  // Ignores the trash (still respects permanent deletion). For the trash
+  // drawer's own use — nothing else should need it.
+  getAny(id) { const it = this.items.get(id); return it && !it._deleted ? it : null; }
+
+  // Everything in the trash, most recently trashed first.
+  trashed() {
+    const out = [];
+    for (const it of this.items.values()) if (!it._deleted && it.trashed) out.push(it);
+    return out.sort((a, b) => String(b.trashed).localeCompare(String(a.trashed)));
+  }
+
+  // Live date marks: not trashed, not deleted.
+  dateMarks() {
+    const out = [];
+    for (const it of this.items.values()) {
+      if (!it._deleted && !it.trashed && it.type === DATEMARK_TYPE) out.push(it);
+    }
+    return out;
+  }
+
+  // The project a date mark is linked to (via DATEMARK_LINK), or null.
+  // Uses getAny for the mark (so the trash drawer can name it) and get() for
+  // the project (a trashed project names nothing, like everywhere else).
+  dateMarkProject(id) {
+    const it = this.getAny(id);
+    if (!it) return null;
+    for (const l of it.links || []) {
+      if (l.label !== DATEMARK_LINK) continue;
+      const p = this.get(l.target);
+      if (p && p.type === PROJECT_TYPE) return p;
+    }
+    return null;
   }
 
   allTags() {
@@ -350,10 +439,16 @@ export class Store {
   // link from the entry to the project, so one entry can belong to many
   // projects at once (links is a set). These helpers keep that rule in ONE
   // place so the editor, the Project view, and counts all agree.
+  //
+  // ORDER (October 2026): hand-sorted. This is the ONE sort point for the
+  // project list — the Projects rail, the editor's project dropdown and the
+  // date-mark editor all read it. Ranked projects first, by rank; unranked
+  // after them, alphabetically. Ties (two devices landing on the same rank)
+  // fall back to title then id, so every device still draws the same order.
   projects() {
     return this.all()
       .filter(it => it.type === PROJECT_TYPE)
-      .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+      .sort(compareProjects);
   }
   isProject(id) { const it = this.get(id); return !!it && it.type === PROJECT_TYPE; }
 
@@ -390,6 +485,95 @@ export class Store {
   // =====================================================
   //  WRITING  (each produces one or more ops)
   // =====================================================
+
+  // ---- the trash (October 2026) ----
+  // Moving to trash and restoring are ONE ordinary `set` op each. Emptying is
+  // the existing permanent tombstone, once per item. Nothing else about the
+  // item changes: its links, tags, desk placement and milestones all stay on
+  // it, which is exactly why restore puts everything back where it was.
+  trash(id) {
+    if (!this.getAny(id)) return;
+    this.setField(id, "trashed", new Date(clockNow().wall).toISOString());
+  }
+  restore(id) {
+    if (!this.getAny(id)) return;
+    this.setField(id, "trashed", null);
+  }
+  emptyTrash() {
+    const ids = this.trashed().map(it => it.id);
+    for (const id of ids) this.deleteItem(id);
+    return ids.length;
+  }
+
+  // ---- hand-sorted projects (October 2026) ----
+  setRank(id, rank) { this.setField(id, "rank", rank); }
+
+  // Move a project to `toIndex` in the displayed order. Returns true if
+  // anything moved.
+  //
+  //   - The FIRST move ever materialises ranks: if any project is unranked,
+  //     every project gets a rank in its current displayed order, once. After
+  //     that a move is exactly ONE op — the moved project's new rank — taken
+  //     as the midpoint of its new neighbours (the milestone ordering helpers,
+  //     reused rather than a second scheme).
+  //   - If the midpoint can no longer fit (float precision, ~50 moves into the
+  //     same gap), the whole list is re-spaced once. Rare and self-healing,
+  //     the same rule milestones follow.
+  moveProject(id, toIndex) {
+    let list = this.projects();
+    const from = list.findIndex(p => p.id === id);
+    if (from < 0) return false;
+    const to = Math.max(0, Math.min(list.length - 1, toIndex));
+    if (to === from) return false;
+
+    if (list.some(p => typeof p.rank !== "number")) {
+      list.forEach((p, i) => this.setRank(p.id, (i + 1) * ORDER_STEP));
+      list = this.projects();
+    }
+
+    const rest = list.filter(p => p.id !== id);
+    const before = rest[to - 1] || null;
+    const after = rest[to] || null;
+    const r = orderBetween(before && { order: before.rank }, after && { order: after.rank });
+    const fits = (!before || r > before.rank) && (!after || r < after.rank);
+    if (fits) {
+      this.setRank(id, r);
+    } else {
+      const moved = list[from];
+      rest.splice(to, 0, moved);
+      rest.forEach((p, i) => this.setRank(p.id, (i + 1) * ORDER_STEP));
+    }
+    return true;
+  }
+
+  // ---- date marks (October 2026) ----
+  // One create op (the date rides in the skeleton) plus, if a project was
+  // chosen, one link op. `date` is "YYYY-MM-DD"; it is stored the same way the
+  // flip-clock date input already writes an entry's due date — a timestamp at
+  // local midday, so no timezone can nudge it onto a neighbouring day.
+  createDateMark({ title = "", date = null, projectId = null } = {}) {
+    const id = this.createItem({ type: DATEMARK_TYPE, title, due: middayISO(date) });
+    if (projectId) this.addToSet(id, "links", { target: projectId, label: DATEMARK_LINK });
+    return id;
+  }
+
+  // Change a mark's title / date / project. Writes only what actually changed.
+  updateDateMark(id, { title, date, projectId } = {}) {
+    const it = this.getAny(id);
+    if (!it) return;
+    if (title !== undefined && title !== (it.title || "")) this.setField(id, "title", title);
+    if (date !== undefined) {
+      const due = middayISO(date);
+      if (due !== (it.dates?.due || null)) this.setField(id, "due", due);
+    }
+    if (projectId !== undefined) {
+      const current = (it.links || []).filter(l => l.label === DATEMARK_LINK);
+      for (const l of current) if (l.target !== projectId) this.removeFromSet(id, "links", l);
+      if (projectId && !current.some(l => l.target === projectId)) {
+        this.addToSet(id, "links", { target: projectId, label: DATEMARK_LINK });
+      }
+    }
+  }
   createItem(partial = {}) {
     const id = ulid();
     const ts = clockNow();
@@ -402,6 +586,9 @@ export class Store {
     // Only written when it's true (see SCALAR_FIELDS above): an ordinary item
     // stays byte-identical to one written before the Unfiled box existed.
     if (partial.inbox) skeleton.inbox = true;
+    // A due date can ride in the create op itself (date marks use this), so a
+    // mark is one op rather than a create followed by a set.
+    if (partial.due) skeleton.dates.due = partial.due;
     skeleton.dates.created = iso;
     skeleton.dates.modified = iso;
     skeleton.dates.touched = iso;
@@ -1195,8 +1382,12 @@ export class Store {
       formatVersion: FORMAT_VERSION,
       generatedAt: new Date().toISOString(),
       registry: this.registry,
-      items: this.all().concat([...this.items.values()].filter(i => i._deleted))
-        .map(stripInternal),
+      // EVERY item, walked directly. This used to be all() plus the tombstones,
+      // which was the same thing until October 2026 — but all() now hides
+      // trashed items and date marks, and a snapshot built from it would have
+      // silently dropped both. The snapshot is the one reader that must see
+      // past the fence.
+      items: [...this.items.values()].map(stripInternal),
     };
   }
 
@@ -1266,6 +1457,22 @@ export class Store {
 }
 
 // ---------- helpers ----------
+
+// The project order (see projects()). Exported via the class only.
+function compareProjects(a, b) {
+  const ar = typeof a.rank === "number", br = typeof b.rank === "number";
+  if (ar && br && a.rank !== b.rank) return a.rank - b.rank;
+  if (ar !== br) return ar ? -1 : 1;
+  const t = (a.title || "").localeCompare(b.title || "");
+  if (t) return t;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+// "YYYY-MM-DD" -> ISO timestamp at LOCAL midday (the editor's atMidday rule).
+function middayISO(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0).toISOString() : null;
+}
 function applySetAdd(it, field, value) {
   const arr = it[field];
   if (field === "links") {

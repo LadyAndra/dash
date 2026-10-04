@@ -412,3 +412,75 @@
     margin-top: var(--space-3);
   }
 }
+
+/* ---------- HAND-SORTED PROJECTS (October 2026) ----------
+   Each rail row is now the project button plus its ▲ ▼ move buttons. The
+   move buttons are full 44px targets (--tap-min) and stay visible; they are
+   drawn quiet so the colour rows still lead. */
+.project-index-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.project-move {
+  display: flex;
+  gap: 0;
+}
+
+.project-move-btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.project-move-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.project-move-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* At the top (▲) or bottom (▼) there is nowhere to go. Kept in place, so the
+   rows never shift sideways, but faded to say so. */
+.project-move-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Picked up with Space: the row lifts out of the column and carries a heavy
+   rule on its leading edge, so "this one is in your hand" reads at a glance. */
+.project-index-row.is-picked .project-index-item {
+  transform: translateX(var(--space-3));
+  box-shadow: inset 4px 0 0 var(--text-primary), var(--focus-ring);
+  z-index: 4;
+}
+
+/* Screen-reader voice for reordering. Visually hidden, still read. */
+.project-order-announcer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

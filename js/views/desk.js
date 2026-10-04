@@ -299,6 +299,14 @@ function banner(runtime, state, clipMode) {
       name,
       el("div", { class: "pb-acts" }, [
         el("button", { class: "btn banner-new-entry", text: "+", title: "New entry in this project", "aria-label": "New entry in this project", onclick: () => runtime.actions.onNew(), }),
+        // MARK A DATE (October 2026): just a date on the calendar, pre-linked
+        // to this project. Beside "+" but its own button, because it does not
+        // make an entry (js/views/datemark-editor.js).
+        runtime.actions.onMarkDate ? el("button", {
+          class: "btn banner-mark-date", type: "button", text: "Mark a date",
+          title: "Put a date for this project on the calendar",
+          onclick: () => runtime.actions.onMarkDate(),
+        }) : null,
         el("button", {
           class: "btn dash-utility-settings",
           "aria-label": "Project settings",

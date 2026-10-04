@@ -17,7 +17,8 @@ import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
 import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
-import { midFromLinkLabel } from "./store.js";
+import { midFromLinkLabel, DATEMARK_TYPE } from "./store.js";
+import { openDateMarkEditor } from "./views/datemark-editor.js";
 import { mount as mountDateInput } from "./widgets/flipdate.js";
 
 const TEXT_SAVE_DELAY = 900;
@@ -39,6 +40,13 @@ function describeLink(store, link, target) {
 }
 
 export function openEditor(store, itemId, opts = {}) {
+  // A date mark has its own small editor (title, date, project — nothing
+  // else). Routing it HERE means every caller — the Calendar, Home's due
+  // panel, anything later — opens the right one without knowing marks exist.
+  if (itemId && store.get(itemId)?.type === DATEMARK_TYPE) {
+    openDateMarkEditor(store, { id: itemId, onClose: opts.onClose });
+    return;
+  }
   const isNew = !itemId;
   const id = itemId || store.createItem({});
   const item = store.get(id);
@@ -386,12 +394,18 @@ export function openEditor(store, itemId, opts = {}) {
     onclick: () => { flushTextDrafts(); readAloud(itemToSpeech(store.get(id), store)); } });
 
   // --- actions ---
-  const del = el("button", { class: "btn btn-danger", text: "Delete",
+  // MOVE TO TRASH (October 2026). This used to be "Delete" behind a confirm()
+  // whose text promised the item "can be recovered" — which, with no undelete,
+  // wasn't true. Now it is: the item goes to the Trash (topbar, beside
+  // Settings) and Restore puts it back. No confirm, because it is reversible;
+  // the only permanent step is Empty trash, and that one asks.
+  const del = el("button", { class: "btn btn-danger", text: "Move to trash",
     onclick: () => {
-      if (confirm("Delete this item? It's kept in your history and can be recovered, but it will disappear from all views.")) {
-        cancelTextDrafts();
-        store.deleteItem(id); close();
-      }
+      cancelTextDrafts();
+      const name = store.get(id)?.title || "Untitled";
+      store.trash(id);
+      toast(`Moved to trash · ${name}. Restore it from Trash, beside Settings.`, "info", 5000);
+      close();
     } });
   const done = el("button", { class: "btn btn-primary", text: "Done", onclick: close });
 

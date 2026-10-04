@@ -25,9 +25,18 @@ import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { projectView } from "./views/project.js";
 import { calendarView } from "./views/calendar.js";
-// The phone's ONLY screen. Deliberately not in VIEWS: it is not a destination
-// you can switch to, it is what a phone gets instead of the tab strip.
-import { phoneCaptureView } from "./views/phone-capture.js";
+// DESKTOP ONLY (October 4, 2026). A phone now gets one plain screen that says
+// so, instead of the capture screen. Phone and iPad come back next year as
+// connected companions; the data model and sync stay device-agnostic so that
+// is possible.
+//
+// The capture screen is UNREGISTERED, not deleted (standing Dash rule):
+// js/views/phone-capture.js is untouched on disk and still in sw.js's SHELL.
+// Bringing it back is uncommenting this import and swapping the one line in
+// activeView() back. Nothing else.
+// import { phoneCaptureView } from "./views/phone-capture.js";
+import { desktopOnlyView } from "./views/desktop-only.js";
+import { openTrash, trashCount } from "./views/trash.js";
 
 // ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
 // Andra doesn't use either one, so they've come out of the view switcher.
@@ -286,9 +295,11 @@ function buildChrome() {
   // screens has nothing to say. The element STAYS in the DOM: js/mobile-chrome.js
   // anchors its action row to it, and app.js's render() still writes aria-current
   // onto the tabs. It is only invisible.
+  // October 2026: the phone gets the "desktop only" screen and no chrome at
+  // all. css/desktop-only.css hides the topbar under this class.
   if (isPhoneUI()) {
     viewTabs.style.display = "none";
-    document.documentElement.classList.add("phone-capture-on");
+    document.documentElement.classList.add("desktop-only-on");
   }
 
   const newBtn = el("button", { class: "btn btn-primary", text: "＋ New", onclick: () => openEditor(store, null, { onClose: render, sync }) });
@@ -321,6 +332,17 @@ function buildChrome() {
     class: "btn", text: "🔊 Read", "aria-label": "Read this view aloud",
     onclick: readCurrentView,
   });
+  // THE TRASH (October 2026). Beside Settings, so it is one tap from every
+  // view. render() keeps its count current; the drawer itself is
+  // js/views/trash.js. Notes, entries, projects and date marks all land here
+  // when you trash them, and stay until you empty it yourself.
+  const trashBtn = el("button", {
+    // dash-utility-btn: the same quiet, borderless chrome as the marks beside
+    // it (css/ui-cleanup.css), so a word in mono sits in the instrument strip
+    // rather than shouting as a boxed button.
+    class: "btn dash-utility-btn trash-btn", id: "trash-btn", type: "button",
+    onclick: () => openTrash(store, render),
+  });
 
   // The topbar is now ONLY "where am I, and what can I do" — the view tabs and
   // the verbs. Everything that answers "what am I looking at" (search, group,
@@ -329,7 +351,7 @@ function buildChrome() {
   // meant both and carried controls that were dead on half the views.
   const topbar = el("div", { class: "topbar" }, [
     viewTabs, el("div", { class: "topbar-spacer" }),
-    selectBtn, newBtn, mergeBtn, readBtn, settingsBtn, syncBtn, syncPill,
+    selectBtn, newBtn, mergeBtn, readBtn, trashBtn, settingsBtn, syncBtn, syncPill,
   ]);
 
   const viewport = el("div", { class: "viewport", id: "viewport", "aria-live": "polite" });
@@ -461,11 +483,12 @@ function applyCatalogChrome(view) {
 //  RENDER
 // ===================================================
 function activeView() {
-  // PHONE CAPTURE (August 2026). A phone gets one screen — Text / Sketch /
-  // Image — and nothing else. Home, List and Board are not hidden or deleted;
-  // they are simply not what a phone opens. Everything below this line is
-  // still exactly what desktop and iPad do.
-  if (isPhoneUI()) return phoneCaptureView;
+  // DESKTOP ONLY (October 2026). A phone gets one plain screen saying so.
+  // Until then (August 2026) this line returned phoneCaptureView, the Text /
+  // Sketch / Image capture screen; see the import note at the top of the file.
+  // Everything below this line is still exactly what desktop and iPad do —
+  // iPad already ran the desktop UI, so nothing changes there.
+  if (isPhoneUI()) return desktopOnlyView;
 
   const requested = VIEWS.find(v => v.name === state.viewName) || listView;
   // Kept as-is. Unreachable while phone capture is on (the gate above returns
@@ -505,6 +528,7 @@ function render() {
   if (selection.active && !view.supportsSelect) { selection.exit(); return; }
   updateSelectUI(view);
   updateMergeUI();
+  updateTrashUI();
 
   // view tabs current state
   document.querySelectorAll(".view-tab").forEach(t =>
@@ -626,6 +650,17 @@ function updateMergeUI() {
   btn.style.display = n ? "" : "none";
   btn.textContent = `⚠ Merge notes (${n})`;
   btn.title = "An edit made on one device was replaced by a later edit from another. Nothing was lost.";
+}
+
+// The Trash button's label carries the count, so you can see there is
+// something in it without opening it. One cheap pass over the item map.
+function updateTrashUI() {
+  const btn = document.getElementById("trash-btn");
+  if (!btn) return;
+  const n = trashCount(store);
+  const text = n ? `Trash (${n})` : "Trash";
+  if (btn.textContent !== text) btn.textContent = text;
+  btn.setAttribute("aria-label", n ? `Trash, ${n} ${n === 1 ? "item" : "items"}` : "Trash, empty");
 }
 
 // Applying a sidebar filter always lands you in the catalog: filtering makes
@@ -869,7 +904,7 @@ function readCurrentView() {
   // The phone capture screen has no list of its own either, and reciting the
   // whole archive is not what "read this view" could usefully mean there — so
   // it gets the same daily brief.
-  if (view.name === "home" || view.name === "phone-capture") { readAloud(speakToday(store)); return; }
+  if (view.name === "home" || view.name === "phone-capture" || view.name === "desktop-only") { readAloud(speakToday(store)); return; }
 
   const groupBy = view.forceGroupBy || state.groupBy;
   const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });

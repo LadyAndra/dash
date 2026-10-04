@@ -1,0 +1,103 @@
+/* ============================================================
+   trash.css — the Trash drawer and its topbar button (Oct 2026)
+   ------------------------------------------------------------
+   One self-contained surface, isolated like unfiled.css. Every
+   value comes from tokens.css.
+   ============================================================ */
+
+.trash-sheet {
+  width: min(680px, 100%);
+}
+
+.trash-hint {
+  margin: 0 0 var(--space-3);
+}
+
+/* Restored / deleted confirmations, spoken and shown. Empty = no space. */
+.trash-status {
+  margin: 0;
+  min-height: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.trash-status:empty { display: none; }
+
+.trash-list {
+  display: grid;
+  gap: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.trash-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.trash-row-main {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.trash-kind {
+  color: var(--text-faint);
+}
+
+.trash-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.trash-meta {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+.trash-meta:empty { display: none; }
+
+.trash-empty {
+  margin: var(--space-5) 0;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.trash-actions {
+  align-items: center;
+}
+
+.trash-confirm-text {
+  margin: 0;
+  flex-basis: 100%;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--ember);
+}
+
+/* The topbar button. It borrows the utility chrome (borderless, muted) from
+   css/ui-cleanup.css; this only sets the word in the instrument strip's mono
+   label voice. */
+.topbar .trash-btn {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

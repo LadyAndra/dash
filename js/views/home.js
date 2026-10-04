@@ -50,6 +50,7 @@ import { el, catalogNo, typeChip, statusChip, renderPanel, itemRow } from "./sha
 import { toast } from "../ui/toast.js";
 import { todayGroups } from "../entries.js";
 import { formatDay, daysUntil } from "../milestones.js";
+import { openDateMarkEditor } from "./datemark-editor.js";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -497,12 +498,23 @@ function unfiledUndo(store, item, local, ctx) {
 function todayPanel(store, ctx, groups) {
   const wrap = el("div", { class: "today" });
 
+  // MARK A DATE (October 2026). Its own button, deliberately apart from the
+  // capture well and + New: it puts just a date on the calendar (title, date,
+  // optional project) without making an entry. It lives here because this
+  // panel is where dates gather.
+  wrap.appendChild(el("div", { class: "today-tools" }, [
+    el("button", {
+      class: "btn datemark-btn", type: "button", text: "＋ Mark a date",
+      onclick: () => openDateMarkEditor(store, { onClose: ctx.rerender }),
+    }),
+  ]));
+
   if (groups.total === 0) {
     // A real state, not a gap. Named plainly so an empty fortnight reads as
     // "you're clear" rather than "something failed to load".
     wrap.appendChild(el("div", { class: "sheet-empty" }, [
       el("p", { text: "Nothing due in the next two weeks." }),
-      el("p", { class: "hint", text: "Dates you put on entries, and on a project's milestones, gather here." }),
+      el("p", { class: "hint", text: "Dates you put on entries, on a project's milestones, and dates you mark gather here." }),
     ]));
     return wrap;
   }
@@ -566,13 +578,18 @@ function entryRow(store, ctx, e, today) {
   const isRemind = e.kind === "remind";
   const item = store.get(e.itemId);
 
+  // A date mark has no type or status in the registry, so it gets its own
+  // plain "Date" mark rather than a type chip that would print "datemark".
+  const isMark = e.source === "datemark";
   const meta = el("div", { class: "item-meta" }, [
     e.overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : null,
     isRemind ? el("span", { class: "mk", text: "Reminder" }) : null,
     e.source === "milestone"
       ? el("span", { class: "mk", text: "Milestone" })
-      : (item ? typeChip(store, item) : null),
-    item && e.source !== "milestone" ? statusChip(store, item) : null,
+      : isMark
+        ? el("span", { class: "mk", text: "Date" })
+        : (item ? typeChip(store, item) : null),
+    item && e.source !== "milestone" && !isMark ? statusChip(store, item) : null,
     el("span", { class: "num", text: formatDay(e.start) }),
     isRemind && e.dueOn
       ? el("span", { class: "num", text: `due ${formatDay(e.dueOn)}` })

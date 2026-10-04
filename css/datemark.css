@@ -1,0 +1,36 @@
+/* ============================================================
+   datemark.css — "Mark a date" (Oct 2026, Round 1)
+   ------------------------------------------------------------
+   The small form, and the button that opens it on Home's due
+   panel. The desk banner's button is an ordinary .btn. Every
+   value comes from tokens.css.
+   ============================================================ */
+
+.datemark-sheet {
+  width: min(560px, 100%);
+}
+
+.datemark-sheet .field label {
+  display: block;
+}
+
+.datemark-project {
+  width: 100%;
+  min-height: var(--control-min);
+}
+
+.datemark-error {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--ember);
+}
+.datemark-error:empty { display: none; }
+
+/* Home's due panel: the button sits on its own line above the bands, quiet,
+   so it never competes with what is actually due. */
+.today-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
