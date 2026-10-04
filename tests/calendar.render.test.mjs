@@ -11,6 +11,25 @@
 
 import { JSDOM } from 'jsdom';
 
+// PIN "TODAY" TO THE 15TH OF THE CURRENT MONTH (October 4, 2026).
+// The fixture below puts an overdue milestone four days back and expects to
+// see it on the MONTH dial. During the first four days of any month that day
+// falls in the previous month, off the dial, and two checks failed for no
+// reason that had anything to do with the code. Shifting the clock to the
+// middle of the month makes every date in the fixture land where the checks
+// expect, on every day of the year. The clock still TICKS (it is an offset,
+// not a frozen instant), so timers and animations behave exactly as before.
+// Nothing outside this test file is affected.
+{
+  const RealDate = Date;
+  const n = new RealDate();
+  const offset = new RealDate(n.getFullYear(), n.getMonth(), 15, n.getHours(), n.getMinutes(), n.getSeconds()).getTime() - RealDate.now();
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { if (args.length === 0) super(RealDate.now() + offset); else super(...args); }
+    static now() { return RealDate.now() + offset; }
+  };
+}
+
 const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', {
   pretendToBeVisual: true, url: 'https://x.test/',
 });
