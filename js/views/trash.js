@@ -15,6 +15,11 @@
 // Restoring puts an item back exactly where it was — its project, its links,
 // its place on a desk — because trashing never touched any of those.
 //
+// Round 1.1 adds the desk's own things: POST-ITS and desk IMAGES land here too
+// (store.trashedDesk(), restoreNote(), restoreDeskImage()), listed in the same
+// newest-first order, and Empty trash takes them with everything else. An
+// image's file is erased afterwards, only if nothing else still uses it.
+//
 // The confirmation is drawn INSIDE the drawer rather than with confirm():
 // a native dialog can't be styled to the theme, reads poorly with a screen
 // reader, and blocks the whole page.
@@ -24,10 +29,20 @@ import { toast } from "../ui/toast.js";
 import { DATEMARK_TYPE, PROJECT_TYPE } from "../store.js";
 import { dayOfTimestamp } from "../entries.js";
 import { formatDay } from "../milestones.js";
+import { trashedImageHashes, cleanUpImageFiles } from "../trash-actions.js";
 
 // The number the topbar button shows. One pass over the item map.
 export function trashCount(store) {
-  return typeof store.trashed === "function" ? store.trashed().length : 0;
+  return everything(store).length;
+}
+
+// Items and desk things, merged into one newest-first list. Each entry is
+// { kind: "item", it, trashed } or a store.trashedDesk() record.
+function everything(store) {
+  const items = typeof store.trashed === "function"
+    ? store.trashed().map(it => ({ kind: "item", it, trashed: it.trashed })) : [];
+  const desk = typeof store.trashedDesk === "function" ? store.trashedDesk() : [];
+  return [...items, ...desk].sort((a, b) => String(b.trashed).localeCompare(String(a.trashed)));
 }
 
 export function openTrash(store, onChange = () => {}) {
@@ -60,7 +75,7 @@ export function openTrash(store, onChange = () => {}) {
   }
 
   function draw() {
-    const items = store.trashed();
+    const items = everything(store);
     list.replaceChildren();
 
     if (!items.length) {
@@ -81,7 +96,9 @@ export function openTrash(store, onChange = () => {}) {
         el("button", { class: "btn btn-danger trash-confirm-btn", type: "button",
           text: "Delete forever", "aria-describedby": "trash-confirm-text",
           onclick: () => {
+            const files = trashedImageHashes(store);   // asked for BEFORE emptying
             const gone = store.emptyTrash();
+            cleanUpImageFiles(store, files);           // erases only files nothing uses
             confirming = false;
             draw();
             status.textContent = `${gone} ${gone === 1 ? "item" : "items"} deleted for good.`;
@@ -105,7 +122,9 @@ export function openTrash(store, onChange = () => {}) {
     requestAnimationFrame(() => { modal.querySelector(sel)?.focus(); });
   }
 
-  function row(it) {
+  function row(entry) {
+    if (entry.kind !== "item") return deskRow(entry);
+    const it = entry.it;
     const name = nameOf(it);
     const restoreBtn = el("button", {
       class: "btn trash-restore", type: "button", text: "Restore",
@@ -123,6 +142,31 @@ export function openTrash(store, onChange = () => {}) {
         el("span", { class: "lbl trash-kind", text: kindOf(store, it) }),
         el("span", { class: "trash-title", text: name }),
         el("span", { class: "num trash-meta", text: metaOf(store, it) }),
+      ]),
+      restoreBtn,
+    ]);
+  }
+
+  // A post-it or a desk image. Its "where" is the project whose desk it sat on.
+  function deskRow(t) {
+    const name = t.kind === "note" ? noteName(t.text) : "Reference image";
+    const restoreBtn = el("button", {
+      class: "btn trash-restore", type: "button", text: "Restore",
+      "aria-label": `Restore ${t.kind === "note" ? "post-it" : "image"}: ${name}`,
+      onclick: () => {
+        if (t.kind === "note") store.restoreNote(t.projectId, t.id);
+        else store.restoreDeskImage(t.projectId, t.id);
+        status.textContent = `${name} restored.`;
+        toast(`Restored · ${name}`, "success", 2500);
+        draw();
+        focusFirst(".trash-restore, .trash-close-btn");
+      },
+    });
+    return el("div", { class: "trash-row", "data-desk-id": t.id }, [
+      el("div", { class: "trash-row-main" }, [
+        el("span", { class: "lbl trash-kind", text: t.kind === "note" ? "Post-it" : "Image" }),
+        el("span", { class: "trash-title", text: name }),
+        el("span", { class: "num trash-meta", text: deskWhere(store, t.projectId) }),
       ]),
       restoreBtn,
     ]);
@@ -168,4 +212,21 @@ function metaOf(store, it) {
     return [day ? formatDay(day) : null, p ? (p.title || "Untitled project") : null].filter(Boolean).join(" · ");
   }
   return `№ ${catalogNo(store, it)}`;
+}
+
+// A post-it's name is its first line of words.
+function noteName(text) {
+  const line = String(text || "").split("\n").map(x => x.trim()).find(Boolean);
+  if (!line) return "Blank post-it";
+  return line.length > 60 ? line.slice(0, 59) + "…" : line;
+}
+
+// Which desk it came from. A project that is itself in the trash says so,
+// because restoring the post-it alone won't make it visible until the
+// project comes back too.
+function deskWhere(store, projectId) {
+  const p = store.getAny(projectId);
+  if (!p) return "";
+  const title = p.title || "Untitled project";
+  return p.trashed ? `${title} desk (project in trash)` : `${title} desk`;
 }

@@ -82,7 +82,11 @@ assert.match(runtime, /const LIMIT = 20/);
 // Delete_Scribble.svg through a CSS mask, so the control carries no text.
 // Its NAME therefore lives in aria-label, which is what a screen reader
 // announces and what this rule has always really been about.
-assert.match(runtime, /del\.setAttribute\("aria-label", "Delete"\)/);
+// Round 1.1 (October 2026): the scribble now moves the image to the Trash, and
+// its name says so. Only Empty trash removes an image for good.
+assert.match(runtime, /del\.setAttribute\("aria-label", "Move to trash"\)/);
+assert.doesNotMatch(runtime, /action: "remove"[^\n]*\n?[^\n]*deleteBlob/,
+  "the right-click must not remove an image or erase its file directly any more");
 assert.doesNotMatch(runtime, /input\.multiple\s*=\s*true/);
 
 console.log("desk-images.test.mjs: ok");

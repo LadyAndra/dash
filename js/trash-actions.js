@@ -18,6 +18,8 @@
 // way, and anything already emptied out of the trash is simply skipped.
 
 import { toast } from "./ui/toast.js";
+import { deleteBlob } from "./blobs.js";
+import { DESK_IMAGE_PREFIX } from "./store.js";
 
 function nameOf(item) {
   if (!item) return "Untitled";
@@ -48,7 +50,7 @@ export function moveToTrash(store, ids, opts = {}) {
     const msg = done.length === 1
       ? `Moved to trash · ${firstName}.`
       : `Moved ${done.length} to trash.`;
-    showUndo(store, done, msg);
+    showUndo(msg, done.length, () => undoTrash(store, done));
   }
   if (failures.length) {
     toast(`${failures.length} couldn't be moved to trash. Nothing else was affected.`,
@@ -67,7 +69,7 @@ export function undoTrash(store, ids) {
   return n;
 }
 
-function showUndo(store, ids, message) {
+function showUndo(message, count, putBack) {
   const t = toast(message, "info", 8000);
   if (!t) return;
   const undo = document.createElement("button");
@@ -75,14 +77,75 @@ function showUndo(store, ids, message) {
   undo.className = "toast-undo";
   undo.textContent = "Undo";
   undo.setAttribute("aria-label",
-    ids.length === 1 ? "Undo: take it back out of the trash" : `Undo: take all ${ids.length} back out of the trash`);
+    count === 1 ? "Undo: take it back out of the trash" : `Undo: take all ${count} back out of the trash`);
   undo.onclick = () => {
-    undoTrash(store, ids);
+    putBack();
     t.remove();
   };
   // Before Dismiss, so the useful button comes first for the keyboard too.
   const dismiss = [...t.querySelectorAll("button")].find((b) => b.textContent === "Dismiss");
   t.insertBefore(undo, dismiss || null);
+}
+
+// ---- post-its and desk images (Round 1.1, second pass) ----
+// They are not Items, so they have their own store methods, but they land in
+// the SAME Trash, with the same message and the same Undo. thing is
+//   { kind: "note",  projectId, id: nid }   or
+//   { kind: "image", projectId, id: <deskimg key> }
+export function moveDeskThingToTrash(store, thing, opts = {}) {
+  if (thing.kind === "note") store.trashNote(thing.projectId, thing.id);
+  else if (thing.kind === "image") store.trashDeskImage(thing.projectId, thing.id);
+  else return false;
+  if (!opts.quiet) {
+    const what = thing.kind === "note" ? "post-it" : "image";
+    showUndo(`Moved to trash · the ${what}.`, 1, () => restoreDeskThing(store, thing));
+  }
+  return true;
+}
+
+// Put one back, but only if it is still in the trash (an Undo that arrives
+// after Empty trash does nothing).
+export function restoreDeskThing(store, thing) {
+  const still = store.trashedDesk().some(t => t.kind === thing.kind && t.projectId === thing.projectId && t.id === thing.id);
+  if (!still) return false;
+  if (thing.kind === "note") store.restoreNote(thing.projectId, thing.id);
+  else store.restoreDeskImage(thing.projectId, thing.id);
+  return true;
+}
+
+// The image FILES that the desk images in the trash point at. The Trash drawer
+// asks for these BEFORE emptying, then hands them to cleanUpImageFiles after.
+export function trashedImageHashes(store) {
+  return store.trashedDesk()
+    .filter(t => t.kind === "image" && t.meta && t.meta.hash)
+    .map(t => t.meta.hash);
+}
+
+// Is any live thing still using this image file? An entry's attachment counts
+// (trashed or not), and so does any desk image that isn't permanently removed,
+// including one still in the trash on another desk. The same rule the desk
+// images runtime used when its right-click deleted straight away.
+export function imageFileStillUsed(store, hash) {
+  for (const it of store.items.values()) {
+    for (const a of it.attachments || []) if (a && a.hash === hash) return true;
+    for (const [key, rec] of Object.entries(it.viewState || {})) {
+      if (!key.startsWith(DESK_IMAGE_PREFIX) || !rec || rec.removed) continue;
+      if (rec.clip && rec.clip.hash === hash) return true;
+    }
+  }
+  return false;
+}
+
+// After Empty trash: erase each image file nothing uses any more. Best effort;
+// the images have already left the trash, so a failure here only leaves an
+// unused file behind.
+export async function cleanUpImageFiles(store, hashes, erase = deleteBlob) {
+  let erased = 0;
+  for (const hash of new Set(hashes)) {
+    if (imageFileStillUsed(store, hash)) continue;
+    try { await erase(hash); erased++; } catch { /* best effort */ }
+  }
+  return erased;
 }
 
 // The small per-item button. One click, always visible, no confirm.

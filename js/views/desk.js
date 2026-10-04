@@ -42,7 +42,7 @@ import { renderMilestoneEditor } from "./milestone-editor.js";
 import { PROJECT_LINK } from "../store.js";
 import { stageOf, milestoneProgress, formatDay } from "../milestones.js";
 import { toast } from "../ui/toast.js";
-import { trashButton, moveToTrash } from "../trash-actions.js";
+import { trashButton, moveToTrash, moveDeskThingToTrash } from "../trash-actions.js";
 import { CLIP_BANNER_SVG, CLIP_MARK_SVG } from "../icons.js";
 import * as D from "../desk.js";
 
@@ -1734,12 +1734,18 @@ function wireDesk(runtime, state, dom) {
     }
     const rec = runtime.noteByNid.get(note.dataset.nid);
     if (!rec) return;
+    // The scribble now MOVES the post-it to the Trash (Round 1.1, Andra's
+    // call): it keeps its words, its spot and its clip, and Restore or the
+    // message's Undo puts it back. Only Empty trash removes it for good. (A
+    // BLANK post-it you click away from is still simply discarded: there is
+    // nothing in it to get back.)
     deskMenu(e, [{
-      label: "Delete",
+      label: "Move to trash",
       run: () => {
         delete state.noteDrafts[rec.nid];
         delete state.noteTyped[rec.nid];
-        runtime.store.removeNote(runtime.project.id, rec.nid);
+        if (state.noteFocus === `note:${rec.nid}`) state.noteFocus = null;
+        moveDeskThingToTrash(runtime.store, { kind: "note", projectId: runtime.project.id, id: rec.nid });
         runtime.ctx.rerender();
       },
     }], { deleteOnly: true });

@@ -17,6 +17,7 @@ import { now as clockNow } from "./clock.js";
 import { ingestDeskImage, blobObjectURL, deleteBlob } from "./blobs.js";
 import { IMAGE_BANNER_SVG } from "./icons.js";
 import { toast } from "./ui/toast.js";
+import { moveDeskThingToTrash } from "./trash-actions.js";
 import { DESK_W, DESK_H, ORIGIN, Z_EXPANDED } from "./desk.js";
 import {
   initialDeskImageSize,
@@ -71,7 +72,9 @@ function imageRecords(project) {
   const prefix = `${PREFIX}${project.id}:`;
   const out = [];
   for (const [key, rec] of Object.entries(project.viewState || {})) {
-    if (!key.startsWith(prefix) || !rec || rec.removed || !rec.pos) continue;
+    // `trashed` (Round 1.1): an image in the Trash is off the desk, but keeps
+    // its record (and its file) so Restore can put it back.
+    if (!key.startsWith(prefix) || !rec || rec.removed || rec.trashed || !rec.pos) continue;
     if (hiddenUntilDurable.has(key)) continue;
     const meta = rec.clip;
     if (!meta || !meta.hash || !meta.ext || !meta.size) continue;
@@ -397,7 +400,7 @@ function maxDeskZ(d) {
 
 function recordForKey(d, key) {
   const rec = d.project.viewState && d.project.viewState[key];
-  return rec && !rec.removed && rec.clip ? { rec, meta: rec.clip } : null;
+  return rec && !rec.removed && !rec.trashed && rec.clip ? { rec, meta: rec.clip } : null;
 }
 
 function wireImageNode(node, handle) {
@@ -528,12 +531,12 @@ function openImageMenu(e, key) {
  const del = document.createElement("button");
 del.className = "desk-menu-item desk-menu-delete";
 del.setAttribute("role", "menuitem");
-del.setAttribute("aria-label", "Delete");
-del.title = "Delete";
+del.setAttribute("aria-label", "Move to trash");
+del.title = "Move to trash";
 
   del.addEventListener("click", () => {
     closeImageMenu();
-    removeImage(key);
+    trashImage(key);
   });
   box.appendChild(del);
   document.body.appendChild(box);
@@ -557,22 +560,17 @@ function closeImageMenu() {
   openMenu = null;
 }
 
-async function removeImage(key) {
+// Right-click on an image now MOVES it to the Trash (Round 1.1, Andra's
+// call), the same as everything else: one `set trashed` op on the project,
+// with the same message and Undo. The image's FILE is left alone until Empty
+// trash, which erases it only if nothing else still uses it
+// (js/trash-actions.js cleanUpImageFiles).
+function trashImage(key) {
   const d = currentDesk();
   const found = d && recordForKey(d, key);
   if (!d || !found) return;
-  const hash = found.meta.hash;
-
-  // Right-click Delete is permanent for the image object. The project itself
-  // still uses Dash's ordinary recoverable deletion rules; no project cleanup
-  // happens here.
-  d.store._applyOp({ op: "vs", itemId: d.project.id, key, action: "remove", ts: clockNow() }, true);
+  moveDeskThingToTrash(d.store, { kind: "image", projectId: d.project.id, id: key });
   schedule();
-
-  if (!hashReferenced(d.store, hash)) {
-    try { await deleteBlob(hash); }
-    catch { /* cleanup is best-effort; the visible deletion already succeeded */ }
-  }
 }
 
 function allStoredItems(store) {
@@ -584,8 +582,9 @@ function hashReferenced(store, hash) {
   for (const it of allStoredItems(store)) {
     // Attachments on recoverable/tombstoned Entries still count as references.
     for (const a of it.attachments || []) if (a && a.hash === hash) return true;
-    // A deleted PROJECT can be restored, so its still-live image records count.
-    // A desk image explicitly right-click-deleted does not.
+    // A trashed PROJECT can be restored, so its still-live image records count,
+    // and so does an image sitting in the Trash. Only an image removed for good
+    // by Empty trash does not.
     for (const [key, rec] of Object.entries(it.viewState || {})) {
       if (!key.startsWith(PREFIX) || !rec || rec.removed) continue;
       if (rec.clip && rec.clip.hash === hash) return true;

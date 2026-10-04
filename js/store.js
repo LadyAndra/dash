@@ -154,6 +154,11 @@ export { DESK_KEY_PREFIX, deskKey, projectIdFromDeskKey } from "./desk.js";
 //            bottom with no code. See projects() and moveProject().
 // An older build receives either `set` op harmlessly and simply doesn't act
 // on it, exactly as with `color` and `inbox`.
+// The key prefix desk IMAGES use inside a project's viewState
+// ("deskimg:<projectId>:<iid>"), owned by js/desk-images-runtime.js. Named
+// here only so the trash can find them.
+export const DESK_IMAGE_PREFIX = "deskimg:";
+
 const SCALAR_FIELDS = new Set(["type", "status", "title", "body", "due", "remind", "color", "inbox", "trashed", "rank"]);
 const SET_FIELDS = new Set(["tags", "links", "attachments"]);
 
@@ -182,7 +187,12 @@ const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"
 //   clip     a clip's id, or null (Phase D2).
 //   removed  tombstone. UN-PLACING IS A TOMBSTONE, not a deletion: the record
 //            keeps its position, so restoring puts the card back where it was.
-const VS_FIELDS = new Set(["pos", "z", "clip", "removed"]);
+// `trashed` (October 2026, Round 1.1) is only ever written on a desk IMAGE
+// record (deskimg:* keys): an ISO timestamp while the image sits in the Trash,
+// null otherwise. A card's own desk:* record never carries it — a card leaves
+// the desk by its ENTRY being trashed. An older build receives the `set` and
+// ignores-and-preserves it, like any field it doesn't know.
+const VS_FIELDS = new Set(["pos", "z", "clip", "removed", "trashed"]);
 
 // ---- the project-side desk objects (desk addendum §12.3, Phase D2) ----
 // One op kind carries every desk object that belongs to the PROJECT rather
@@ -225,9 +235,15 @@ const DK_COLLS = {
   // Absence still means "none", everywhere, always (§9) — a note written by an
   // older build simply has no `offset` and gets the default placement once,
   // until the first time it is dragged. No migration, no formatVersion bump.
+  //
+  // `trashed` (October 2026, Round 1.1): an ISO timestamp while the post-it is
+  // in the Trash, null otherwise. It is NOT `removed`: `removed` is the
+  // permanent tombstone (and what a blank post-it gets when it is discarded),
+  // so the two must never mean the same thing. Empty trash turns a trashed
+  // post-it into a removed one. Older builds ignore and preserve the field.
   note: {
     array: "notes", idKey: "nid",
-    fields: new Set(["text", "pos", "clip", "offset", "removed"]),
+    fields: new Set(["text", "pos", "clip", "offset", "removed", "trashed"]),
     addFields: ["text", "pos", "clip", "offset"],
   },
 };
@@ -499,10 +515,70 @@ export class Store {
     if (!this.getAny(id)) return;
     this.setField(id, "trashed", null);
   }
+  // Empty trash: the ONE permanent step, for everything in the trash at once.
+  // Post-its and desk images go first, while their project still exists to
+  // write to (a trashed project's own post-its are emptied with it). A desk
+  // image's FILE is not touched here — the store knows nothing about blobs —
+  // so the Trash drawer asks js/trash-actions.js to erase any file nothing
+  // uses any more, once this returns.
   emptyTrash() {
+    const desk = this.trashedDesk();
+    for (const t of desk) {
+      if (t.kind === "note") this.removeNote(t.projectId, t.id);
+      else this._removeDeskImage(t.projectId, t.id);
+    }
     const ids = this.trashed().map(it => it.id);
     for (const id of ids) this.deleteItem(id);
-    return ids.length;
+    return ids.length + desk.length;
+  }
+
+  // ---- post-its and desk images in the trash (October 2026, Round 1.1) ----
+  // Each is ONE ordinary `set trashed` op on the project, exactly like an
+  // entry's. Nothing else about the post-it or image changes, which is why
+  // restore puts it back where it was.
+  trashNote(projectId, nid) {
+    this._setDeskObjectField(projectId, "note", nid, "trashed", new Date(clockNow().wall).toISOString());
+  }
+  restoreNote(projectId, nid) {
+    this._setDeskObjectField(projectId, "note", nid, "trashed", null);
+  }
+  trashDeskImage(projectId, key) {
+    this._setViewStateField(projectId, key, "trashed", new Date(clockNow().wall).toISOString());
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+  restoreDeskImage(projectId, key) {
+    this._setViewStateField(projectId, key, "trashed", null);
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+  // The permanent removal of a desk image record: the same `vs remove` op the
+  // image's right-click used to write directly.
+  _removeDeskImage(projectId, key) {
+    this._applyOp({ op: OP.VS, itemId: projectId, key, action: "remove", ts: clockNow() }, true);
+    this._action("edit", { id: projectId, field: "desk" });
+  }
+
+  // Every post-it and desk image in the trash, on any project — including a
+  // project that is itself in the trash (getAny-style: only permanent deletion
+  // hides them). Newest first. Shape:
+  //   { kind: "note",  projectId, id: nid, text, trashed }
+  //   { kind: "image", projectId, id: key, meta, trashed }
+  trashedDesk() {
+    const out = [];
+    for (const it of this.items.values()) {
+      if (it._deleted) continue;
+      for (const n of (it.deskObjects && it.deskObjects.notes) || []) {
+        if (n && !n.removed && n.trashed) {
+          out.push({ kind: "note", projectId: it.id, id: n.nid, text: n.text || "", trashed: n.trashed });
+        }
+      }
+      const prefix = `${DESK_IMAGE_PREFIX}${it.id}:`;
+      for (const [key, rec] of Object.entries(it.viewState || {})) {
+        if (key.startsWith(prefix) && rec && !rec.removed && rec.trashed) {
+          out.push({ kind: "image", projectId: it.id, id: key, meta: rec.clip || null, trashed: rec.trashed });
+        }
+      }
+    }
+    return out.sort((a, b) => String(b.trashed).localeCompare(String(a.trashed)));
   }
 
   // ---- hand-sorted projects (October 2026) ----
@@ -847,7 +923,7 @@ export class Store {
   }
 
   clips(projectId) { return this.deskObjects(projectId).clips.filter(c => !c.removed); }
-  notes(projectId) { return this.deskObjects(projectId).notes.filter(n => !n.removed); }
+  notes(projectId) { return this.deskObjects(projectId).notes.filter(n => !n.removed && !n.trashed); }
 
   // A clip carries nothing but its own existence. Returns the cid so the
   // caller can write the membership ops that follow it.

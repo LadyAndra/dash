@@ -472,7 +472,9 @@ export function deskData(items, projectId, linkLabel = "in project") {
   // again here; a tombstoned record is simply skipped, never erased.
   const objects = (project && project.deskObjects) || {};
   const liveClips = (objects.clips || []).filter(c => c && !c.removed);
-  const liveNotes = (objects.notes || []).filter(n => n && !n.removed);
+  // A post-it in the Trash (Round 1.1) is off the desk exactly like a removed
+  // one, but keeps its record so Restore can put it back.
+  const liveNotes = (objects.notes || []).filter(n => n && !n.removed && !n.trashed);
   const clipIds = new Set(liveClips.map(c => c.cid));
 
   // Membership inverted in ONE pass over the cards we already have. A card
