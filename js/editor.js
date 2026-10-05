@@ -15,7 +15,7 @@ import { resolveHex } from "./theme.js";
 import { colorField } from "./ui/colorfield.js";
 import { readAloud, itemToSpeech } from "./ui/readaloud.js";
 import { toast } from "./ui/toast.js";
-import { ingestFile, ingestSketchPNG, blobObjectURL } from "./blobs.js";
+import { ingestFile, ingestSketchPNG, blobObjectURL, blobOpenURL, openMimeForExt, attachmentLinkAttrs } from "./blobs.js";
 import { createSketchPad } from "./sketch.js";
 import { midFromLinkLabel, DATEMARK_TYPE } from "./store.js";
 import { openDateMarkEditor } from "./views/datemark-editor.js";
@@ -559,12 +559,19 @@ function createProjectInline(store, onCreated) {
 }
 
 // Renders one attached file: an image gets a small thumbnail preview;
-// a document (PDF/MD/TXT/etc.) gets an icon + name. Both open the real
-// file in a new tab on click (browsers render PDFs/images/text natively —
-// no viewer needs to be built). §9's "napkin" markup tool is a later phase;
+// a document (PDF/MD/TXT/etc.) gets an icon + name. Plain types (pictures,
+// PDF, text) open in a new tab on click (browsers render them natively — no
+// viewer needs to be built). Anything that could carry a script, an SVG or an
+// HTML file above all, downloads instead; see "what a click on an attachment
+// is allowed to do" in blobs.js. §9's "napkin" markup tool is a later phase;
 // this is just safe, reliable storage + access.
 async function attachmentChip(att, onRemove) {
-  const url = await blobObjectURL(att.hash);
+  // Plain types get a URL with a fixed, harmless content type. Everything else
+  // keeps its stored type so an SVG still draws as a thumbnail; its link only
+  // ever downloads it, so the file never opens as a page.
+  const url = openMimeForExt(att.ext)
+    ? await blobOpenURL(att.hash, att.ext)
+    : await blobObjectURL(att.hash);
   const isImage = att.role === "image";
   const inner = isImage
     ? el("img", { src: url, alt: att.name || "attached image", class: "attach-thumb" })
@@ -572,7 +579,7 @@ async function attachmentChip(att, onRemove) {
         el("span", { class: "attach-doc-ext", text: (att.ext || "file").toUpperCase() }),
         el("span", { class: "attach-doc-name", text: att.name || `${att.hash.slice(0, 8)}.${att.ext}` }),
       ]);
-  const link = el("a", { href: url || "#", target: "_blank", rel: "noopener", class: "attach-link" }, [inner]);
+  const link = el("a", { ...attachmentLinkAttrs(att, url), class: "attach-link" }, [inner]);
   const remove = el("button", { type: "button", class: "attach-remove", "aria-label": `Remove ${att.name || "attachment"}`, text: "✕", onclick: onRemove });
   return el("div", { class: "attach-chip" }, [link, remove]);
 }

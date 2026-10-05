@@ -175,6 +175,52 @@ export async function blobObjectURL(hash, mimeHint) {
   return URL.createObjectURL(blob);
 }
 
+// ---- what a click on an attachment is allowed to do ------------------------
+// Attachments open in a new tab from a blob: address. A blob: page runs with
+// Dash's OWN origin, so a file that can carry a script (an SVG picture or an
+// HTML page above all) would run inside Dash, next to everything Dash has
+// saved on this device, including the Dropbox sign-in. So only a short list of
+// plain, script-free types may open in a tab, and each is handed to the browser
+// with a fixed content type. The type stored with the file is NOT used for
+// this: it was copied from the file's own name, or from synced or imported
+// data, and could claim to be anything. Every other type is offered as a
+// download instead (see attachmentLinkAttrs). Pictures still show as small
+// thumbnails either way: an <img> never runs a script.
+const OPEN_MIME = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", heic: "image/heic",
+  pdf: "application/pdf",
+  txt: "text/plain; charset=utf-8", md: "text/plain; charset=utf-8",
+  markdown: "text/plain; charset=utf-8",
+};
+
+// The fixed content type for a file that may open in a tab, or null when it
+// may not. hasOwn so that an extension like "constructor" is not a match.
+export function openMimeForExt(ext) {
+  const key = String(ext == null ? "" : ext).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(OPEN_MIME, key) ? OPEN_MIME[key] : null;
+}
+
+// Object URL for a file that is allowed to open in a tab, labelled with the
+// fixed type above. Null when the file is missing or not on the allowed list.
+export async function blobOpenURL(hash, ext) {
+  const mime = openMimeForExt(ext);
+  if (!mime) return null;
+  const rec = await getBlob(hash);
+  if (!rec) return null;
+  return URL.createObjectURL(new Blob([rec.bytes], { type: mime }));
+}
+
+// The attributes for an attachment's link: open in a new tab when that is safe,
+// otherwise save to disk. Kept as a plain function so it can be tested without
+// a page.
+export function attachmentLinkAttrs(att, url) {
+  const href = url || "#";
+  if (openMimeForExt(att && att.ext)) return { href, target: "_blank", rel: "noopener" };
+  const name = (att && att.name) || `${String((att && att.hash) || "file").slice(0, 8)}.${(att && att.ext) || "bin"}`;
+  return { href, download: name };
+}
+
 export async function allHashes() {
   const db = await idb();
   return new Promise((res, rej) => {

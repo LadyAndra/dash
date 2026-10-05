@@ -550,7 +550,13 @@ function parseJSONL(text) {
   for (const line of text.split("\n")) {
     const s = line.trim();
     if (!s) continue;
-    try { ops.push(JSON.parse(s)); }
+    try {
+      const parsed = JSON.parse(s);
+      // Valid JSON is not enough: a line like `null`, `42` or `[]` parses fine
+      // but is not an operation. Keep only plain objects; the store skips the
+      // rest of the oddities one operation at a time.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ops.push(parsed);
+    }
     catch { /* skip a torn line; logs are append-only so this is rare */ }
   }
   return ops;

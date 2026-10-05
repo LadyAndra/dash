@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v111";
+const CACHE_VERSION = "dash-v112";
 const SHELL = [
   "./",
   "./index.html",
@@ -138,8 +138,16 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fromNetwork(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+        // Only a SUCCESSFUL answer is worth keeping for offline. Before this
+        // check, a one-off 404 or 503 from the server (a deploy in progress, a
+        // GitHub Pages hiccup) was saved over the good copy, so the next time
+        // Dash opened with no network it served the error page instead of the
+        // app. The error is still handed to the page this once; it just is not
+        // remembered.
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match("./index.html")))

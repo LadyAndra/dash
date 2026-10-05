@@ -179,6 +179,33 @@ const DATE_SCALARS = new Set(["due", "remind"]);
 // `created` are write-once at add time and deliberately not settable.
 const MS_FIELDS = new Set(["label", "date", "remind", "done", "order", "removed"]);
 
+// ---- what an item `set` / `add` / `remove` op is allowed to touch ----
+// (Added October 2026, "safety net" round.) Op lines arrive from other devices
+// and from a Dropbox folder, so a damaged or odd line must never be able to
+// reach inside the item's own bookkeeping or turn a list into a string.
+//
+// `set` is a DENY list, not an allow list, on purpose: an item may carry
+// fields this build has never heard of (a newer device wrote them), and those
+// must keep riding through untouched. So we only name what a `set` must never
+// write: anything starting with "_" (the item's private bookkeeping, such as
+// _fieldTs and _deleted), the names that can corrupt an object's prototype, the
+// item's identity, and the structured containers that have their own ops.
+const UNSETTABLE_FIELDS = new Set([
+  "id", "tags", "links", "attachments", "dates", "viewState", "milestones", "deskObjects",
+  "__proto__", "constructor", "prototype",
+]);
+function isSettableField(field) {
+  return typeof field === "string" && field !== "" && field[0] !== "_" && !UNSETTABLE_FIELDS.has(field);
+}
+// `add` / `remove` only ever make sense on the three list fields, which is the
+// SET_FIELDS list declared above. An `add` for a field this build does not know
+// is skipped, and stays in the log, so it takes effect once this device is
+// updated.
+function isSetValue(field, value) {
+  if (value == null) return false;
+  return field === "tags" ? typeof value === "string" : typeof value === "object";
+}
+
 // The only fields a viewState `set` op may touch (desk addendum §12.1).
 // `created` is write-once at add time, like a milestone's.
 //   pos      {x, y} — ALWAYS moves as a unit, so it is one field, not two.
@@ -1002,6 +1029,13 @@ export class Store {
   //  local=true  -> also queue to pendingOps for flushing
   // =====================================================
   _applyOp(op, local = false) {
+    // A line that is not an operation at all, or that names no item, cannot be
+    // applied to anything. Skip it rather than conjure a blank item (or throw).
+    if (!op || typeof op !== "object") return op;
+    if (typeof op.itemId !== "string" || op.itemId === "") {
+      this._skipOp(op, "it does not name an item");
+      return op;
+    }
     switch (op.op) {
       case OP.CREATE: {
         const existing = this.items.get(op.itemId);
@@ -1029,6 +1063,10 @@ export class Store {
         break;
       }
       case OP.SET: {
+        if (!isSettableField(op.field)) {
+          this._skipOp(op, "that field cannot be set");
+          return op;                       // not queued, not applied, stays in the log
+        }
         const it = this._ensure(op.itemId);
         if (this._winsLWW(it, op.field, op.ts)) {
           if (DATE_SCALARS.has(op.field)) it.dates[op.field] = op.value;
@@ -1041,12 +1079,20 @@ export class Store {
         break;
       }
       case OP.ADD: {
+        if (!SET_FIELDS.has(op.field) || !isSetValue(op.field, op.value)) {
+          this._skipOp(op, "that is not a list this build knows how to add to");
+          return op;
+        }
         const it = this._ensure(op.itemId);
         applySetAdd(it, op.field, op.value);
         this._bumpModified(it, op.ts);
         break;
       }
       case OP.REMOVE: {
+        if (!SET_FIELDS.has(op.field) || !isSetValue(op.field, op.value)) {
+          this._skipOp(op, "that is not a list this build knows how to remove from");
+          return op;
+        }
         const it = this._ensure(op.itemId);
         applySetRemove(it, op.field, op.value);
         this._bumpModified(it, op.ts);
@@ -1485,11 +1531,27 @@ export class Store {
         `information until you refresh the app here.`;
       console.warn(this.formatNotice);
     }
-    if (snap.registry) this.registry = snap.registry;
-    for (const raw of snap.items || []) {
+    if (snap.registry && typeof snap.registry === "object") {
+      // Keep whatever the snapshot carries (a newer build may have added
+      // registry kinds this one doesn't know), but make sure the kinds this
+      // build relies on are real lists, so a damaged snapshot cannot leave
+      // the app without types or statuses to draw.
+      const fallback = defaultRegistry();
+      this.registry = { ...snap.registry };
+      for (const kind of Object.keys(fallback)) {
+        if (!Array.isArray(this.registry[kind])) this.registry[kind] = fallback[kind];
+      }
+    }
+    for (const raw of Array.isArray(snap.items) ? snap.items : []) {
+      // An entry that is not an object, or has no id, cannot be an item.
+      if (!raw || typeof raw !== "object" || typeof raw.id !== "string" || raw.id === "") continue;
       const it = emptyItem(raw.id);
       Object.assign(it, raw);
-      it._fieldTs = it._fieldTs || {};
+      if (!it._fieldTs || typeof it._fieldTs !== "object") it._fieldTs = {};
+      // The three lists and the dates block must be the right shape, or every
+      // view that walks them would fail on this one item.
+      for (const field of SET_FIELDS) if (!Array.isArray(it[field])) it[field] = [];
+      if (!it.dates || typeof it.dates !== "object") it.dates = emptyItem(raw.id).dates;
       this.items.set(it.id, it);
     }
     this._emit();
@@ -1503,29 +1565,69 @@ export class Store {
   }
 
   // replay a device's whole log (array of parsed op objects)
+  //
+  // ONE BAD LINE MUST NEVER STOP THE REST. (October 2026, safety-net round.)
+  // Each operation is applied on its own. If one cannot be applied — a torn
+  // write, a line from a future build, a hand-edited file — it is skipped and
+  // counted, and the lines after it are still applied. Before this, a single
+  // such line threw out of the loop, so the caller never recorded how far it
+  // had read and the very same line was hit again on every 10-second poll,
+  // while everything after it (and every log after that one) never arrived.
+  // Skipping is safe because the log itself is never edited: a skipped line
+  // stays in the file and takes effect on a build that understands it.
   replayLog(ops) {
+    let skipped = 0;
+    let firstProblem = null;
     for (const op of ops) {
-      // A log segment's format stamp, written once per run by sync.js. It
-      // isn't an edit — it's provenance — so it's skipped here rather than
-      // falling through to the unknown-op warning.
-      if (op.op === "header") continue;
-      if (op.op === "registry") { this._replayRegistry(op); continue; }
-      if (op.op === "registry-remove") {
-        const list = this.registry[op.kind];
-        const i = list.findIndex(x => x.key === op.key);
-        if (i >= 0) list.splice(i, 1);
-        continue;
+      try {
+        this._replayOne(op);
+      } catch (err) {
+        skipped++;
+        if (!firstProblem) firstProblem = err;
       }
-      this._applyOp(op, false);
+    }
+    if (skipped) {
+      console.warn(
+        `Skipped ${skipped} sync line(s) that could not be applied. ` +
+        `Everything else was applied. First problem:`, firstProblem
+      );
     }
     this._emit();
   }
 
+  _replayOne(op) {
+    // Valid JSON that is not an operation at all (null, a number, a list).
+    if (!op || typeof op !== "object" || typeof op.op !== "string") return;
+    // A log segment's format stamp, written once per run by sync.js. It
+    // isn't an edit — it's provenance — so it's skipped here rather than
+    // falling through to the unknown-op warning.
+    if (op.op === "header") return;
+    if (op.op === "registry") { this._replayRegistry(op); return; }
+    if (op.op === "registry-remove") {
+      const list = this.registry[op.kind];
+      if (!Array.isArray(list)) return;       // a registry kind this build lacks
+      const i = list.findIndex(x => x.key === op.key);
+      if (i >= 0) list.splice(i, 1);
+      return;
+    }
+    this._applyOp(op, false);
+  }
+
+  // Called when an operation is recognised but cannot safely be applied. It
+  // changes nothing and queues nothing; the line simply stays in the log.
+  _skipOp(op, why) {
+    console.warn(`Skipped a "${op && op.op}" operation: ${why}.`, op);
+  }
+
   _replayRegistry(op) {
+    const list = this.registry[op.kind];
+    if (!Array.isArray(list) || !op.value || typeof op.value !== "object" || !op.value.key) {
+      this._skipOp(op, "it is not a usable registry entry");
+      return;
+    }
     const prevTs = this._registryTs[`${op.kind}:${op.value.key}`];
     if (prevTs && clockCompare(op.ts, prevTs) <= 0) return; // LWW on registry too
     this._registryTs[`${op.kind}:${op.value.key}`] = op.ts;
-    const list = this.registry[op.kind];
     const i = list.findIndex(x => x.key === op.value.key);
     if (i >= 0) list[i] = { ...list[i], ...op.value };
     else list.push(op.value);
@@ -1550,7 +1652,9 @@ function middayISO(dateStr) {
   return m ? new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0).toISOString() : null;
 }
 function applySetAdd(it, field, value) {
-  const arr = it[field];
+  // A list that arrived damaged (null, a string) is treated as empty: it had
+  // nothing usable in it, and this heals it rather than crashing the replay.
+  const arr = Array.isArray(it[field]) ? it[field] : (it[field] = []);
   if (field === "links") {
     if (!arr.some(l => l.target === value.target && l.label === value.label)) arr.push(value);
   } else if (field === "attachments") {
@@ -1561,7 +1665,7 @@ function applySetAdd(it, field, value) {
 }
 
 function applySetRemove(it, field, value) {
-  const arr = it[field];
+  const arr = Array.isArray(it[field]) ? it[field] : (it[field] = []);
   if (field === "links") {
     it[field] = arr.filter(l => !(l.target === value.target && l.label === value.label));
   } else if (field === "attachments") {

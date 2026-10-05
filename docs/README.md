@@ -47,14 +47,12 @@ These files are intentionally kept. They explain **why** something exists, what 
 
 ### Important warning about historical files
 
-Old files may contain instructions that were correct **at the time** but are no longer current — especially references to:
+Old files may contain details that were correct **at the time** but are no longer current, especially:
 
-- `dash-vNN` cache versions;
-- manually bumping `CACHE_VERSION`;
-- uploading `sw.js` with every change;
-- treating the service-worker `SHELL` list as a deployment requirement.
+- the exact `dash-vNN` cache version numbers (they go stale with every release; read the live value from `sw.js`);
+- upload-by-hand instructions (Claude now pushes changes to GitHub directly, so Andra no longer uploads files).
 
-**Do not revive those instructions from an old note.** Current deployment behavior is defined by `START-HERE.md`, `deploy-runbook.md`, the current `sw.js`, and `dash-current-state.md`.
+**The cache rule has NOT changed, and old notes that say otherwise are wrong.** `sw.js` keeps a hand-maintained `SHELL` list and a `CACHE_VERSION`. Every new or renamed runtime file goes into `SHELL`, and any change to a cached file bumps `CACHE_VERSION`, in the same commit. `tests/release-safety.test.mjs` fails the build when either is forgotten. Current deployment behavior is defined by `START-HERE.md`, `deploy-runbook.md`, the current `sw.js`, and `dash-current-state.md`.
 
 ---
 
