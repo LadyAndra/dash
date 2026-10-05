@@ -1,6 +1,6 @@
 # Dash — Milestones, Stage, Today Panel & Calendar (Architecture Addendum)
 
-**For:** Andra (andrakhoder@gmail.com) — extends the system described in `dash-architecture-proposal.md`, as amended by `dash-current-state.md`.
+**For:** Andra — extends the system described in `dash-architecture-proposal.md`, as amended by `dash-current-state.md`.
 **Status:** Handoff document. Self-contained given those two companion docs; the implementer should not need any prior conversation context. Reasoning is included alongside every decision, following the same rules: no build step, vanilla ES modules, theme tokens only, accessibility floor (18px+ text, AA contrast, 44px+ targets), and the file format is extended — never broken.
 **Date:** August 1, 2026.
 

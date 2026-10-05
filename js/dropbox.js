@@ -4,11 +4,15 @@
 // including iPhone/iPad — Dropbox's HTTP API is reachable from any browser,
 // unlike an iCloud folder (which only the Mac's browser can open).
 //
-// The access token is supplied by the user in Settings and lives only on the
-// device (localStorage), NEVER in the app's public code. We pass it as a
-// Bearer header on each request. Scope is limited to this app's own folder
-// (the app was created with "App folder" access), so the token can't touch
-// the rest of the user's Dropbox.
+// Signing in is the "Connect to Dropbox" button in Settings (js/dropbox-auth.js,
+// OAuth 2 with PKCE). That flow hands this class a function that returns a
+// current short-lived access token, renewing it quietly from a refresh token
+// kept only on this device (localStorage), NEVER in the app's public code. We
+// pass the token as a Bearer header on each request. (A plain string is also
+// accepted: an older way of signing in by pasting a token by hand, kept as a
+// fallback in sync.js.) Scope is limited to this app's own folder (the app was
+// created with "App folder" access), so the token can't touch the rest of the
+// user's Dropbox.
 //
 // We use the "App folder" so every path here is relative to /Apps/Dash-Andra/.
 // From Dash's perspective the layout mirrors the old iCloud one:
@@ -41,7 +45,7 @@ export class Dropbox {
       method: "POST",
       headers: await this._headers(),
     });
-    if (res.status === 401) throw new DropboxAuthError("Dropbox token was rejected (401). Generate a fresh token and paste it again.");
+    if (res.status === 401) throw new DropboxAuthError("Dropbox rejected the sign-in (401). Open Settings and choose Connect to Dropbox again.");
     if (!res.ok) throw new Error(`Dropbox check failed (${res.status}).`);
     return { ok: true };
   }
@@ -116,7 +120,7 @@ export class Dropbox {
   }
 }
 
-// Distinct error type so the UI can prompt for a fresh token specifically
+// Distinct error type so the UI can prompt for a reconnect specifically
 // (vs. a generic network hiccup).
 export class DropboxAuthError extends Error {
   constructor(msg) { super(msg); this.name = "DropboxAuthError"; }

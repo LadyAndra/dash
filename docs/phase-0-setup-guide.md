@@ -68,14 +68,14 @@ This is how every version of the app (from Phase 1 onward) will get published �
 
 **You can defer this until Phase 3** (when Gmail/Calendar features are actually built). Doing it now just means it's ready.
 
-1. Go to **console.cloud.google.com** and sign in with **andrakhoder@gmail.com** (use the same account whose mail/calendar you want to see). Accept the terms on first visit.
+1. Go to **console.cloud.google.com** and sign in with your Google account (use the same account whose mail/calendar you want to see). Accept the terms on first visit.
 2. **Create the project:** click the project dropdown at the top of the page → **New project** → name it `Dash` → **Create**. Make sure it's selected afterward (its name shows in that top dropdown).
 3. **Enable the two APIs:** in the search bar at the top, type **Gmail API** → open it → click **Enable**. Then search **Google Calendar API** → **Enable**.
 4. **Consent screen** (the permission popup you'll see when signing in):
    - Left menu (☰) → **APIs & Services** → **OAuth consent screen**.
    - Audience/user type: **External** → Create.
    - App name: `Dash`. Support email and developer email: your address. Skip everything optional. Save through the steps.
-   - Find the **Test users** section (either during this flow or as a tab/menu item afterward) → **Add users** → add `andrakhoder@gmail.com`. **This step matters most** — being a test user is what lets you skip Google's app-verification process entirely.
+   - Find the **Test users** section (either during this flow or as a tab/menu item afterward) → **Add users** → add your own Google account's email address. **This step matters most** — being a test user is what lets you skip Google's app-verification process entirely.
    - Leave the app in **Testing** status. Do not click anything like "Publish app."
 5. **Create the credential the app will use:**
    - APIs & Services → **Credentials** → **Create credentials** → **OAuth client ID**.

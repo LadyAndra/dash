@@ -1,6 +1,6 @@
 # "Dash" — Architecture & Design Proposal
 
-**For:** Andra (andrakhoder@gmail.com) — personal dashboard / visual inbox, used daily across iPhone, iPad, and Mac, indefinitely.
+**For:** Andra — personal dashboard / visual inbox, used daily across iPhone, iPad, and Mac, indefinitely.
 **Status:** Handoff document. Written to be fully self-contained — the implementer (human or AI) should not need any prior conversation context. Reasoning is included alongside every major decision.
 **Date:** July 16, 2026.
 

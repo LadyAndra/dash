@@ -79,7 +79,7 @@ assert.ok(
 );
 assert.match(runtime, /const LIMIT = 20/);
 // The delete control is an ICON button now: the scribble is painted from
-// Delete_Scribble.svg through a CSS mask, so the control carries no text.
+// assets/Delete_Scribble.svg through a CSS mask, so the control carries no text.
 // Its NAME therefore lives in aria-label, which is what a screen reader
 // announces and what this rule has always really been about.
 // Round 1.1 (October 2026): the scribble now moves the image to the Trash, and

@@ -121,15 +121,6 @@ const selection = createSelection(store, () => render());
 
 installGlobalErrorBanner();
 
-// TEMPORARY: focus diagnostic for the capture-box bug. Off unless the URL says
-// ?focusdebug=1, dynamically imported so a normal boot never loads it (and so
-// it doesn't need to be in the service worker's SHELL). Delete this block and
-// js/focus-debug.js once the bug is closed.
-try {
-  if (new URLSearchParams(location.search).has("focusdebug")) {
-    import("./focus-debug.js").then((m) => m.start()).catch(() => {});
-  }
-} catch { /* diagnostics must never break boot */ }
 loadSavedTheme();
 
 // re-render whenever the store changes, and flush to disk (debounced)

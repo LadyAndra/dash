@@ -85,7 +85,7 @@ If **Check Dash** is red, open that run, open the step with the red ×, and copy
 | `docs/`                                                             | Dash's written memory: architecture, current behavior, feature specs, and a dated note for every past change.                                                     |
 | `test/`                                                             | Two manual item-editor preview pages only. Not CI. Its tiny CSS/JS bridge files point back to the real root app files so no duplicate source can drift.           |
 | `tests/`                                                            | The authoritative test/support area. GitHub runs every `*.test.mjs` file here after each push to `main`; `visual-harness.html` is a manual visual aid in the same support area. |
-| `mockups/`                                                          | Throwaway design previews. Not part of the live app.                                                                                                              |
+| `mockups/`                                                          | Not in this repo. Design previews from earlier rounds were kept on Andra's computer and never uploaded. Older notes in `docs/` mention them as history.                                                                                                              |
 | `icon*.png`, `icon.svg`, `logo-mark.png`                            | Dash's app icons.                                                                                                                                                 |
 
 ### About retired features

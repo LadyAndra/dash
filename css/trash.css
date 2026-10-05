@@ -137,8 +137,8 @@
   width: var(--trash-mark-size);
   height: var(--trash-mark-size);
   background: currentColor;
-  -webkit-mask: url("../Delete_Scribble.svg") center / contain no-repeat;
-  mask: url("../Delete_Scribble.svg") center / contain no-repeat;
+  -webkit-mask: url("../assets/Delete_Scribble.svg") center / contain no-repeat;
+  mask: url("../assets/Delete_Scribble.svg") center / contain no-repeat;
   opacity: var(--trash-mark-rest);
   transition: opacity var(--transition), transform var(--transition);
 }

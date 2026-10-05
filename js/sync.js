@@ -133,7 +133,7 @@ export class Sync {
     } catch (err) {
       if (err instanceof DropboxAuthError) {
         this._setStatus("auth");
-        reportError("Dropbox needs a fresh token", err);
+        reportError("Dropbox needs you to reconnect (Settings, Connect to Dropbox)", err);
       } else {
         reportError("Couldn't load your saved data", err);
         this._setStatus("error");
@@ -335,7 +335,7 @@ export class Sync {
         await this._flushDropbox(lines);
         this._setStatus("ok");
       } catch (err) {
-        if (err instanceof DropboxAuthError) { this._setStatus("auth"); reportError("Dropbox needs a fresh token", err); }
+        if (err instanceof DropboxAuthError) { this._setStatus("auth"); reportError("Dropbox needs you to reconnect (Settings, Connect to Dropbox)", err); }
         else { this._setStatus("error"); reportError("Couldn't save to Dropbox", err); }
       }
       return;

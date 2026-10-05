@@ -20,11 +20,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // A tiny explicit escape hatch for files that are deliberately NOT part of
-// offline Dash. Keep this list exceptional and explained. focus-debug.js is a
-// temporary diagnostic loaded only when ?focusdebug is requested; app.js says
-// normal Dash never loads it and intentionally keeps it out of SHELL.
+// offline Dash. Keep this list exceptional and explained. It is empty today:
+// the one entry it ever held (a temporary focus diagnostic that was loaded only
+// on request) was deleted in October 2026 once its bug was closed.
 const ONLINE_ONLY_RUNTIME_ASSETS = new Set([
-  "./js/focus-debug.js",
 ]);
 
 let failures = 0;

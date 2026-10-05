@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v112";
+const CACHE_VERSION = "dash-v113";
 const SHELL = [
   "./",
   "./index.html",
@@ -84,7 +84,7 @@ const SHELL = [
   // it too is only ever offline because it is named here.
   "./assets/grain.svg",
   "./assets/window-scene.svg",
-  "./Delete_Scribble.svg",
+  "./assets/Delete_Scribble.svg",
   // The post-it handwriting (October 2026), reached from css/tokens.css.
   "./assets/fonts/BethEllen-Regular.woff2",
   "./icon.svg",

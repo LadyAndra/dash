@@ -111,6 +111,8 @@
 
 **Documentation map:** start with the repository-root `START-HERE.md`, then `docs/README.md`. This file is the written source of truth for current behavior; feature addenda hold deeper design decisions; dated `changes-*.md` notes and old handoffs are history and should be read only when their context is useful.
 
+**Note (October 5, 2026): the `mockups/` folder is not in this repository.** It was kept on Andra's computer and never uploaded, so the two paragraphs below, and the many older notes that say "open `mockups/...`", are history. Check layout changes with the visual harness in `tests/` or on the live site instead.
+
 **`mockups/home-panels-preview.html` is part of the working method now, not a leftover.** It links the *real* `tokens.css` and `app.css` with stand-in content, and has buttons for Home / One project / **List (band + rail)** / Colour pickers, a mount-theme toggle, and live colour pickers running a copy of the real contrast maths. Because Dash can only be checked by deploying, this is how a layout gets seen before it's uploaded. **Keep it current when the CSS changes** — a stale preview is worse than none. It is a mockup and is deliberately not part of the live app or the service worker's install-time precache.
 
 **The other four mockups moved to `mockups/archive/` in the code-health pass**, with a `mockups/README.md` saying which file is which. Only `home-panels-preview.html` is maintained; the rest are superseded explorations kept for reference and should not be read as a picture of how Dash currently looks. `home-hierarchy-explorations.html` is the one worth keeping — it holds the three Home concepts and shows what Concept B was chosen over.
