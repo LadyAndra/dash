@@ -168,7 +168,9 @@ console.log("\n--- the approach strip draws the right marks, painted by the ramp
      cls(`it:${h.ids.chore}:due`).includes('w1'));
 
   const grains = h.all('.cal-strip .cal-mark-grain');
-  ok("grain is drawn over the two thinned marks and nothing else", grains.length === 2,
+  // October 2026: far dots keep their full colour, so no dot is thinned and
+  // none carries grain (the grain rule itself is tested in calendar.test.mjs).
+  ok("no mark carries grain: every upcoming dot is at full colour", grains.length === 0,
      `got ${grains.length}`);
 
   ok("hue is identity: a milestone carries its project's own colour",
@@ -327,6 +329,44 @@ console.log("\n--- the month list replaces the shelf (October 2026) ---");
   h.draw();
   ok("...but a real change to a row redraws it",
      h.all('.cal-item').some(r => r.querySelector('.cal-item-label').textContent === "Renew the domain"));
+}
+
+console.log("\n--- right-click in the month list: the scribble, like every other page (Round 1.4) ---");
+{
+  const h = harness();
+  const rows = h.all('.cal-item');
+  const row = (label) => rows.find(r => r.querySelector('.cal-item-label').textContent === label);
+  const rightClick = (el) => {
+    const ev = new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 200 });
+    el.dispatchEvent(ev);
+    return ev;
+  };
+  const closeMenu = () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+  ok("the rows draw no trash button", h.all('.item-trash').length === 0);
+
+  const ev = rightClick(row("Renew domain"));
+  const scribble = document.querySelector('.row-menu .desk-menu-delete');
+  ok("an entry's row right-clicks to the delete scribble",
+     ev.defaultPrevented && !!scribble && scribble.getAttribute('aria-label') === "Move to trash: Renew domain",
+     scribble && scribble.getAttribute('aria-label'));
+  ok("...opening it trashes nothing, and does not open the entry",
+     !!h.store.get(h.ids.chore) && h.opened.length === 0);
+  closeMenu();
+  ok("...and Escape closes it", !document.querySelector('.row-menu'));
+
+  const ev2 = rightClick(row("Wireframes"));
+  ok("a milestone's row offers nothing: a milestone is not an item",
+     !ev2.defaultPrevented && !document.querySelector('.row-menu'));
+
+  rightClick(row("Renew domain"));
+  const again = document.querySelector('.row-menu .desk-menu-delete');
+  if (again) again.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  ok("clicking the scribble moves that entry to the trash",
+     h.store.get(h.ids.chore) === null && !!h.store.getAny(h.ids.chore)?.trashed);
+  h.draw();
+  ok("...and the list no longer shows it",
+     !h.all('.cal-item').some(r => r.querySelector('.cal-item-label').textContent === "Renew domain"));
 }
 
 console.log("\n--- the list's month buttons, and where they live ---");

@@ -3,14 +3,16 @@
 //   node tests/round1-1-trash-everywhere.test.mjs      (needs jsdom)
 //
 // What has to be true, and why each matters:
-//   - B: every Home entry row has a one-click "Move to trash" button: a real
-//     button, labelled with the entry's name, that trashes with ONE ordinary
-//     op, never opens the entry underneath it, and is absent in Select mode
-//     (where a tap means "pick this").
+//   - B: the retired per-item button (trashButton, opts.trash) still works as a
+//     helper, and a row that doesn't ask for it gets none. Nothing asks for it.
 //   - B2 (Round 1.3, Andra: the repeated scribble was noise): List rows (search
 //     included) and Board cards draw NO button. A right-click (or the Menu key)
-//     offers "Move to trash" in the desk's little menu, through the same single
-//     op and the same Undo, and does nothing special in Select mode.
+//     shows the delete scribble; clicking it trashes through the same single
+//     op and the same Undo. It does nothing special in Select mode.
+//   - B3 (Round 1.4: "across the entire system"): the same on Home (Unfiled box
+//     and due panel) and on the desk's drawer rows; a milestone row gets nothing
+//     (a milestone is not an item); and a scan fails the build if any view asks
+//     for the old button again.
 //   - C: right-clicking a desk card offers "Move to trash", through the same
 //     single op. Not on a card in a closed clip (the stack is one object).
 //   - D: Select mode's bar has "Move to trash": one op per item, no confirm,
@@ -118,9 +120,15 @@ function contextAt(node, x = 300, y = 260) {
 const pressEscape = () =>
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
 
-async function checkRightClick(surface, store, container, id, opened) {
+// Round 1.4 (Andra: "right click and then you should see the scribble icon
+// appear, and that's what you click"): the thing that appears is the scribble
+// itself, the desk's icon-only delete slip, and it is the only way, on EVERY
+// surface. `find` lets a surface whose rows have no data-id (Home's Today
+// rows) say how to find the one it means.
+async function checkRightClick(surface, store, container, id, opened, find) {
   const title = store.get(id).title;
-  const node = container.querySelector(`.item-row[data-id="${id}"], .card[data-id="${id}"]`);
+  const node = find ? find(container)
+                    : container.querySelector(`.item-row[data-id="${id}"], .card[data-id="${id}"]`);
   ok(`${surface}: finds the row/card for "${title}"`, !!node);
   if (!node) return;
   ok(`${surface}: draws no trash button anywhere`, container.querySelectorAll('.item-trash').length === 0);
@@ -130,8 +138,9 @@ async function checkRightClick(surface, store, container, id, opened) {
   ok(`${surface}: right-click is taken over (browser menu suppressed)`, ev.defaultPrevented);
   const menu = rowMenuEl();
   const items = menu ? [...menu.querySelectorAll('.desk-menu-item')] : [];
-  ok(`${surface}: right-click offers Move to trash`, items.length === 1 && items[0].textContent === "Move to trash");
-  ok(`${surface}: ...nothing else (no permanent Delete for an entry)`, items.length === 1);
+  ok(`${surface}: right-click shows the delete scribble, and only that`,
+     !!menu && menu.classList.contains('desk-menu-delete-only') && items.length === 1 && items[0].classList.contains('desk-menu-delete'));
+  ok(`${surface}: ...an icon with no words on it, like the desk's post-it scribble`, items.length === 1 && items[0].textContent === "");
   ok(`${surface}: ...named for the entry, for a screen reader`, items[0] && items[0].getAttribute('aria-label') === `Move to trash: ${title}`);
   ok(`${surface}: ...a real menu item, parked on the page body, in the desk's menu style`,
      !!menu && menu.parentNode === document.body && menu.classList.contains('desk-menu') && menu.getAttribute('role') === 'menu' && items[0].getAttribute('role') === 'menuitem');
@@ -273,31 +282,58 @@ for (const [name, view] of [["List", listView], ["Board", boardView]]) {
   }
 }
 
-// The one surface that still wears a visible button: Home. Its rows and the
-// Unfiled box keep the button exactly as built in Round 1.1.
-console.log("\n--- B: Home keeps its visible button ---");
+// Round 1.4: Home too. Its Unfiled box and its due panel used to keep a visible
+// button; now they are right-click like everything else.
+console.log("\n--- B3: Home draws no button either; right-click shows the scribble ---");
 {
   const { store, a, b } = world();
   store.setField(a, "inbox", true);                    // a phone capture, waiting
   store.setField(b, "due", plusDays(1));               // due tomorrow
   const { ctx, opened } = ctxFor(store);
   const host = document.createElement('div');
+  document.body.appendChild(host);
   homeView.render(query(store, {}), ctx, host);
-  checkButton("Home's Unfiled box", store, host.querySelector('.unfiled-list') || host, a, opened);
-  const host2 = document.createElement('div');
-  homeView.render(query(store, {}), ctxFor(store).ctx, host2);
-  checkButton("Home's due panel", store, host2, b, opened);
+  ok("Home draws no trash button anywhere", host.querySelectorAll('.item-trash').length === 0);
+  await checkRightClick("Home's Unfiled box", store, host.querySelector('.unfiled-list') || host, a, opened);
+  host.replaceChildren();
+  homeView.render(query(store, {}), ctxFor(store).ctx, host);
+  await checkRightClick("Home's due panel", store, host, b, opened,
+    (c) => [...c.querySelectorAll('.today-row')].find(r => /Beta task/.test(r.textContent)));
+  host.remove();
 }
 {
-  // A milestone row on Home gets no trash button: a milestone isn't an item.
+  // A milestone row on Home gets no scribble: a milestone isn't an item.
   const store = new Store();
   const pid = store.createItem({ title: "P", type: "project" });
   const mid = store.addMilestone(pid, { label: "Launch" });
   store.setMilestoneField(pid, mid, "date", plusDays(1));
   const host = document.createElement('div');
+  document.body.appendChild(host);
   homeView.render(query(store, {}), ctxFor(store).ctx, host);
   const msRow = [...host.querySelectorAll('.today-row')].find(r => /Launch/.test(r.textContent));
   ok("Home: a milestone row has no trash button", !!msRow && !msRow.querySelector('.item-trash'));
+  const ev = msRow ? contextAt(msRow) : { defaultPrevented: true };
+  ok("...and a right-click on it offers nothing (a milestone is not an item)", !ev.defaultPrevented && !rowMenuEl());
+  host.remove();
+}
+{
+  // THE GUARD (Round 1.4): nothing draws the per-item button any more. The
+  // helper and the opt-in stay in the code, retired, but no view may ask for
+  // them, so "right-click, then the scribble" cannot quietly stop being the
+  // one way. A new view that wants a trash button has to change this test.
+  const asked = [];
+  const scan = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) { scan(full); continue; }
+      if (!name.endsWith('.js')) continue;
+      if (full.endsWith('views/shared.js') || full.endsWith('js/trash-actions.js')) continue;   // where they are DEFINED
+      const src = readFileSync(full, 'utf8');
+      if (/\btrashButton\s*\(/.test(src) || /\btrash\s*:\s*true\b/.test(src)) asked.push(full);
+    }
+  };
+  scan(new URL('../js', import.meta.url).pathname);
+  ok("no view draws a per-item trash button (right-click is the only way)", asked.length === 0, asked.join(", "));
 }
 
 // ===================================================================
@@ -329,6 +365,16 @@ function deskHarness(seed) {
   click(filed);
   ok("...and neither do the desk's drawer rows",
      h.page.querySelectorAll('.desk-drawer .item-row').length > 0 && h.page.querySelectorAll('.desk-drawer .item-trash').length === 0);
+  // Round 1.4: but a drawer row takes the same right-click scribble.
+  const row = h.page.querySelector('.desk-drawer .item-row[data-id]');
+  const ev = contextAt(row);
+  const scribble = rowMenuEl() && rowMenuEl().querySelector('.desk-menu-delete');
+  ok("...a desk drawer row right-clicks to the scribble too", ev.defaultPrevented && !!scribble);
+  clearToasts();
+  const rid = row.dataset.id;
+  if (scribble) click(scribble);
+  ok("...and clicking it trashes that entry", h.store.get(rid) === null && !!h.store.getAny(rid)?.trashed);
+  h.page.remove();
 }
 {
   const h = deskHarness();
@@ -336,8 +382,10 @@ function deskHarness(seed) {
   card.dispatchEvent(Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }),
                                    { clientX: 300, clientY: 260 }));
   const menu = document.querySelector('.desk-menu');
-  const item = menu && [...menu.querySelectorAll('.desk-menu-item')].find(b => b.textContent === "Move to trash");
+  const item = menu && [...menu.querySelectorAll('.desk-menu-item')].find(b => b.getAttribute('aria-label') === "Move to trash");
   ok("C: right-clicking a desk card offers Move to trash", !!item);
+  ok("...as the delete scribble, the same as everywhere else (Round 1.4)",
+     !!item && menu.classList.contains('desk-menu-delete-only') && item.classList.contains('desk-menu-delete') && item.textContent === "");
   ok("...and nothing else (no permanent Delete for an entry)", menu && menu.querySelectorAll('.desk-menu-item').length === 1);
   clearToasts();
   h.store.pendingOps = [];
@@ -361,7 +409,7 @@ function deskHarness(seed) {
   const loose = h.page.querySelector(`.dcard[data-id="${h.ids[2]}"]`);
   loose.dispatchEvent(Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }), { clientX: 300, clientY: 260 }));
   ok("a loose card next to it still offers Move to trash on right-click",
-     [...document.querySelectorAll('.desk-menu-item')].some(b => b.textContent === "Move to trash"));
+     [...document.querySelectorAll('.desk-menu-item')].some(b => b.getAttribute('aria-label') === "Move to trash"));
   document.querySelector('.desk-menu')?.remove();
 }
 {

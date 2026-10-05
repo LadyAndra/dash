@@ -105,10 +105,10 @@
 /* ============================================================
    Round 1.1 — trash everywhere
    ------------------------------------------------------------
-   The small per-item button. Since Round 1.3 it is drawn on Home only:
-   List rows and Board cards no longer draw it (right-click there, which
-   uses the desk's little .desk-menu), and the desk page never does.
-   The card-corner rules below stay for any card that opts in. Always present, always
+   The small per-item button. RETIRED in Round 1.4: nothing draws it any
+   more. Right-click a row or card and the delete scribble appears instead
+   (the desk's .desk-menu-delete-only look; see js/trash-actions.js). The
+   rules below stay, unused, rather than being deleted. Always present, always
    a full 44px target, but drawn quietly: the authored delete
    scribble (the same mark as the desk's right-click delete), in
    faint ink at rest, full ink on hover or keyboard focus.
@@ -179,6 +179,16 @@
 }
 .card.has-trash .card-head {
   padding-right: var(--tap-min);
+}
+
+/* Round 1.4: right-clicking a row or card shows the delete scribble itself
+   (the desk's .desk-menu-delete-only look, from ui-cleanup.css). That look
+   deliberately draws no focus mark, which is fine for a mouse and leaves a
+   keyboard user (Menu key) unable to see where they are. This puts the same
+   focus ring every other control has on it, for keyboard focus only. */
+.row-menu .desk-menu-delete:focus-visible {
+  border-radius: var(--radius);
+  box-shadow: var(--focus-ring);
 }
 
 /* The Undo on the "Moved to trash" message: a real target, not a link. */

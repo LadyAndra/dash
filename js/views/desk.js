@@ -533,7 +533,7 @@ function filedShelf(store, ctx, data) {
     return box;
   }
   for (const it of data.members) {
-    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
+    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, rightClickTrash: true }));
   }
   return box;
 }
@@ -1730,13 +1730,15 @@ function wireDesk(runtime, state, dom) {
       const id = card.dataset.id;
       if (!runtime.store.get(id)) return;
       e.preventDefault();
+      // The scribble itself, like a post-it or an image (Round 1.4): one
+      // pattern everywhere, right-click then click the scribble.
       deskMenu(e, [{
         label: "Move to trash",
         run: () => {
           if (state.expanded === id) state.expanded = null;
           moveToTrash(runtime.store, [id]);
         },
-      }]);
+      }], { deleteOnly: true });
       return;
     }
     e.preventDefault();
@@ -2146,7 +2148,7 @@ function peekPage(store, project, ctx, data) {
       null, null));
   } else {
     for (const it of data.members) {
-      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
+      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, rightClickTrash: true }));
     }
   }
   return wrap;

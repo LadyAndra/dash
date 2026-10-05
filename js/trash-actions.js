@@ -167,11 +167,14 @@ export function trashButton(store, item, extraClass = "") {
   });
 }
 
-// ---- right-click on a List row or a Board card (October 2026, Round 1.3) ----
-// The small button above was drawn on EVERY row and card, and the repetition
-// was noise. List and Board now draw nothing; the same single op is one
-// right-click away instead, in the same little menu the desk uses (it borrows
-// the desk's .desk-menu look, so there is no new styling to keep in step).
+// ---- THE ONE WAY TO TRASH SOMETHING YOU CAN SEE: right-click, then the scribble ----
+// (October 2026, Rounds 1.3 and 1.4.) The small button above was drawn on every
+// row and card, and the repetition was noise. Nothing draws it any more
+// (trashButton stays here, unused: retired, not deleted). Right-click a row or
+// card ANYWHERE and Andra's delete scribble appears at the pointer; clicking
+// the scribble is the single store.trash() op, with the same message and Undo.
+// It is the same floating scribble the desk uses on a post-it or an image
+// (.desk-menu-delete-only in css/ui-cleanup.css), so there is no new styling.
 //
 // Why this stays reachable without a mouse: a row or card is focusable, and the
 // keyboard's Menu key (or Shift+F10) fires the same `contextmenu` event on the
@@ -197,15 +200,18 @@ export function closeRowMenu() {
 export function openTrashMenu(e, store, item, anchor) {
   closeRowMenu();
   const opener = document.activeElement;
-  const box = el("div", { class: "desk-menu row-menu", role: "menu" });
+  // The row may have been redrawn since it was wired: name it from the store.
+  const live = store.get(item.id) || item;
+  const label = `Move to trash: ${nameOf(live)}`;
+  const box = el("div", { class: "desk-menu desk-menu-delete-only row-menu", role: "menu" });
   const choice = el("button", {
     type: "button",
-    class: "desk-menu-item",
+    class: "desk-menu-item desk-menu-delete",
     role: "menuitem",
-    "aria-label": `Move to trash: ${nameOf(item)}`,
+    "aria-label": label,
+    title: "Move to trash",
     onclick: (ev) => { ev.stopPropagation(); closeRowMenu(); moveToTrash(store, [item.id]); },
   });
-  choice.textContent = "Move to trash";
   box.appendChild(choice);
 
   box.style.left = "0px"; box.style.top = "0px";
@@ -217,7 +223,7 @@ export function openTrashMenu(e, store, item, anchor) {
     const r = anchor.getBoundingClientRect();
     x = r.left + 8; y = r.top + 8;
   }
-  const w = box.offsetWidth || 180, h = box.offsetHeight || 48;
+  const w = box.offsetWidth || 44, h = box.offsetHeight || 44;   // the scribble is one 44px target
   box.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + "px";
   box.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + "px";
   rowMenu = box;

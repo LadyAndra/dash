@@ -55,6 +55,7 @@
 import { calendarData } from "../entries.js";
 import { todayISO, daysUntil, visibleMilestones } from "../milestones.js";
 import { itemColor } from "./shared.js";
+import { openTrashMenu } from "../trash-actions.js";
 import { mount as mountDateInput } from "../widgets/flipdate.js";
 import { colorToken } from "../theme.js";
 
@@ -69,8 +70,16 @@ import { colorToken } from "../theme.js";
 export const CAL_HORIZON_DAYS = 120;          // four months, per §9 item 2
 export const RAMP_NEAR_MAX = 2;               // 0–2 days   -> full dye, hard edge
 export const RAMP_SOON_MAX = 7;               // 3–7 days   -> full dye, no edge
-export const RAMP_MID_MAX = 14;               // 8–14 days  -> 55% dye + grain
-                                              // 15+        -> 24% dye + grain
+export const RAMP_MID_MAX = 14;               // 8–14 days  -> DYE_MID
+                                              // 15+        -> DYE_FAR
+
+// How much dye the two far bands hold. They were 55 and 24 (thinning, with
+// grain) until October 2026, when Andra asked for the dots to keep their
+// project's full colour. These two numbers must match --cal-dye-mid and
+// --cal-dye-far in css/tokens.css (a test checks that). At 100 there is no
+// thinning, so there is no grain either: hasGrain() below follows the dye.
+export const DYE_MID = 100;
+export const DYE_FAR = 100;
 
 // Beyond this many days out a mark stops carrying its label; the quiet far
 // field is part of the reading, and the tooltip is what the far field is for.
@@ -159,20 +168,24 @@ export function dayOfYear(dateStr) {
 //   then distance — including negative distance, which is the ember band.
 
 export function rampOf(entry, today = todayISO()) {
-  if (!entry) return { key: "far", dye: 24 };
+  if (!entry) return { key: "far", dye: DYE_FAR };
   if (entry.done) return { key: "done", dye: 0 };
   if (entry.kind === "remind") return { key: "remind", dye: 0 };
   const n = daysUntil(entry.start, today);
-  if (n === null) return { key: "far", dye: 24 };
+  if (n === null) return { key: "far", dye: DYE_FAR };
   if (n < 0) return { key: "overdue", dye: 100 };
   if (n <= RAMP_NEAR_MAX) return { key: "near", dye: 100 };
   if (n <= RAMP_SOON_MAX) return { key: "soon", dye: 100 };
-  if (n <= RAMP_MID_MAX) return { key: "mid", dye: 55 };
-  return { key: "far", dye: 24 };
+  if (n <= RAMP_MID_MAX) return { key: "mid", dye: DYE_MID };
+  return { key: "far", dye: DYE_FAR };
 }
 
-// Grain arrives with the thinned dye and never before it (§1's table).
-export function hasGrain(rampKey) { return rampKey === "mid" || rampKey === "far"; }
+// Grain arrives with the thinned dye and never before it (§1's table). With
+// the far bands at full dye (see DYE_MID / DYE_FAR) nothing is thinned, so
+// nothing has grain; put the dye back below 100 and the grain comes back.
+export function hasGrain(rampKey) {
+  return (rampKey === "mid" && DYE_MID < 100) || (rampKey === "far" && DYE_FAR < 100);
+}
 
 // ===================================================================
 //  PURE: WEIGHT  (§1 rule 3)
@@ -607,6 +620,23 @@ function ensureShell(ctx, container) {
     if (!row || !view.lastShared) return;
     const e = view.listEntries.get(row.dataset.eid);
     if (e && e.itemId) view.lastShared.ctx.onOpen(e.itemId);
+  });
+
+  // Right-click a row in the list: the delete scribble, the same as everywhere
+  // else (Round 1.4). Only for rows that ARE an entry or a date mark. A
+  // milestone is not an item (its project's editor has the recoverable
+  // "Removed milestones" drawer), so its row gets nothing and the browser's
+  // own menu shows.
+  view.listBody.addEventListener("contextmenu", (ev) => {
+    const row = ev.target.closest(".cal-item");
+    if (!row || !view.lastShared) return;
+    const e = view.listEntries.get(row.dataset.eid);
+    if (!e || e.source === "milestone" || !e.itemId) return;
+    const store = view.lastShared.store;
+    const item = store.get(e.itemId);
+    if (!item) return;
+    ev.preventDefault();
+    openTrashMenu(ev, store, item, row);
   });
 
   view.trayHead.addEventListener("click", () => {

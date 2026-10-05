@@ -244,11 +244,15 @@
      ============================================================ */
   --cal-dye-near: 100%;   /* 0–2 days  — full dye, hard 2px ink edge */
   --cal-dye-soon: 100%;   /* 3–7 days  — full dye, no edge */
-  --cal-dye-mid:   55%;   /* 8–14 days — dye thinning, grain arrives */
-  --cal-dye-far:   24%;   /* 15+ days  — mostly paper, grain
-                             (checked against an 18/24/32% swatch
-                             comparison in two project colours; 24 is
-                             the one that reads faint but not lost) */
+  /* October 2026 (Andra: "they should stay the color and not get pale"):
+     the two far bands no longer thin out. Every upcoming dot is its
+     project's full colour; what still says "close" is the hard ink edge
+     on the 0–2 day band, and ember still means overdue. The old thinning
+     was 55% for 8–14 days and 24% for 15+ (with grain). To bring it back,
+     set these two numbers back AND DYE_MID / DYE_FAR in
+     js/views/calendar.js; the grain returns by itself. */
+  --cal-dye-mid:  100%;   /* 8–14 days — full dye */
+  --cal-dye-far:  100%;   /* 15+ days  — full dye */
   --cal-grain-opacity: 0.45;   /* the shared assets/grain.svg overlay */
 
   /* The approach strip's overdue field. It is TINTED, not filled: the

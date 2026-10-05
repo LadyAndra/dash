@@ -278,8 +278,9 @@ function sketchThumb(item, cls) {
 // lists stay a quiet read-only index.
 // opts.quietType — draw the type mark in plain faint mono instead of its
 // registry colour (see typeChip above). Opt-in for the same reason.
-// opts.trash — draw a small "Move to trash" button at the row's end (never in
-// select mode). Opt-in, so read-only indexes stay read-only.
+// opts.trash — RETIRED (Round 1.4). Draws a small "Move to trash" button at
+// the row's end (never in select mode). Nothing asks for it any more; a test
+// fails the build if a view does. Use opts.rightClickTrash instead.
 export function itemRow(store, item, onOpen, opts = {}) {
   const thumb = sketchThumb(item, "item-sketch-thumb");
   const left = thumb || el("span", { class: "item-no", text: `№ ${catalogNo(store, item)}` });
@@ -375,10 +376,11 @@ function pickingNow(opts) {
   return !!(opts.selection && opts.selection.active);
 }
 
-// opts.rightClickTrash (October 2026, Round 1.3) — the quiet version of
-// opts.trash: no button is drawn at all, and a right-click (or the keyboard's
-// Menu key) on the row or card offers "Move to trash" instead. List and Board
-// use this. Home still asks for the visible button. Same single op either way.
+// opts.rightClickTrash (October 2026, Rounds 1.3 and 1.4) — the one way to
+// trash a row or card. No button is drawn at all; a right-click (or the
+// keyboard's Menu key) on the row or card shows the delete scribble, and
+// clicking that is the single trash op. List, Board, Home and the desk's
+// drawer rows all use it.
 
 // ---- select mode (the Pinterest-style "organise" toggle) ----
 // A small square that shows whether an entry is picked. It's decoration only:

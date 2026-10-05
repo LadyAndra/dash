@@ -47,7 +47,7 @@
 // never eats what you're typing.
 
 import { el, catalogNo, typeChip, statusChip, renderPanel, itemRow } from "./shared.js";
-import { trashButton } from "../trash-actions.js";
+import { trashOnRightClick } from "../trash-actions.js";
 import { toast } from "../ui/toast.js";
 import { todayGroups } from "../entries.js";
 import { formatDay, daysUntil } from "../milestones.js";
@@ -454,7 +454,8 @@ function unfiledEntry(store, item, ctx, local) {
   });
 
   return el("div", { class: "unfiled-entry" }, [
-    itemRow(store, item, ctx.onOpen, { trash: true }),
+    // Right-click shows the delete scribble; no button on the row (Round 1.4).
+    itemRow(store, item, ctx.onOpen, { rightClickTrash: true }),
     fileBtn,
   ]);
 }
@@ -631,14 +632,12 @@ function entryRow(store, ctx, e, today) {
     }));
   }
 
-  // Move to trash (Round 1.1): an entry's or a date mark's own row only. Not on
-  // a milestone row (a milestone is not an item; its project's editor has the
-  // recoverable "Removed milestones" drawer), and not on a reminder row, whose
-  // one job is "Dismiss" — two buttons that both make the row go away would be
-  // a guess waiting to happen.
-  if (item && e.source !== "milestone" && !isRemind) {
-    actions.appendChild(trashButton(store, item));
-  }
+  // Move to trash (Round 1.4: right-click, then the scribble; the per-row
+  // button is gone). An entry's or a date mark's own row only. Not on a
+  // milestone row: a milestone is not an item, and the project's editor has the
+  // recoverable "Removed milestones" drawer for it. A reminder row of an entry
+  // is fine now, since there is no second button on it to confuse it with.
+  const trashable = !!item && e.source !== "milestone";
 
   const open = () => {
     // A milestone row opens its PROJECT — that's where the milestone lives
@@ -657,6 +656,7 @@ function entryRow(store, ctx, e, today) {
     actions.childNodes.length ? actions : null,
   ]);
 
+  if (trashable) trashOnRightClick(store, row, item);
   return row;
 }
 

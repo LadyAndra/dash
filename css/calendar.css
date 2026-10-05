@@ -127,13 +127,15 @@
   stroke: var(--text-primary); stroke-width: 2;
 }
 .cal-mark.ramp-soon { --dye: var(--cal-dye-soon); }        /* 3–7: full dye, no edge */
-.cal-mark.ramp-mid,                                        /* 8–14: dye thinning */
-.cal-mark.ramp-far {                                       /* 15+ : mostly paper */
-  stroke: color-mix(in srgb, var(--pc, var(--text-faint)) 55%, var(--surface));
-  stroke-width: 1.2;
-}
-.cal-mark.ramp-mid { --dye: var(--cal-dye-mid); }
-.cal-mark.ramp-far { --dye: var(--cal-dye-far); }
+.cal-mark.ramp-mid { --dye: var(--cal-dye-mid); }         /* 8–14: full dye (Oct 2026) */
+.cal-mark.ramp-far { --dye: var(--cal-dye-far); }         /* 15+ : full dye (Oct 2026) */
+/* These two bands used to carry a thin edge in a paler tint of the project
+   colour, to keep a thinned (pale) dot findable. At full dye that edge would
+   draw a paler ring round a solid dot, so they have none now. If the dye is
+   ever set back below 100% in tokens.css, give them back the edge:
+     stroke: color-mix(in srgb, var(--pc, var(--text-faint)) 55%, var(--surface));
+     stroke-width: 1.2; */
+.cal-mark.ramp-mid, .cal-mark.ramp-far { stroke: none; }
 
 /* Ember is not in the ramp's colour logic at all. It means past its date,
    and nothing else — the one thing on this screen whose hue is not identity. */

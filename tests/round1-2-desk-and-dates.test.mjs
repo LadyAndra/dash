@@ -80,8 +80,9 @@ console.log("\n--- right-click on bare desk ---");
 
   const card = h.page.querySelector(`.dcard[data-id="${h.a}"]`);
   rightClick(card);
-  ok("a CARD still gets its own menu (Move to trash), not this one",
-     menuItems().map(b => b.textContent).join(",") === "Move to trash");
+  ok("a CARD still gets its own menu, the delete scribble (Move to trash), not this one",
+     menuItems().length === 1 && menuItems()[0].getAttribute('aria-label') === "Move to trash" &&
+     !!document.querySelector('.desk-menu-delete-only'));
   closeEverything();
 }
 {

@@ -53,7 +53,7 @@ console.log("\n--- the ramp classifier, at every boundary (§1 rule 2) ---");
   ok("+2 is still near (the last day of the hard-edge band)", band(2) === "near");
   ok("+3 crosses into soon", band(3) === "soon", `got ${band(3)}`);
   ok("+7 is still soon", band(7) === "soon");
-  ok("+8 crosses into mid — dye thins, grain arrives", band(8) === "mid", `got ${band(8)}`);
+  ok("+8 crosses into mid", band(8) === "mid", `got ${band(8)}`);
   ok("+14 is still mid", band(14) === "mid");
   ok("+15 crosses into far", band(15) === "far", `got ${band(15)}`);
   ok("+120 (the horizon) is far", band(cal.CAL_HORIZON_DAYS) === "far");
@@ -68,10 +68,13 @@ console.log("\n--- the ramp classifier, at every boundary (§1 rule 2) ---");
   ok("a reminder in the past is still a reminder, not overdue",
      cal.rampOf(due(plus(-3), { kind: "remind" }), TODAY).key === "remind");
 
-  ok("grain arrives with the thinned dye and not before",
-     !cal.hasGrain("near") && !cal.hasGrain("soon") &&
-     cal.hasGrain("mid") && cal.hasGrain("far") &&
-     !cal.hasGrain("overdue") && !cal.hasGrain("done"));
+  // October 2026: the far bands keep their full colour, so nothing is thinned
+  // and nothing has grain. The rule itself (grain follows thinned dye, and
+  // never arrives before it) is still the rule; this checks it both ways.
+  ok("with the far bands at full dye, no band has grain",
+     ["near", "soon", "mid", "far", "overdue", "done", "remind"].every(k => !cal.hasGrain(k)));
+  ok("...and the dye numbers that decide that are exported and at 100",
+     cal.DYE_MID === 100 && cal.DYE_FAR === 100);
 }
 
 console.log("\n--- the ramp's percentages match the tokens they claim to be ---");
@@ -86,9 +89,12 @@ console.log("\n--- the ramp's percentages match the tokens they claim to be ---"
   };
   ok("--cal-dye-near is 100%, and rampOf agrees", tok("near") === 100 && cal.rampOf(due(plus(1)), TODAY).dye === 100);
   ok("--cal-dye-soon is 100%, and rampOf agrees", tok("soon") === 100 && cal.rampOf(due(plus(5)), TODAY).dye === 100);
-  ok("--cal-dye-mid is 55%, and rampOf agrees", tok("mid") === 55 && cal.rampOf(due(plus(10)), TODAY).dye === 55);
-  ok("--cal-dye-far is 24%, and rampOf agrees (§9 item 1: checked on a swatch, kept)",
-     tok("far") === 24 && cal.rampOf(due(plus(40)), TODAY).dye === 24);
+  ok("--cal-dye-mid is 100% (Andra, Oct 2026: dots keep their colour), and rampOf agrees",
+     tok("mid") === 100 && cal.rampOf(due(plus(10)), TODAY).dye === 100);
+  ok("--cal-dye-far is 100% (same), and rampOf agrees",
+     tok("far") === 100 && cal.rampOf(due(plus(40)), TODAY).dye === 100);
+  ok("a far dot is never paler than a near one: every upcoming band is full dye",
+     [1, 5, 10, 40, 100].every(n => cal.rampOf(due(plus(n)), TODAY).dye === 100));
   ok("--cal-grain-opacity and --radius-housing and --cal-fog-ceiling are all declared",
      /--cal-grain-opacity:\s*0\.45/.test(tokens) &&
      /--radius-housing:\s*6px/.test(tokens) &&
