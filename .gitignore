@@ -1,0 +1,4 @@
+# The test helper (jsdom) is installed on demand, both on a laptop and by the
+# Check Dash workflow (`npm install --prefix tests --no-save`). It is large and
+# never part of Dash itself, so it is never committed.
+tests/node_modules/
