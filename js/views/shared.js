@@ -5,7 +5,7 @@
 import { colorToken, inkFor, resolveHex } from "../theme.js";
 import { blobObjectURL } from "../blobs.js";
 import { stageOf } from "../milestones.js";
-import { trashButton } from "../trash-actions.js";
+import { trashButton, trashOnRightClick } from "../trash-actions.js";
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -307,6 +307,7 @@ export function itemRow(store, item, onOpen, opts = {}) {
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(item.id); } },
   }, [left, main, bin]);
 
+  if (opts.rightClickTrash) trashOnRightClick(store, row, item, () => pickingNow(opts));
   return applySelectable(row, item, opts.selection);
 }
 
@@ -347,6 +348,7 @@ export function itemCard(store, item, onOpen, opts = {}) {
     bin,
   ]);
 
+  if (opts.rightClickTrash) trashOnRightClick(store, card, item, () => pickingNow(opts));
   return applySelectable(card, item, opts.selection);
 }
 
@@ -365,8 +367,18 @@ function editableStatus(opts) {
 // control above: while you're picking, a tap means "pick this", never "throw
 // this away". See js/trash-actions.js for what the button does.
 function showTrash(opts) {
-  return !!opts.trash && !(opts.selection && opts.selection.active);
+  return !!opts.trash && !pickingNow(opts);
 }
+
+// Is Select mode on right now? Asked fresh each time it matters.
+function pickingNow(opts) {
+  return !!(opts.selection && opts.selection.active);
+}
+
+// opts.rightClickTrash (October 2026, Round 1.3) — the quiet version of
+// opts.trash: no button is drawn at all, and a right-click (or the keyboard's
+// Menu key) on the row or card offers "Move to trash" instead. List and Board
+// use this. Home still asks for the visible button. Same single op either way.
 
 // ---- select mode (the Pinterest-style "organise" toggle) ----
 // A small square that shows whether an entry is picked. It's decoration only:

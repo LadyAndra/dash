@@ -59,7 +59,9 @@ export const listView = {
           selection: ctx.selection,
           statusControl: true,
           quietType: true,
-          trash: true,
+          // No trash button on every row. Right-click (or the Menu key) on a
+          // row offers "Move to trash" instead. See trashOnRightClick().
+          rightClickTrash: true,
         });
 
         // PROJECT IDENTITY — List experiment, round two.

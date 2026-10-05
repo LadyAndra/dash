@@ -105,8 +105,10 @@
 /* ============================================================
    Round 1.1 — trash everywhere
    ------------------------------------------------------------
-   The small per-item button on List rows, Board cards and Home.
-   (Not on the desk page, since October 2026: right-click there.) Always present, always
+   The small per-item button. Since Round 1.3 it is drawn on Home only:
+   List rows and Board cards no longer draw it (right-click there, which
+   uses the desk's little .desk-menu), and the desk page never does.
+   The card-corner rules below stay for any card that opts in. Always present, always
    a full 44px target, but drawn quietly: the authored delete
    scribble (the same mark as the desk's right-click delete), in
    faint ink at rest, full ink on hover or keyboard focus.

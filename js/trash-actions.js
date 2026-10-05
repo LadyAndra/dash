@@ -167,6 +167,105 @@ export function trashButton(store, item, extraClass = "") {
   });
 }
 
+// ---- right-click on a List row or a Board card (October 2026, Round 1.3) ----
+// The small button above was drawn on EVERY row and card, and the repetition
+// was noise. List and Board now draw nothing; the same single op is one
+// right-click away instead, in the same little menu the desk uses (it borrows
+// the desk's .desk-menu look, so there is no new styling to keep in step).
+//
+// Why this stays reachable without a mouse: a row or card is focusable, and the
+// keyboard's Menu key (or Shift+F10) fires the same `contextmenu` event on the
+// focused one, so it opens here too, placed at the row because a keyboard
+// press has no pointer position. On a phone, a long-press does the same where
+// the browser supports it; Select mode and the editor's own "Move to trash"
+// are the other ways in.
+//
+// Exactly one menu exists at a time. It is parked on <body> (not inside the
+// row, so a scrolling list can't clip it) and closes on the next press
+// anywhere, on Escape, on scroll or resize, or when it is used.
+let rowMenu = null;
+let rowMenuCleanup = null;
+
+export function closeRowMenu() {
+  if (rowMenuCleanup) { rowMenuCleanup(); rowMenuCleanup = null; }
+  if (!rowMenu) return false;
+  rowMenu.remove();
+  rowMenu = null;
+  return true;
+}
+
+export function openTrashMenu(e, store, item, anchor) {
+  closeRowMenu();
+  const opener = document.activeElement;
+  const box = el("div", { class: "desk-menu row-menu", role: "menu" });
+  const choice = el("button", {
+    type: "button",
+    class: "desk-menu-item",
+    role: "menuitem",
+    "aria-label": `Move to trash: ${nameOf(item)}`,
+    onclick: (ev) => { ev.stopPropagation(); closeRowMenu(); moveToTrash(store, [item.id]); },
+  });
+  choice.textContent = "Move to trash";
+  box.appendChild(choice);
+
+  box.style.left = "0px"; box.style.top = "0px";
+  document.body.appendChild(box);
+
+  // A keyboard-opened menu reports 0,0: put it at the row's top-left instead.
+  let x = e.clientX, y = e.clientY;
+  if (!x && !y && anchor && anchor.getBoundingClientRect) {
+    const r = anchor.getBoundingClientRect();
+    x = r.left + 8; y = r.top + 8;
+  }
+  const w = box.offsetWidth || 180, h = box.offsetHeight || 48;
+  box.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + "px";
+  box.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + "px";
+  rowMenu = box;
+
+  const away = (ev) => { if (rowMenu && !rowMenu.contains(ev.target)) closeRowMenu(); };
+  const onKey = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    closeRowMenu();
+    if (opener && opener.focus) opener.focus({ preventScroll: true });
+  };
+  const onMove = () => closeRowMenu();
+  // Listening starts on the next tick, so the press that opened the menu
+  // (on some platforms the same gesture) can't also close it.
+  const timer = window.setTimeout(() => {
+    document.addEventListener("pointerdown", away, true);
+  }, 0);
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("scroll", onMove, true);
+  window.addEventListener("resize", onMove);
+  rowMenuCleanup = () => {
+    window.clearTimeout(timer);
+    document.removeEventListener("pointerdown", away, true);
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("scroll", onMove, true);
+    window.removeEventListener("resize", onMove);
+  };
+  choice.focus({ preventScroll: true });
+  return box;
+}
+
+// Wire right-click on one row/card. isPicking() is asked at the moment of the
+// click, because Select mode can be switched on after the row was drawn: while
+// picking, a right-click does nothing special (the browser's own menu shows).
+// A text field inside the row would keep the browser's own menu (copy/paste);
+// there are none today. The status dropdown is NOT exempt: it has no useful
+// menu of its own, and a right-click on it should do what one anywhere else
+// on the row does.
+export function trashOnRightClick(store, node, item, isPicking = () => false) {
+  node.addEventListener("contextmenu", (e) => {
+    if (isPicking()) return;
+    if (e.target && e.target.closest && e.target.closest("input, textarea")) return;
+    e.preventDefault();
+    openTrashMenu(e, store, item, node);
+  });
+  return node;
+}
+
 // A tiny local element helper, so this module doesn't import views/shared.js
 // (which imports this one).
 function el(tag, attrs) {

@@ -41,7 +41,9 @@ export const boardView = {
         {
           selection: ctx.selection,
           statusControl: true,
-          trash: true,
+          // No trash button on every card. Right-click (or the Menu key) on a
+          // card offers "Move to trash" instead. See trashOnRightClick().
+          rightClickTrash: true,
           hideType: typeIsTheHeading,
 
           // Filing is not state. A card's type mark drops its registry

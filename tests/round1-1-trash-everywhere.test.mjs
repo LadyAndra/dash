@@ -3,11 +3,14 @@
 //   node tests/round1-1-trash-everywhere.test.mjs      (needs jsdom)
 //
 // What has to be true, and why each matters:
-//   - B: every List row (search included), Board card and
-//     Home entry row has a one-click "Move to trash" button: a real button,
-//     labelled with the entry's name, that trashes with ONE ordinary op, never
-//     opens the entry underneath it, and is absent in Select mode (where a tap
-//     means "pick this").
+//   - B: every Home entry row has a one-click "Move to trash" button: a real
+//     button, labelled with the entry's name, that trashes with ONE ordinary
+//     op, never opens the entry underneath it, and is absent in Select mode
+//     (where a tap means "pick this").
+//   - B2 (Round 1.3, Andra: the repeated scribble was noise): List rows (search
+//     included) and Board cards draw NO button. A right-click (or the Menu key)
+//     offers "Move to trash" in the desk's little menu, through the same single
+//     op and the same Undo, and does nothing special in Select mode.
 //   - C: right-clicking a desk card offers "Move to trash", through the same
 //     single op. Not on a card in a closed clip (the stack is one object).
 //   - D: Select mode's bar has "Move to trash": one op per item, no confirm,
@@ -104,6 +107,82 @@ function checkButton(surface, store, container, id, opened) {
   store.trash(id); store.restore(id);   // leave nothing odd behind
 }
 
+// ---- Round 1.3: the quiet version. No button; right-click offers the same op. ----
+const tick = () => new Promise(r => setTimeout(r, 5));
+const rowMenuEl = () => document.querySelector('.row-menu');
+function contextAt(node, x = 300, y = 260) {
+  const ev = new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  node.dispatchEvent(ev);
+  return ev;
+}
+const pressEscape = () =>
+  document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+async function checkRightClick(surface, store, container, id, opened) {
+  const title = store.get(id).title;
+  const node = container.querySelector(`.item-row[data-id="${id}"], .card[data-id="${id}"]`);
+  ok(`${surface}: finds the row/card for "${title}"`, !!node);
+  if (!node) return;
+  ok(`${surface}: draws no trash button anywhere`, container.querySelectorAll('.item-trash').length === 0);
+  ok(`${surface}: ...and leaves no has-trash layout hook`, container.querySelectorAll('.has-trash').length === 0);
+
+  const ev = contextAt(node);
+  ok(`${surface}: right-click is taken over (browser menu suppressed)`, ev.defaultPrevented);
+  const menu = rowMenuEl();
+  const items = menu ? [...menu.querySelectorAll('.desk-menu-item')] : [];
+  ok(`${surface}: right-click offers Move to trash`, items.length === 1 && items[0].textContent === "Move to trash");
+  ok(`${surface}: ...nothing else (no permanent Delete for an entry)`, items.length === 1);
+  ok(`${surface}: ...named for the entry, for a screen reader`, items[0] && items[0].getAttribute('aria-label') === `Move to trash: ${title}`);
+  ok(`${surface}: ...a real menu item, parked on the page body, in the desk's menu style`,
+     !!menu && menu.parentNode === document.body && menu.classList.contains('desk-menu') && menu.getAttribute('role') === 'menu' && items[0].getAttribute('role') === 'menuitem');
+  ok(`${surface}: ...placed at the pointer`, !!menu && menu.style.left === "300px" && menu.style.top === "260px", menu && menu.style.cssText);
+  ok(`${surface}: ...keyboard focus lands on the choice`, !!items[0] && document.activeElement === items[0]);
+
+  clearToasts();
+  store.pendingOps = [];
+  if (items[0]) click(items[0]);
+  ok(`${surface}: choosing it trashes the entry`, store.get(id) === null && !!store.getAny(id)?.trashed);
+  ok(`${surface}: ...with exactly one ordinary set op`,
+     store.pendingOps.length === 1 && store.pendingOps[0].op === OP.SET && store.pendingOps[0].field === "trashed",
+     JSON.stringify(store.pendingOps));
+  ok(`${surface}: ...without opening the entry`, !opened.includes(id));
+  ok(`${surface}: ...with no confirm`, !document.querySelector('.modal-scrim'));
+  ok(`${surface}: ...and the menu closes`, !rowMenuEl());
+  const undo = toasts().querySelector('.toast-undo');
+  ok(`${surface}: the same message with Undo appears`, !!undo && /Moved to trash/.test(toasts().textContent));
+  if (undo) click(undo);
+  ok(`${surface}: Undo puts it back`, !!store.get(id));
+}
+
+async function checkMenuBehaviour(surface, store, container, idA, idB) {
+  const nodeA = container.querySelector(`.item-row[data-id="${idA}"], .card[data-id="${idA}"]`);
+  const nodeB = container.querySelector(`.item-row[data-id="${idB}"], .card[data-id="${idB}"]`);
+
+  contextAt(nodeA);
+  pressEscape();
+  ok(`${surface}: Escape closes the menu and trashes nothing`, !rowMenuEl() && !!store.get(idA));
+
+  contextAt(nodeA);
+  await tick();
+  document.body.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }));
+  ok(`${surface}: pressing anywhere else closes it and trashes nothing`, !rowMenuEl() && !!store.get(idA));
+
+  contextAt(nodeA);
+  contextAt(nodeB, 100, 120);
+  ok(`${surface}: only one menu exists at a time`, document.querySelectorAll('.row-menu').length === 1);
+  const stillA = store.get(idA), stillB = store.get(idB);
+  ok(`${surface}: ...and merely opening menus trashes nothing`, !!stillA && !!stillB);
+  pressEscape();
+
+  // The keyboard's Menu key reports 0,0: the menu must still open, at the row.
+  const kev = contextAt(nodeA, 0, 0);
+  const km = rowMenuEl();
+  ok(`${surface}: the Menu key opens it too`, kev.defaultPrevented && !!km);
+  ok(`${surface}: ...at the row, not stuck in the page corner`, !!km && km.style.left !== "0px" && km.style.top !== "0px", km && km.style.cssText);
+  pressEscape();
+  ok(`${surface}: left no menu behind`, !rowMenuEl());
+}
+
 // ===================================================================
 console.log("\n--- B: the shared row and card ---");
 {
@@ -131,25 +210,72 @@ console.log("\n--- B: the shared row and card ---");
   const btn = card.querySelector('.item-trash');
   btn.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   ok("Enter on the button never reaches the card's own open-on-Enter", !opened.includes(a));
+
+  // The quiet option (Round 1.3): opt-in, so read-only indexes stay read-only.
+  const quietRow = itemRow(store, store.get(a), (id) => opened.push(id), { rightClickTrash: true });
+  const quietCard = itemCard(store, store.get(a), (id) => opened.push(id), { rightClickTrash: true });
+  ok("rightClickTrash draws no button on a row or a card", !quietRow.querySelector('.item-trash') && !quietCard.querySelector('.item-trash'));
+  const plainRow = itemRow(store, store.get(a), () => {}, {});
+  const plainCard = itemCard(store, store.get(a), () => {}, {});
+  ok("a row that didn't ask for it has no right-click menu either", !contextAt(plainRow).defaultPrevented && !rowMenuEl());
+  ok("...nor does a card", !contextAt(plainCard).defaultPrevented && !rowMenuEl());
+  opened.length = 0;
+  click(quietRow);
+  quietCard.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  ok("a left-click and Enter still just open the entry", opened.length === 2 && opened.every(id => id === a) && !!store.get(a));
+  ok("...and a right-click never opens it", (opened.length = 0, contextAt(quietRow), opened.length === 0));
+  pressEscape();
 }
 
 // ===================================================================
-console.log("\n--- B: every surface that lists entries ---");
+console.log("\n--- B2: List and Board draw no button; right-click trashes ---");
 for (const [name, view] of [["List", listView], ["Board", boardView]]) {
-  const { store, b } = world();
+  const { store, a, b } = world();
   const { ctx, opened } = ctxFor(store);
   const host = document.createElement('div');
+  document.body.appendChild(host);
   view.render(query(store, {}), ctx, host);
-  checkButton(name, store, host, b, opened);
+  await checkRightClick(name, store, host, b, opened);
+  await checkMenuBehaviour(name, store, host, a, b);
+  host.remove();
 }
 {
   // Search is the List with a text filter, so it gets the List's rows.
   const { store, b } = world();
   const { ctx, opened } = ctxFor(store);
   const host = document.createElement('div');
+  document.body.appendChild(host);
   listView.render(query(store, { filter: { text: "beta" } }), ctx, host);
-  checkButton("a List search", store, host, b, opened);
+  await checkRightClick("a List search", store, host, b, opened);
+  host.remove();
 }
+{
+  // Select mode: a tap means "pick this", and a right-click must not throw
+  // anything away either. Asked at the moment of the click, so it also holds
+  // when Select mode is switched on AFTER the row was drawn.
+  for (const [name, view] of [["List", listView], ["Board", boardView]]) {
+    const { store, a } = world();
+    const sel = createSelection(store, () => {});
+    const { ctx } = ctxFor(store, sel);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    view.render(query(store, {}), ctx, host);          // drawn BEFORE Select mode
+    const node = host.querySelector(`.item-row[data-id="${a}"], .card[data-id="${a}"]`);
+    sel.enter();
+    const ev = contextAt(node);
+    ok(`${name}: in Select mode a right-click offers nothing`, !rowMenuEl() && !ev.defaultPrevented);
+    ok(`${name}: ...and trashes nothing`, !!store.get(a));
+    sel.exit();
+    const ev2 = contextAt(node);
+    ok(`${name}: leaving Select mode brings the menu back`, !!rowMenuEl() && ev2.defaultPrevented);
+    pressEscape();
+    host.remove();
+  }
+}
+
+// The one surface that still wears a visible button: Home. Its rows and the
+// Unfiled box keep the button exactly as built in Round 1.1.
+console.log("\n--- B: Home keeps its visible button ---");
 {
   const { store, a, b } = world();
   store.setField(a, "inbox", true);                    // a phone capture, waiting
@@ -311,15 +437,20 @@ console.log("\n--- D: bulk Move to trash from Select mode ---");
 }
 
 // ===================================================================
-console.log("\n--- a project trashed from a button ---");
+console.log("\n--- a project trashed from a right-click ---");
 {
   const { store, pid, a, b } = world();
   const { ctx, opened } = ctxFor(store);
   const host = document.createElement('div');
+  document.body.appendChild(host);
   listView.render(query(store, {}), ctx, host);
-  const btn = [...host.querySelectorAll('.item-trash')].find(x => x.getAttribute('aria-label') === "Move to trash: Freelance site");
-  ok("the project's own List row has the button", !!btn);
-  click(btn);
+  const projRow = host.querySelector(`.item-row[data-id="${pid}"]`);
+  ok("the project's own List row is there", !!projRow);
+  contextAt(projRow);
+  const choice = rowMenuEl() && rowMenuEl().querySelector('.desk-menu-item');
+  ok("...and a right-click on it offers Move to trash", !!choice && choice.getAttribute('aria-label') === "Move to trash: Freelance site");
+  click(choice);
+  host.remove();
   ok("the project is in the trash", store.get(pid) === null && store.getAny(pid)?.trashed);
   ok("its members are still live", !!store.get(a) && !!store.get(b));
   ok("...and still carry their link to it",
