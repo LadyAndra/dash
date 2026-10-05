@@ -580,7 +580,7 @@ async function attachmentChip(att, onRemove) {
         el("span", { class: "attach-doc-name", text: att.name || `${att.hash.slice(0, 8)}.${att.ext}` }),
       ]);
   const link = el("a", { ...attachmentLinkAttrs(att, url), class: "attach-link" }, [inner]);
-  const remove = el("button", { type: "button", class: "attach-remove", "aria-label": `Remove ${att.name || "attachment"}`, text: "✕", onclick: onRemove });
+  const remove = el("button", { type: "button", class: "attach-remove", "aria-label": `Remove ${att.name || "attachment"}`, text: "Remove", onclick: onRemove });
   return el("div", { class: "attach-chip" }, [link, remove]);
 }
 

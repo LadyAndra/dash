@@ -54,7 +54,7 @@
 .cal-ctl {
   font-family: var(--font-mono); font-size: var(--text-label);
   letter-spacing: 0.14em; text-transform: uppercase;
-  min-height: var(--control-min); padding: 0 var(--space-3);
+  min-height: var(--control-min); min-width: var(--control-min); padding: 0 var(--space-3);
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   color: var(--text-muted); background: var(--surface-raised); cursor: pointer;
 }

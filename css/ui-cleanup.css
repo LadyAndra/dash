@@ -501,6 +501,7 @@
 .catalog-band .band-sel {
   padding-inline: 0;
   margin-right: var(--space-3);
+  min-height: var(--control-min);
 }
 
 .catalog-band .search-wrap input:hover,
