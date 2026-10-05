@@ -316,8 +316,8 @@ console.log("\n--- the unscheduled tray, and the setting mechanism ---");
        u.getAttribute('role') === 'spinbutton' &&
        u.hasAttribute('aria-valuenow') && u.hasAttribute('aria-valuetext') &&
        u.hasAttribute('aria-valuemin') && u.hasAttribute('aria-valuemax')));
-  ok("...and the exact-entry path is always present, never gesture-only",
-     h.q('.fd-typed input[type="date"]') !== null);
+  ok("...and it is never gesture-only: every card is a keyboard spinbutton (typed digits and arrows)",
+     [...h.all('.fd-unit')].every(u => u.getAttribute('role') === 'spinbutton' && u.tabIndex === 0));
 
   ok("nothing has been written to the store yet",
      h.store.milestone(h.ids.beta, h.ids.b2).date === null,
@@ -373,7 +373,7 @@ console.log("\n--- typed digits, carry, and commit-once ---");
   document.body.appendChild(host);
   REDUCE = true;
   const commits = [];
-  const w = flipdate.mount(host, { value: "2026-08-05", onCommit: (v) => commits.push(v) });
+  const w = flipdate.mount(host, { value: "2026-08-05", confirm: true, onCommit: (v) => commits.push(v) });
   const day = host.querySelector('.fd-day');
   day.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '2', bubbles: true }));
   day.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: '7', bubbles: true }));
@@ -426,6 +426,22 @@ console.log("\n--- the theme-swap audit, on the real markup (§7) ---");
   ok("...because every paint is a var() or a color-mix() of one",
      !/#[0-9a-fA-F]{6}\b/.test(after) && !/\brgba?\(/.test(after));
   document.documentElement.removeAttribute('data-theme');
+}
+
+console.log("\n--- a milestone already marked done, with its date still ahead (October 2026) ---");
+{
+  // Andra's report: "milestones I set in a project don't show on the
+  // Calendar". Her real ones were marked done with dates still to come, and
+  // the approach used to hide every done thing, leaving the lane empty.
+  const h = harness();
+  const { alpha, a2 } = h.ids;
+  h.store.setMilestoneField(alpha, a2, "done", new Date().toISOString());   // dated plus(40)
+  h.draw();
+  const m = h.marks().find(x => x.dataset.eid === `ms:${alpha}:${a2}:due`);
+  ok("a done milestone dated ahead still shows on the approach", !!m);
+  ok("...drawn as done, quietly", !!m && /ramp-done/.test(m.getAttribute('class')), m && m.getAttribute('class'));
+  ok("...and a done one in the PAST still stays off the approach (Month shows it)",
+     !h.marks().some(x => x.dataset.eid === `ms:${h.ids.beta}:${h.ids.b3}:due`));
 }
 
 console.log(fail ? `\n${fail} of ${n} Calendar render checks FAILED` : `\nall ${n} Calendar render checks passed`);

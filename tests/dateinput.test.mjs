@@ -35,7 +35,7 @@ dom.window.matchMedia = (q) => ({
   addEventListener(){}, removeEventListener(){}, addListener(){}, removeListener(){},
 });
 
-const { mount, todayValue, toISO } = await import('../js/widgets/flipdate.js');
+const { mount, todayValue, toISO, AUTO_COMMIT_MS } = await import('../js/widgets/flipdate.js');
 
 let fail = 0, n = 0;
 const ok = (name, cond, extra = "") => {
@@ -86,8 +86,6 @@ console.log("\n--- compact: the same machine, sized for a form row ---");
   ok("a caller can name the field, and every unit inherits it",
      labelled.unit('day').getAttribute('aria-label') === "Due date — Day" &&
      labelled.unit('year').getAttribute('aria-label') === "Due date — Year");
-  ok("...including the exact-entry field behind TYPE",
-     labelled.q('.fd-typed input').getAttribute('aria-label') === "Due date — exact date");
   labelled.done();
 
   const css = fs.readFileSync(path.join(ROOT, "css/dateinput.css"), "utf8");
@@ -112,17 +110,16 @@ console.log("\n--- empty: a field that is allowed to hold no date ---");
   ok("...and told to a screen reader as 'no date', with no number to read",
      h.unit('day').getAttribute('aria-valuetext') === "No date set" &&
      !h.unit('day').hasAttribute('aria-valuenow'));
-  ok("nothing to clear yet, so CLEAR is spent", h.clear.disabled === true);
+  ok("nothing to clear yet, so the × is hidden", h.clear.hidden === true);
   ok("...and the blanks are dots, not dashes — a dash sits on the card's own seam and reads as a broken control",
      !/[–—-]/.test(h.face('day') + h.face('month') + h.face('year')));
-  ok("nothing to save yet either", h.set.disabled === true);
 
   // The point of seeding: "scroll to put a date on this" has to work without a
   // separate 'add a date' step in front of it.
   h.key('day', 'ArrowUp');
   ok("one notch on an empty field lands on TODAY, not tomorrow", h.w.value() === TODAY,
      `got ${h.w.value()}, today is ${TODAY}`);
-  ok("...and it is now something worth saving", h.set.disabled === false);
+  ok("...and it is now something worth saving", h.w.isDirty());
   h.key('day', 'ArrowUp');
   ok("the notch after that moves off today", h.w.value() !== TODAY);
   h.done();
@@ -137,12 +134,13 @@ console.log("\n--- empty: a field that is allowed to hold no date ---");
 console.log("\n--- clearing ---");
 {
   const h = harness({ value: "2026-08-23", allowEmpty: true });
-  ok("a field with a date offers CLEAR", h.clear.disabled === false);
+  ok("a field with a date offers a small × to clear it", h.clear.hidden === false && h.clear.textContent === "×");
+  ok("...named for a screen reader", /Clear/.test(h.clear.getAttribute('aria-label')));
   h.click(h.clear);
   ok("clearing empties the faces", h.w.value() === null && h.face('day') === "··");
   ok("...and commits on the spot, without waiting for SET", h.commits.length === 1 && h.commits[0] === null,
      "clearing is one unambiguous act with no intermediate state to scrub through");
-  ok("...and there is nothing left to clear", h.clear.disabled === true);
+  ok("...and the × goes away again", h.clear.hidden === true);
   h.done();
 
   const noEmpty = harness({ value: "2026-08-23" });
@@ -151,36 +149,46 @@ console.log("\n--- clearing ---");
 }
 
 // ==================================================================
-console.log("\n--- saved vs unsaved: the one field in Dash that doesn't autosave ---");
+console.log("\n--- simple by default: no SET, no TYPE, it saves itself (October 2026) ---");
 {
-  const h = harness({ value: "2026-08-23" });
+  const h = harness({ value: "2026-08-23", allowEmpty: true, autoCommitMs: 40 });
+  ok("an ordinary date field has no SET button", h.set === null);
+  ok("...and no TYPE button or hidden exact-entry field",
+     ![...h.host.querySelectorAll('button')].some(b => /type/i.test(b.textContent)) && !h.q('input'));
+  ok("...the × is the only button", h.host.querySelectorAll('button').length === 1);
+  h.key('day', 'ArrowUp');
+  ok("a tick writes nothing on the spot", h.commits.length === 0 && h.w.isDirty());
+  await wait(120);
+  ok("...and saves itself a beat later", h.commits.length === 1 && h.commits[0] === "2026-08-24");
+  h.done();
+
+  const dflt = harness({ value: "2026-08-23" });
+  ok("autosave is ON by default, without the caller asking", AUTO_COMMIT_MS > 0);
+  dflt.key('day', 'ArrowUp');
+  await wait(AUTO_COMMIT_MS + 80);
+  ok("...and lands after AUTO_COMMIT_MS", dflt.commits.length === 1);
+  dflt.done();
+}
+
+console.log("\n--- the Calendar's tray keeps SET (confirm: true) ---");
+{
+  const h = harness({ value: "2026-08-23", confirm: true });
   ok("arriving on a saved date, SET is spent", h.set.disabled === true && !h.w.isDirty());
   ok("...and says so out loud", h.set.getAttribute('aria-label') === "Date saved");
-  ok("...and the housing is quiet", !h.w.root.classList.contains('is-dirty'));
-
   h.key('day', 'ArrowUp');
-  ok("one tick and there is something pending", h.w.isDirty() && h.set.disabled === false);
-  ok("...the housing takes an ink edge", h.w.root.classList.contains('is-dirty'));
-  ok("...SET lights up", h.set.classList.contains('is-pending'));
-  ok("...and says THAT out loud too", h.set.getAttribute('aria-label') === "Set this date");
-  ok("but nothing has been written yet", h.commits.length === 0);
-
+  ok("one tick and SET lights up", h.set.classList.contains('is-pending') && h.set.getAttribute('aria-label') === "Set this date");
+  await wait(AUTO_COMMIT_MS + 80);
+  ok("...and nothing saves on its own", h.commits.length === 0);
   h.click(h.set);
   ok("SET writes exactly once", h.commits.length === 1 && h.commits[0] === "2026-08-24");
-  ok("...and the mechanism goes quiet again",
-     !h.w.isDirty() && h.set.disabled === true && !h.w.root.classList.contains('is-dirty'));
   h.done();
 }
 
 console.log("\n--- a field that opens on today is PROPOSING today, not showing it saved ---");
 {
-  // The Calendar's tray: a phase with no date, in a field that cannot be
-  // empty. It opens on today — and "set this phase to today" is the single
-  // most likely thing you want, so SET has to be live on arrival.
-  const h = harness({ value: null, allowEmpty: false });
+  const h = harness({ value: null, allowEmpty: false, confirm: true });
   ok("it opens showing today", h.w.value() === TODAY);
-  ok("...but today is a proposal, so SET is live immediately", h.set.disabled === false,
-     "otherwise today would be the one date you could not choose");
+  ok("...but today is a proposal, so SET is live immediately", h.set.disabled === false);
   h.click(h.set);
   ok("...and pressing it commits today", h.commits.length === 1 && h.commits[0] === TODAY);
   h.done();
@@ -189,7 +197,7 @@ console.log("\n--- a field that opens on today is PROPOSING today, not showing i
 // ==================================================================
 console.log("\n--- the safety nets ---");
 {
-  const tray = harness({ value: null, autoCommitMs: 0 });
+  const tray = harness({ value: null, confirm: true });
   tray.key('day', 'ArrowUp');
   await wait(80);
   ok("with autocommit off, ticking alone never writes — SET is the only way",
@@ -241,7 +249,7 @@ console.log("\n--- setValue, for a caller whose data changed underneath ---");
   h.key('day', 'ArrowUp');
   h.w.setValue("2027-01-09");
   ok("setValue replaces what is on the faces", h.w.value() === "2027-01-09" && h.face('day') === "09");
-  ok("...and counts as saved, not as pending", !h.w.isDirty() && h.set.disabled === true);
+  ok("...and counts as saved, not as pending", !h.w.isDirty());
   ok("...without writing anything of its own", h.commits.length === 0);
   h.w.setValue(null);
   ok("a non-emptyable field handed null falls back to today rather than to blank",
@@ -272,9 +280,11 @@ console.log("\n--- every date field in Dash now goes through it ---");
      (src("js/views/milestone-editor.js").match(/mountDateInput\(/g) || []).length === 1);
   ok("...and keeps its focus-restoration key, which that drawer depends on",
      /fkey,/.test(src("js/views/milestone-editor.js")));
-  ok("the Calendar's tray mounts it FULL size and without autocommit",
-     /size: "full"/.test(src("js/views/calendar.js")) &&
+  ok("the Calendar's tray mounts it FULL size, with SET (confirm) and no autocommit",
+     /size: "full"/.test(src("js/views/calendar.js")) && /confirm: true/.test(src("js/views/calendar.js")) &&
      !/autoCommitMs/.test(src("js/views/calendar.js")));
+  ok("the phase editor holds redraws while the pointer is on a date (the jumping fix)",
+     /holdWhileOver\(wrap, ctx\)/.test(src("js/views/milestone-editor.js")));
 
   ok("the widget is a STATIC import everywhere now, so the SHELL crawler can see it",
      !/await import\(["'][^"']*flipdate/.test(src("js/views/calendar.js")));

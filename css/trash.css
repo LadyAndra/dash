@@ -105,8 +105,8 @@
 /* ============================================================
    Round 1.1 — trash everywhere
    ------------------------------------------------------------
-   The small per-item button on List rows, Board cards, Search,
-   the desk's drawers and cards, and Home. Always present, always
+   The small per-item button on List rows, Board cards and Home.
+   (Not on the desk page, since October 2026: right-click there.) Always present, always
    a full 44px target, but drawn quietly: the authored delete
    scribble (the same mark as the desk's right-click delete), in
    faint ink at rest, full ink on hover or keyboard focus.
@@ -143,7 +143,6 @@
 
 .item-row:hover .item-trash::before,
 .card:hover .item-trash::before,
-.dcard:hover .item-trash::before,
 .today-row:hover .item-trash::before,
 .item-trash:hover::before,
 .item-trash:focus-visible::before {
@@ -178,15 +177,6 @@
 }
 .card.has-trash .card-head {
   padding-right: var(--tap-min);
-}
-
-/* Desk cards: at the end of the foot line. The full 44px target is kept,
-   but pulled into the line's own height with negative margins so a card
-   is no taller than it was before the button existed. */
-.dcard-foot .dcard-trash {
-  margin-left: auto;
-  margin-block: calc((var(--tap-min) - var(--trash-mark-size)) / -2);
-  margin-right: calc((var(--tap-min) - var(--trash-mark-size)) / -2);
 }
 
 /* The Undo on the "Moved to trash" message: a real target, not a link. */

@@ -3,7 +3,7 @@
 //   node tests/round1-1-trash-everywhere.test.mjs      (needs jsdom)
 //
 // What has to be true, and why each matters:
-//   - B: every List row (search included), Board card, desk drawer row, desk card and
+//   - B: every List row (search included), Board card and
 //     Home entry row has a one-click "Move to trash" button: a real button,
 //     labelled with the entry's name, that trashes with ONE ordinary op, never
 //     opens the entry underneath it, and is absent in Select mode (where a tap
@@ -195,17 +195,14 @@ function deskHarness(seed) {
   return { store, pid, ids: [a, b, c], ctx, page, opened };
 }
 {
+  // October 2026 (Andra): NO trash scribble anywhere on the desk page — not
+  // on its cards and not in its drawers. Right-click is how a card goes.
   const h = deskHarness();
-  const card = h.page.querySelector(`.dcard[data-id="${h.ids[0]}"]`);
-  ok("a desk card has a trash button", !!card?.querySelector('.dcard-trash'));
-  const press = new dom.window.Event('pointerdown', { bubbles: true, cancelable: true });
-  Object.assign(press, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
-  h.store.pendingOps = [];
-  card.querySelector('.dcard-trash').dispatchEvent(press);
-  ok("pressing it writes nothing and starts no drag", h.store.pendingOps.length === 0 && !card.classList.contains('is-dragging'));
-  checkButton("a desk card", h.store, card, h.ids[0], h.opened);
-  ok("...and restore puts the card back exactly where it was",
-     deskData(h.store.all(), h.pid).placed.some(p => p.id === h.ids[0] && p.pos.x === 200 && p.pos.y === 200));
+  ok("desk cards carry no trash button", h.page.querySelectorAll('.dcard .item-trash').length === 0);
+  const filed = [...h.page.querySelectorAll('.desk-handle')].find(b => b.dataset.shelf === "filed");
+  click(filed);
+  ok("...and neither do the desk's drawer rows",
+     h.page.querySelectorAll('.desk-drawer .item-row').length > 0 && h.page.querySelectorAll('.desk-drawer .item-trash').length === 0);
 }
 {
   const h = deskHarness();
@@ -231,12 +228,15 @@ function deskHarness(seed) {
     for (const id of ids.slice(0, 2)) store.setDeskField(id, pid, "clip", cid);
   });
   const clipped = h.page.querySelector(`.dcard[data-id="${h.ids[0]}"]`);
-  ok("a card in a closed clip has no trash button", !!clipped && !clipped.querySelector('.dcard-trash'));
+  ok("a card in a closed clip is there to right-click", !!clipped);
   const ev = Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }), { clientX: 300, clientY: 260 });
   clipped.dispatchEvent(ev);
   ok("...and right-clicking it opens no Move to trash", !document.querySelector('.desk-menu'));
   const loose = h.page.querySelector(`.dcard[data-id="${h.ids[2]}"]`);
-  ok("a loose card next to it still has one", !!loose.querySelector('.dcard-trash'));
+  loose.dispatchEvent(Object.assign(new dom.window.Event('contextmenu', { bubbles: true, cancelable: true }), { clientX: 300, clientY: 260 }));
+  ok("a loose card next to it still offers Move to trash on right-click",
+     [...document.querySelectorAll('.desk-menu-item')].some(b => b.textContent === "Move to trash"));
+  document.querySelector('.desk-menu')?.remove();
 }
 {
   // Round 1.1, second pass (Andra's call): a post-it's scribble moves it to

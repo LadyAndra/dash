@@ -187,7 +187,6 @@ export function openEditor(store, itemId, opts = {}) {
       size: "compact",
       allowEmpty: true,
       label: ariaLabel,
-      autoCommitMs: 1500,
       onCommit: (dateStr) => store.setField(id, storeKey, atMidday(dateStr)),
     }));
     return host;

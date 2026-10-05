@@ -3530,9 +3530,9 @@ button, input, textarea, select {
   border: none; background: transparent;
   padding: var(--space-3);
   resize: none;
-  font-family: var(--font-body);
+  font-family: var(--font-postit);
   font-size: 40px;
-  line-height: 1.35;
+  line-height: var(--postit-line-height);
   overflow: hidden;
   /* --text-primary is the verified pair for this paper. --text-faint is NOT
      (3.6:1 worst case) and must not be used here. */

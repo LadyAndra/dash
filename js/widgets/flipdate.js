@@ -9,8 +9,8 @@
 //   - There is NO MOMENTUM anywhere, on any input path. A flick does nothing.
 //   - Day roll-over CARRIES, like a real flip clock at midnight: Aug 31 +1
 //     is Sep 1, and the month card flips too.
-//   - Nothing is reachable only by gesture. Wheel, arrow keys, typed digits,
-//     hold-and-drag, and a native date field all reach the same value.
+//   - Nothing is reachable only by gesture. Wheel, arrow keys, typed digits
+//     and hold-and-drag all reach the same value.
 //   - You never have to CLICK IT FIRST. Rest the pointer over a card and
 //     scroll: it ticks. That is the whole point of a machine sitting on the
 //     surface rather than a field you have to go and open.
@@ -33,10 +33,19 @@
 //           allowEmpty,   // may the field hold NO date? (default false)
 //           label,        // accessible name prefix, e.g. "Due date"
 //           fkey,         // optional data-fkey, for focus restoration
-//           autoCommitMs, // 0 = SET only; >0 = also commit a beat after the
-//                         //   last tick, for fields replacing an autosaving input
+//           confirm,      // true = show a SET button and commit ONLY on it
+//                         //   (the Calendar's tray). Default false: no SET.
+//           autoCommitMs, // how long after the last tick it saves itself.
+//                         //   Default AUTO_COMMIT_MS without `confirm`, 0 with.
 //         }) -> { root, value(), setValue(v), isDirty(), commitIfDirty(),
 //                 focus(), destroy() }
+//
+// SIMPLIFIED, October 2026 (Andra: "a set button, a type button, and a clear
+// button... that's a little complicated"). Everywhere but the Calendar's tray
+// the mechanism now has NO buttons to press: scroll, arrow or type digits and
+// it saves itself a beat after you stop. The TYPE button and its hidden native
+// field are gone (typing digits on a focused card already did the same job).
+// CLEAR is a small × that appears only when there is a date to clear.
 //
 // SIZE. "full" is the object as designed — a machine you can see across the
 // room, for the Calendar's tray where it is the only thing happening. But a
@@ -84,6 +93,9 @@ export const WHEEL_THROTTLE_MS = 80;
 export const DRAG_PX_PER_TICK = 28;
 // How long a typed digit stays "open" for a second digit ("2" then "7" -> 27).
 export const TYPE_BUFFER_MS = 900;
+
+// How long after the last tick an ordinary date field saves itself.
+export const AUTO_COMMIT_MS = 700;
 
 export const YEAR_MIN = 2020;
 export const YEAR_MAX = 2100;
@@ -185,8 +197,9 @@ export function mount(container, opts = {}) {
   const {
     onCommit = null, onCancel = null,
     size = "full", allowEmpty = false, label = "", fkey = null,
-    autoCommitMs = 0,
+    confirm = false,
   } = opts;
+  const autoCommitMs = opts.autoCommitMs != null ? opts.autoCommitMs : (confirm ? 0 : AUTO_COMMIT_MS);
 
   let v = parseISO(opts.value ?? null);
   if (v) v = clampDay(v);
@@ -291,61 +304,33 @@ export function mount(container, opts = {}) {
     return el;
   }
 
-  // ---- SET / CLEAR / TYPE ----
+  // ---- SET (the Calendar's tray only) and CLEAR ----
   const actions = doc.createElement("div");
   actions.className = "fd-actions";
 
-  const okBtn = doc.createElement("button");
-  okBtn.type = "button";
-  okBtn.className = "fd-btn fd-btn-primary";
-  okBtn.textContent = "Set";
-  on(okBtn, "click", () => commit());
-  actions.appendChild(okBtn);
+  let okBtn = null;
+  if (confirm) {
+    okBtn = doc.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "fd-btn fd-btn-primary";
+    okBtn.textContent = "Set";
+    on(okBtn, "click", () => commit());
+    actions.appendChild(okBtn);
+  }
 
-  const typeBtn = doc.createElement("button");
-  typeBtn.type = "button";
-  typeBtn.className = "fd-btn";
-  typeBtn.textContent = "Type";
-  typeBtn.setAttribute("aria-expanded", "false");
-  on(typeBtn, "click", () => toggleTyped());
-  actions.appendChild(typeBtn);
-
+  // A small ×, drawn only while there is a date to take away.
   let clearBtn = null;
   if (allowEmpty) {
     clearBtn = doc.createElement("button");
     clearBtn.type = "button";
     clearBtn.className = "fd-btn fd-btn-clear";
-    clearBtn.textContent = "Clear";
+    clearBtn.textContent = "×";
+    clearBtn.setAttribute("aria-label", label ? `Clear ${label.toLowerCase()}` : "Clear date");
+    clearBtn.title = "Clear date";
     on(clearBtn, "click", () => clear());
     actions.appendChild(clearBtn);
   }
-  root.appendChild(actions);
-
-  // (4) EXACT — the native date field. Always present, never the only way in.
-  // On a phone this is also the fastest path, and it is deliberately kept.
-  const typed = doc.createElement("span");
-  typed.className = "fd-typed";
-  const input = doc.createElement("input");
-  input.type = "date";
-  input.setAttribute("aria-label", label ? `${label} — exact date` : "Exact date");
-  on(input, "change", () => {
-    const next = parseISO(input.value);
-    if (next) { v = clampDay(next); paintAll(); }
-    else if (allowEmpty) { v = null; paintAll(); }
-  });
-  on(input, "keydown", (ev) => {
-    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-    if (ev.key === "Escape") { ev.preventDefault(); onCancel && onCancel(); }
-  });
-  typed.appendChild(input);
-  root.appendChild(typed);
-
-  function toggleTyped() {
-    const open = !root.classList.contains("typing");
-    root.classList.toggle("typing", open);
-    typeBtn.setAttribute("aria-expanded", String(open));
-    if (open) input.focus();
-  }
+  if (actions.childNodes.length) root.appendChild(actions);
 
   // An empty mechanism seeds itself from today the moment you touch it, so
   // "scroll to set a date that isn't there yet" works without a separate
@@ -473,22 +458,20 @@ export function mount(container, opts = {}) {
     syncOutputs();
   }
 
-  // Everything that has to agree with the faces but isn't a face: the native
-  // input behind TYPE, and — the important one — whether this mechanism is
-  // currently showing something it has not saved.
+  // Everything that has to agree with the faces but isn't a face: whether
+  // this mechanism is showing something it has not saved yet.
   function syncOutputs() {
     const now = valueOf();
-    input.value = now || "";
     const dirty = now !== committed;
     root.classList.toggle("is-dirty", dirty);
     root.classList.toggle("is-empty", !v);
-    okBtn.disabled = !dirty;
-    okBtn.classList.toggle("is-pending", dirty);
-    // Said out loud, not only drawn: dates are the one field in Dash that
-    // does not autosave, so a screen reader has to be told the same thing the
-    // ink edge is showing.
-    okBtn.setAttribute("aria-label", dirty ? "Set this date" : "Date saved");
-    if (clearBtn) clearBtn.disabled = !v;
+    if (okBtn) {
+      okBtn.disabled = !dirty;
+      okBtn.classList.toggle("is-pending", dirty);
+      // Said out loud, not only drawn: in the tray nothing saves until SET.
+      okBtn.setAttribute("aria-label", dirty ? "Set this date" : "Date saved");
+    }
+    if (clearBtn) { clearBtn.hidden = !v; clearBtn.disabled = !v; }
     if (dirty) scheduleAutoCommit();
   }
 

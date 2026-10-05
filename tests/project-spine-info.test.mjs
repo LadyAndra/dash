@@ -171,7 +171,9 @@ console.log("\n--- the scoped Projects stylesheet carries the hierarchy contract
      /\.project-focus-no\s*\{[\s\S]*?display:\s*none;/.test(css));
   ok("Canyon is requested only from a locally installed copy",
      tokens.includes('local("BN Canyon")') && tokens.includes('local("BNCanyonRegular")') &&
-     !/@font-face[\s\S]*?url\(/.test(tokens));
+     // Canyon's own @font-face block must never carry a url(). (The post-it
+     // hand, Beth Ellen, is a separate block and IS shipped — it's OFL.)
+     !/font-family:\s*"Dash Canyon Local";[^}]*url\(/.test(tokens));
   ok("the display token still falls back to Dash's reading serif",
      /--font-display:[^;]*Dash Canyon Local[^;]*Iowan Old Style/.test(tokens));
   ok("Canyon stays reserved for graphic project identity",

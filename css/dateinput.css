@@ -90,15 +90,21 @@
 }
 .fd-btn:disabled { opacity: 0.45; cursor: default; }
 
-.fd-typed { display: none; margin-left: var(--space-2); }
-.flipdate.typing .fd-typed { display: inline-block; }
-.fd-typed input {
-  font-family: var(--font-mono); font-size: var(--text-base);
-  padding: var(--space-2); min-height: var(--tap-min);
-  border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--surface-raised); color: var(--text-primary);
+/* CLEAR is a small × beside the cards (October 2026), shown only while there
+   is a date. A full 44px target, drawn quietly: it is an escape hatch, not
+   something the eye should land on. The SET button survives only in the
+   Calendar's tray. */
+.fd-btn-clear {
+  width: var(--tap-min); min-width: var(--tap-min);
+  height: var(--tap-min); min-height: var(--tap-min);
+  padding: 0;
+  border-color: transparent; background: transparent;
+  font-family: var(--font-ui); font-size: var(--text-lg);
+  letter-spacing: 0; text-transform: none; line-height: 1;
+  color: var(--text-muted);
 }
-.fd-typed input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.fd-btn-clear:hover:not(:disabled) { background: var(--surface-sunken); }
+.fd-btn-clear[hidden] { display: none; }
 
 /* ============================================================
    COMPACT — the same machine, sized for a form row
@@ -121,13 +127,14 @@
 .flipdate-compact .fd-flap > span { line-height: 50px; height: 50px; }
 /* The hints go, not the accessible names — each unit keeps its aria-label. */
 .flipdate-compact .fd-hint { display: none; }
+/* With SET and TYPE gone, the only thing left beside the cards is the ×,
+   so it sits on the same line instead of a row of its own. */
 .flipdate-compact .fd-actions {
-  flex-basis: 100%; flex-direction: row; flex-wrap: wrap;
-  margin-left: 0; margin-top: var(--space-1);
+  flex-direction: row; align-self: center;
+  margin-left: 0;
 }
 .flipdate-compact .fd-btn { min-height: var(--control-min); padding: 0 var(--space-2); }
-.flipdate-compact .fd-typed { flex-basis: 100%; margin-left: 0; }
-.flipdate-compact .fd-typed input { width: 100%; min-height: var(--control-min); }
+.flipdate-compact .fd-btn-clear { padding: 0; }
 
 /* The editor's two date fields sit side by side in a narrow column; let the
    mechanism own its cell rather than fighting the label above it. */

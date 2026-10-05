@@ -165,6 +165,7 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
   // The visible part is Dash's readout; the real native date input is laid over
   // it at full tap-target size. No parsing or timezone conversion is introduced.
   const dueField = dateField({
+    ctx,
     label: "Due",
     value: m.date || "",
     fkey: `date:${m.mid}`,
@@ -172,6 +173,7 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
     onChange: (value) => store.setMilestoneField(project.id, m.mid, "date", value || null),
   });
   const remindField = dateField({
+    ctx,
     label: "Remind",
     value: m.remind || "",
     fkey: `remind:${m.mid}`,
@@ -250,7 +252,39 @@ function milestoneRow(store, project, ctx, s, list, m, index, today, entries, op
 //   - It autocommits a beat after the last tick, like the item editor's, so a
 //     date scrolled here cannot be lost to a rebuild arriving mid-scroll from
 //     another device.
-function dateField({ label, value, fkey, ariaLabel, onChange }) {
+//
+// HOLDING STILL (October 2026). Andra: scrolling a phase's date "kept jumping
+// between random dates". The cause: each save is a store write, and a store
+// write rebuilds this whole drawer — so the field under the pointer was
+// thrown away and redrawn mid-scroll, the drawer could shift, and the next
+// notch landed on a DIFFERENT date field. So while the pointer rests on a date
+// field (or it has keyboard focus), redraws are held, exactly as the desk
+// holds them during a drag. The saves still happen; the drawer just redraws
+// once you move away. The hold also lets go by itself after a short idle, so
+// it can never be left stuck if the field vanishes some other way.
+const DATE_HOLD_IDLE_MS = 2500;
+function holdWhileOver(wrap, ctx) {
+  if (!ctx || typeof ctx.holdRenders !== "function") return;
+  let release = null, idle = null, over = false, focused = false;
+  const letGo = () => {
+    if (idle) { clearTimeout(idle); idle = null; }
+    if (release) { const r = release; release = null; r(); }
+  };
+  const touch = () => {
+    if (!release) release = ctx.holdRenders();
+    if (idle) clearTimeout(idle);
+    idle = setTimeout(letGo, DATE_HOLD_IDLE_MS);
+  };
+  wrap.addEventListener("pointerenter", () => { over = true; touch(); });
+  wrap.addEventListener("pointerleave", () => { over = false; if (!focused) letGo(); });
+  wrap.addEventListener("wheel", touch, { passive: true });
+  wrap.addEventListener("pointermove", touch);
+  wrap.addEventListener("keydown", touch);
+  wrap.addEventListener("focusin", () => { focused = true; touch(); });
+  wrap.addEventListener("focusout", () => { focused = false; if (!over) letGo(); });
+}
+
+function dateField({ ctx, label, value, fkey, ariaLabel, onChange }) {
   const wrap = el("div", { class: "ms-date-field" }, [
     el("span", { class: "mk", text: label }),
   ]);
@@ -260,9 +294,9 @@ function dateField({ label, value, fkey, ariaLabel, onChange }) {
     allowEmpty: true,
     label: ariaLabel,
     fkey,
-    autoCommitMs: 1500,
     onCommit: (dateStr) => onChange(dateStr || ""),
   });
+  holdWhileOver(wrap, ctx);
   return wrap;
 }
 

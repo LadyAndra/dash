@@ -42,7 +42,7 @@ import { renderMilestoneEditor } from "./milestone-editor.js";
 import { PROJECT_LINK } from "../store.js";
 import { stageOf, milestoneProgress, formatDay } from "../milestones.js";
 import { toast } from "../ui/toast.js";
-import { trashButton, moveToTrash, moveDeskThingToTrash } from "../trash-actions.js";
+import { moveToTrash, moveDeskThingToTrash } from "../trash-actions.js";
 import { CLIP_BANNER_SVG, CLIP_MARK_SVG } from "../icons.js";
 import * as D from "../desk.js";
 
@@ -533,7 +533,7 @@ function filedShelf(store, ctx, data) {
     return box;
   }
   for (const it of data.members) {
-    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, trash: true }));
+    box.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
   }
   return box;
 }
@@ -959,17 +959,12 @@ function refreshCard(node, store, project, ctx, p, weight, state, at, inClip) {
     children.push(full);
   }
 
-  // Move to trash (Round 1.1). Not while picking cards for a clip (a tap
-  // there means "pick this", like Select mode), and not on a card inside a
-  // CLOSED clip: closed, the stack is one object, and a bin on its top sheet
-  // would read as "throw the whole stack away". Open the clip and every card
-  // gets its own. The desk's pointerdown already ignores real buttons, so the
-  // press can never start a drag.
-  const canTrash = !state.clipping && (!clipped || open);
+  // No per-card trash button on the desk (October 2026, Andra: the scribble
+  // on every card was too much). A desk card goes to the Trash by
+  // right-clicking it — see the contextmenu handler in wireDesk().
   children.push(el("div", { class: "dcard-foot" }, [
     overdue ? el("span", { class: "mk mk-ember", text: "Overdue" }) : statusChip(store, it),
     el("span", { class: "num", text: shortDate(it) }),
-    canTrash ? trashButton(store, it, "dcard-trash") : null,
   ]));
   node.replaceChildren(...children);
   return node;
@@ -1651,6 +1646,41 @@ function wireDesk(runtime, state, dom) {
         : `${n} picked. Press the clip again to hold them together.`;
   }
 
+  // ---- a new ENTRY where you right-clicked (October 2026) ----
+  // The same three steps as the banner's "+" (make it, file it in this
+  // project, open it), plus one more: it lands on the desk at the spot you
+  // chose, as the top card. Its top-left corner sits just under the pointer,
+  // the way the Unplaced drawer's drag-out places one.
+  function newEntryAt(at) {
+    const r = view.getBoundingClientRect();
+    const store = runtime.store, pid = runtime.project.id;
+    const id = store.createItem({ title: "" });
+    store.assignToProject(id, pid);
+    const pos = D.clampPos({
+      x: at.clientX - r.left + view.scrollLeft - D.ORIGIN - 24,
+      y: at.clientY - r.top + view.scrollTop - D.ORIGIN - 24,
+    });
+    store.placeOnDesk(id, pid, pos, runtime.data.maxZ + 1);
+    runtime.ctx.rerender();
+    openEditor(store, id, { onClose: runtime.ctx.rerender, sync: runtime.ctx.sync });
+  }
+
+  // ---- a new MILESTONE (October 2026) ----
+  // Opens the Milestones drawer with the cursor already in its "Add a
+  // milestone" box: type the name, Enter, and its date fields are right there.
+  // Nothing is written until you name it, so a stray click leaves no blank
+  // milestone behind.
+  function newMilestone() {
+    const ms = runtime.ctx.viewLocal && runtime.ctx.viewLocal.ms;
+    if (ms) { ms.focusKey = "add"; ms.focusSel = null; }
+    else if (runtime.ctx.viewLocal) runtime.ctx.viewLocal.ms = { showRemoved: false, focusKey: "add", focusSel: null, drafts: {}, expanded: {} };
+    if (state.drawer !== "milestones") drawer.setDrawer("milestones");
+    requestAnimationFrame(() => {
+      const input = drawer.body.querySelector('[data-fkey="add"]');
+      if (input) input.focus({ preventScroll: false });
+    });
+  }
+
   // ---- a new post-it on bare desk ----
   function newPostIt(e) {
     const r = view.getBoundingClientRect();
@@ -1673,7 +1703,21 @@ function wireDesk(runtime, state, dom) {
     const mark = e.target.closest(".dclip-mark");
     const note = e.target.closest(".dnote");
     const card = !mark && !note ? e.target.closest(".dcard") : null;
-    if (!mark && !note && !card) return;
+    // ---- BARE DESK: make something here (October 2026) ----
+    // New entry, a milestone, or a post-it. Anything else under the pointer
+    // (a real control, an image — which has its own menu) is left alone.
+    if (!mark && !note && !card) {
+      if (state.clipping) return;
+      if (e.target.closest("button, a, input, textarea, select, .desk-image-object")) return;
+      e.preventDefault();
+      const at = { clientX: e.clientX, clientY: e.clientY };
+      deskMenu(e, [
+        { label: "New entry", run: () => newEntryAt(at) },
+        { label: "Milestone", run: () => newMilestone() },
+        { label: "Post-it",   run: () => newPostIt(at) },
+      ]);
+      return;
+    }
     // ---- a CARD: Move to trash (Round 1.1) ----
     // The same single op the editor, the card's own button and Select mode
     // use, with the same Undo. Skipped (the browser's own menu shows, as it
@@ -2102,7 +2146,7 @@ function peekPage(store, project, ctx, data) {
       null, null));
   } else {
     for (const it of data.members) {
-      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true, trash: true }));
+      wrap.appendChild(itemRow(store, it, ctx.onOpen, { selection: ctx.selection, statusControl: true }));
     }
   }
   return wrap;

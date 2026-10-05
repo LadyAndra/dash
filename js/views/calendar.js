@@ -749,7 +749,14 @@ function renderStrip(view, s) {
     const oldest = overdue.length ? Math.max(...overdue.map(e => -daysUntil(e.start, s.today))) : 0;
     const geom = approachGeometry(W, oldest);
     xOf = (e) => approachX(daysUntil(e.start, s.today), geom);
-    shown = live.filter(e => daysUntil(e.start, s.today) <= CAL_HORIZON_DAYS);
+    // A FINISHED thing whose date is still ahead stays on the approach, drawn
+    // quietly as done (the same muted grain Month uses for history). It used
+    // to be hidden with every other done entry, which left its project's lane
+    // sitting empty and read as "my milestone isn't on the Calendar" (October
+    // 2026). Finished things in the PAST still belong to Month, not here:
+    // the left of NOW is the overdue zone, and done is never overdue.
+    const doneAhead = s.data.entries.filter(e => e.done && daysUntil(e.start, s.today) >= 0);
+    shown = live.concat(doneAhead).filter(e => daysUntil(e.start, s.today) <= CAL_HORIZON_DAYS);
 
     if (overdue.length) {
       out += `<rect class="cal-overdue-zone" x="0" y="0" width="${geom.nowX}" height="${H}"/>`;
@@ -1265,6 +1272,7 @@ function renderTray(view, s) {
         view.flip = mountDateInput(slot, {
           value: null,
           size: "full",
+          confirm: true,          // the one place SET is kept (see above)
           label: `Date for ${item.label}`,
           onCommit: (dateStr) => {
             closeFlip(view);
