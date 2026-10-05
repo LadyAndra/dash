@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# The checker only needs to read the code. Without this line it would get the
+# repository's broader default permissions, which it never uses.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Dash tests
