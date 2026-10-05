@@ -1,15 +1,12 @@
-// Round 1, step zero (October 2026): DASH IS DESKTOP ONLY.
+// October 5, 2026: an iPad gets the "desktop only" screen too.
 //
-//   node tests/round1-desktop-only.test.mjs      (needs jsdom)
+//   node tests/ipad-desktop-only.test.mjs      (needs jsdom)
 //
-// Boots the REAL js/app.js under a phone-shaped window (coarse pointer) and
-// checks that the phone gets the plain "desktop only" screen — not the old
-// Text / Sketch / Image capture screen — with no verbs left to tap. Also checks
-// the capture screen and the rest of the phone code are DELETED (October 5,
-// 2026), not just switched off. The iPad twin is tests/ipad-desktop-only.test.mjs.
-//
-// The desktop side of the same boot is tests/round1-app-desktop.test.mjs; they
-// are two files because app.js boots once per process.
+// The twin of tests/round1-desktop-only.test.mjs (a phone-sized window). Boots
+// the REAL js/app.js under an iPad-shaped window: coarse pointer, 820 x 1180,
+// far above any "phone" size. It must get the same plain screen with nothing to
+// tap, because the gate is the pointer, not the screen size. Two files because
+// app.js boots once per process.
 import { JSDOM } from 'jsdom';
 import { readFileSync, existsSync } from 'node:fs';
 
@@ -22,8 +19,8 @@ for (const k of ['window','document','Node','Element','HTMLElement','SVGElement'
   globalThis[k] = dom.window[k];
 globalThis.localStorage = dom.window.localStorage;
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
-Object.defineProperty(dom.window, 'innerWidth', { value: 390 });
-Object.defineProperty(dom.window, 'innerHeight', { value: 844 });
+Object.defineProperty(dom.window, 'innerWidth', { value: 820 });
+Object.defineProperty(dom.window, 'innerHeight', { value: 1180 });
 dom.window.matchMedia = (q) => ({ matches: q.includes('pointer: coarse'), addEventListener(){}, removeEventListener(){} });
 // A do-nothing IndexedDB: an empty local cache, so boot runs to the end.
 globalThis.indexedDB = fakeIndexedDB();
@@ -35,9 +32,9 @@ const ok = (name, c, extra = "") => { n++; if (!c) fail++; console.log((c ? "PAS
 await import('../js/app.js');
 await new Promise(r => setTimeout(r, 200));
 
-console.log("\n--- a phone-sized screen ---");
+console.log("\n--- an iPad-sized screen (820 x 1180, coarse pointer) ---");
 const host = document.getElementById('view-host');
-ok("the phone sees the desktop-only message", /Dash is desktop only\./.test(host.textContent) && /Open it on your Mac\./.test(host.textContent),
+ok("the iPad sees the desktop-only message", /Dash is desktop only\./.test(host.textContent) && /Open it on your Mac\./.test(host.textContent),
    host.textContent.slice(0, 200));
 ok("...and NOT the old capture screen", !host.querySelector('.pcap') && !/Sketch/.test(host.textContent));
 ok("...with nothing to tap inside it", host.querySelectorAll('button, a, input, textarea, select, [tabindex]').length === 0);
@@ -47,19 +44,6 @@ ok("...and not the retired capture class", !document.documentElement.classList.c
 const css = readFileSync(new URL('../css/desktop-only.css', import.meta.url), 'utf8');
 ok("css/desktop-only.css hides the topbar under that class", /\.desktop-only-on \.topbar/.test(css));
 ok("...and uses tokens, never literal colours", !/#[0-9a-f]{3,8}\b|rgb\(/i.test(css));
-
-console.log("\n--- the phone code is deleted, not just switched off (October 5, 2026) ---");
-const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
-const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-for (const f of ['js/views/phone-capture.js', 'css/phone-capture.css', 'js/mobile-chrome.js'])
-  ok(`${f} is gone`, !existsSync(new URL('../' + f, import.meta.url)));
-ok("...and is in neither sw.js's SHELL nor index.html",
-   !/phone-capture|mobile-chrome/.test(sw.replace(/\/\/.*$/gm, '')) && !/phone-capture\.css|mobile-chrome\.js/.test(html));
-ok("app.js asks isTouchDevice() (imported from device.js) and routes touch devices to the desktop-only view",
-   /import \{ isTouchDevice \} from "\.\/device\.js"/.test(app) && !/function isTouchDevice\(\)/.test(app) &&
-   /if \(isTouchDevice\(\)\) return desktopOnlyView;/.test(app));
-ok("no phone-only style or class survives in app.css", !/\.phone-|phone-chrome-on|\(pointer: coarse\)/.test(readFileSync(new URL('../css/app.css', import.meta.url), 'utf8')));
 
 console.log(`\n${fail ? `${fail} of ${n} desktop-only checks FAILED` : `all ${n} desktop-only checks passed`}`);
 process.exit(fail ? 1 : 0);

@@ -1,13 +1,9 @@
-// desktop-only.js — what a phone sees, October 2026.
+// desktop-only.js — what a phone or an iPad sees, October 2026.
 // ===================================================================
-// Dash is DESKTOP ONLY for now (decided 2026-10-04). Phone and iPad come back
-// next year as connected companions, so nothing about the data model, the
-// store or Dropbox sync changed for this — it is a view-level gate only.
-//
-// The phone capture screen (js/views/phone-capture.js) is UNREGISTERED, not
-// deleted, the standing Dash rule: it stays on disk and in sw.js's SHELL, and
-// bringing it back is putting its import and its line in activeView() back in
-// js/app.js. Nothing else.
+// Dash is DESKTOP ONLY for now (decided 2026-10-04, widened to iPad and the
+// old phone code removed 2026-10-05). Phone and iPad come back later as
+// something designed from the ground up, so nothing about the data model, the
+// store or Dropbox sync changed for this.
 //
 // This screen is deliberately plain: one sentence, centred, nothing to tap.
 // Every colour and size comes from tokens via css/desktop-only.css.

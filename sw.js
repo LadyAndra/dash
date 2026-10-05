@@ -2,7 +2,7 @@
 // The app's CODE is cached so Dash opens with no network (your DATA is local
 // anyway). Bump CACHE_VERSION whenever you upload changed files so devices
 // pick them up. Everything is same-origin static files — nothing tricky.
-const CACHE_VERSION = "dash-v115";
+const CACHE_VERSION = "dash-v116";
 const SHELL = [
   "./",
   "./index.html",
@@ -13,15 +13,11 @@ const SHELL = [
   "./css/interaction.css",
   "./css/desk-images.css",
   "./css/ui-cleanup.css",
-  // The phone capture screen. UNREGISTERED in October 2026 (Dash is desktop
-  // only for now) but kept cached, the standing rule: bringing it back is then
-  // one import in app.js with no risk of a broken offline deploy.
-  "./css/phone-capture.css",
   "./css/unfiled.css",
   "./css/calendar.css",
   "./css/dateinput.css",
-  // Round 1 (October 2026): Trash, Mark a date, and the phone's
-  // "desktop only" screen.
+  // Round 1 (October 2026): Trash, Mark a date, and the "desktop only" screen
+  // that phones and iPads get.
   "./css/trash.css",
   "./css/datemark.css",
   "./css/desktop-only.css",
@@ -29,7 +25,6 @@ const SHELL = [
   "./js/desk-images-bootstrap.js",
   "./js/desk-images-runtime.js",
   "./js/desk-images.js",
-  "./js/mobile-chrome.js",
   "./js/editor-details.js",
   "./js/ui-cleanup.js",
   "./js/store.js",
@@ -57,7 +52,6 @@ const SHELL = [
   "./js/ui/readaloud.js",
   "./js/views/shared.js",
   "./js/views/home.js",
-  "./js/views/phone-capture.js",
   "./js/views/list.js",
   "./js/views/board.js",
   // Kanban and Columns are UNREGISTERED (August 2026) — app.js no longer

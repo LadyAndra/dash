@@ -327,10 +327,9 @@ function captureWell(ctx) {
     const nl = text.indexOf("\n");
     const title = (nl === -1 ? text : text.slice(0, nl)).trim();
     const body = nl === -1 ? "" : text.slice(nl + 1).trim();
-    // defaults: Quick idea · Active. On a phone or iPad it also goes into the
-    // Unfiled box; captured at the desk, it doesn't, because you are already
-    // sitting where filing happens.
-    store.createItem({ title, body, inbox: capturesToInbox() });
+    // defaults: Quick idea · Active. Captured at the desk, so it does not go
+    // into the Unfiled box: you are already sitting where filing happens.
+    store.createItem({ title, body });
     ctx.viewLocal.captureText = "";
     ctx.viewLocal.captureFocused = true;         // keep capturing after re-render
     // store change triggers a re-render; the box comes back empty and focused
@@ -342,7 +341,6 @@ function captureWell(ctx) {
   const sketchBtn = el("button", { class: "btn", text: "✎ Sketch", onclick: () => {
     const id = store.createItem({
       type: store.typeDef("sketch") ? "sketch" : undefined,
-      inbox: capturesToInbox(),
     });
     ctx.onOpen(id);
   }});
@@ -360,10 +358,9 @@ function captureWell(ctx) {
 // ===================================================================
 //  THE UNFILED BOX  (Phase B, August 2026)
 // ===================================================================
-// Where everything captured away from the desk waits. Phone capture puts
-// entries here (js/views/phone-capture.js); so does this page's own capture
-// well and Sketch button WHEN YOU ARE ON A TOUCH DEVICE — the iPad. At the
-// Mac they don't, because you are already sitting where filing happens.
+// Where everything captured away from the desk waits. Entries captured on a
+// phone or iPad before October 2026 (when Dash became desktop only) still wait
+// here until you file them away; nothing captured at the desk goes in.
 //
 // The only thing that takes an entry out is the File away button on its row.
 // It does not ask for a project, a tag or a type: the question the box asks is
@@ -374,15 +371,6 @@ function captureWell(ctx) {
 // `inbox` is one scalar on the item (see SCALAR_FIELDS in js/store.js) and is
 // only ever written when true, so nothing in the existing archive appears in
 // here and no migration or cutoff date was needed.
-
-// A phone or an iPad. Deliberately NOT the phone gate: this is about which
-// devices capture away from the desk, and the iPad is one of them. A
-// touchscreen laptop reports its trackpad as the primary pointer and so reads
-// as "fine" here, which is the answer we want.
-function capturesToInbox() {
-  try { return window.matchMedia("(pointer: coarse)").matches; }
-  catch { return false; }
-}
 
 function unfiledPanel(container, ctx) {
   const store = ctx.store;
@@ -404,7 +392,7 @@ function unfiledPanel(container, ctx) {
   if (!waiting.length && !undoable.length) {
     container.appendChild(el("p", {
       class: "unfiled-empty",
-      text: "Nothing waiting. Whatever you capture on your phone or iPad turns up here.",
+      text: "Nothing waiting.",
     }));
     return;
   }

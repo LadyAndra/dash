@@ -24,17 +24,12 @@
   <link rel="stylesheet" href="css/desk-images.css" />
   <!-- Small additive pass: quiet desktop utilities + lighter Projects register. -->
   <link rel="stylesheet" href="css/ui-cleanup.css" />
-  <!-- The phone's only screen (Text / Sketch / Image). Every rule inside is
-       scoped to the .phone-capture-on class app.js sets on a phone, so this
-       file is inert on desktop and iPad. Loaded last so it can quiet the one
-       phone-chrome control it hides. -->
-  <link rel="stylesheet" href="css/phone-capture.css" />
   <!-- The Unfiled box on Home. Isolated for the same reason as the two files
        above: one self-contained surface, changeable on its own. -->
   <link rel="stylesheet" href="css/unfiled.css" />
   <!-- Round 1, October 2026: the Trash drawer, the "Mark a date" form, and the
-       phone's "desktop only" screen (every rule in that last one is scoped to
-       the .desktop-only-on class app.js sets on a phone). -->
+       "desktop only" screen for touch devices (every rule in that last one is
+       scoped to the .desktop-only-on class app.js sets on a touch device). -->
   <link rel="stylesheet" href="css/trash.css" />
   <link rel="stylesheet" href="css/datemark.css" />
   <link rel="stylesheet" href="css/desktop-only.css" />
@@ -46,13 +41,10 @@
   <!-- No build step: the browser runs these files exactly as uploaded (§13.1).
        The bootstrap starts Dash first, then adds the optional Desk-image layer. -->
   <script type="module" src="js/desk-images-bootstrap.js"></script>
-  <!-- Phone-only chrome rearrangement: keeps the core app verbs intact, but
-       gives + New one designed action row and tucks utilities behind More. -->
-  <script type="module" src="js/mobile-chrome.js"></script>
   <!-- Shared item-editor hierarchy: quick capture first, organisational tools
        behind one native More details disclosure on phone and desktop. -->
   <script type="module" src="js/editor-details.js"></script>
-  <!-- Desktop/tablet cleanup stays additive: existing controls keep their handlers. -->
+  <!-- Desktop cleanup stays additive: existing controls keep their handlers. -->
   <script type="module" src="js/ui-cleanup.js"></script>
 
   <!-- Offline-first: register the service worker so the app shell works with

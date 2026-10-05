@@ -2,7 +2,7 @@
 //
 // Background (October 2026 audit, Round B): parseISO, toISO and daysInMonth
 // were written out twice, word for word (views/calendar.js and
-// widgets/flipdate.js), and isPhoneUI three times (app.js, mobile-chrome.js,
+// widgets/flipdate.js), and the phone check three times (app.js, mobile-chrome.js,
 // ui-cleanup.js, one of them with the number 600 typed in directly). Copies
 // like that drift apart one small fix at a time.
 //
@@ -10,8 +10,9 @@
 //   1. The shared helpers do the right thing, including leap years and bad input.
 //   2. calendar.js and flipdate.js still export the same names, and they are
 //      the SAME functions as in js/dates.js (so nothing that imports them broke).
-//   3. isPhoneUI gives the right answer for phones, tablets, laptops and a
-//      browser that throws.
+//   3. isTouchDevice (the successor to that phone check) says yes to phones and
+//      tablets of any size, no to laptops and narrow desktop windows, and
+//      treats a browser that throws as a desktop.
 //   4. Nobody has quietly written a second copy.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,7 +61,7 @@ for (const name of ['parseISO', 'toISO', 'daysInMonth']) {
   ok(`calendar.js still exports ${name}, and it is the shared one`, cal[name] === dates[name]);
 }
 
-console.log('\n--- isPhoneUI ---');
+console.log('\n--- isTouchDevice: phone AND iPad are out, any screen size ---');
 {
   const set = ({ coarse, w, h, throws = false }) => {
     dom.window.matchMedia = (q) => {
@@ -71,20 +72,20 @@ console.log('\n--- isPhoneUI ---');
     dom.window.innerHeight = h;
   };
   set({ coarse: true, w: 390, h: 844 });
-  ok('an iPhone held upright is a phone', device.isPhoneUI() === true);
+  ok('an iPhone held upright is a touch device', device.isTouchDevice() === true);
   set({ coarse: true, w: 844, h: 390 });
-  ok('an iPhone turned sideways is still a phone (short side rule)', device.isPhoneUI() === true);
+  ok('an iPhone turned sideways still is', device.isTouchDevice() === true);
   set({ coarse: true, w: 820, h: 1180 });
-  ok('an iPad is not a phone', device.isPhoneUI() === false);
+  ok('an iPad held upright is a touch device', device.isTouchDevice() === true);
+  set({ coarse: true, w: 1366, h: 1024 });
+  ok('the biggest iPad, turned sideways, still is (size does not matter)', device.isTouchDevice() === true);
   set({ coarse: false, w: 390, h: 844 });
-  ok('a narrow desktop window (mouse) is not a phone', device.isPhoneUI() === false);
-  set({ coarse: true, w: 600, h: 900 });
-  ok('exactly 600 on the short side still counts as a phone', device.isPhoneUI() === true);
-  set({ coarse: true, w: 601, h: 900 });
-  ok('601 does not', device.isPhoneUI() === false);
+  ok('a narrow desktop window (mouse) is NOT a touch device', device.isTouchDevice() === false);
+  set({ coarse: false, w: 1440, h: 900 });
+  ok('a normal desktop is not', device.isTouchDevice() === false);
   set({ coarse: true, w: 390, h: 844, throws: true });
-  ok('a browser that throws is treated as not a phone', device.isPhoneUI() === false);
-  ok('the limit is the documented 600', device.PHONE_SHORT_SIDE_MAX === 600);
+  ok('a browser that throws is treated as a desktop (the app opens)', device.isTouchDevice() === false);
+  ok('the old phone-size limit is gone', device.PHONE_SHORT_SIDE_MAX === undefined && device.isPhoneUI === undefined);
 }
 
 console.log('\n--- no second copy has crept back ---');
@@ -100,12 +101,14 @@ console.log('\n--- no second copy has crept back ---');
   const rel = (f) => path.relative(ROOT, f).split(path.sep).join('/');
   const defining = (re) => files.filter((f) => re.test(fs.readFileSync(f, 'utf8'))).map(rel);
 
-  for (const [name, home] of [['parseISO', 'js/dates.js'], ['toISO', 'js/dates.js'], ['daysInMonth', 'js/dates.js'], ['isPhoneUI', 'js/device.js']]) {
+  for (const [name, home] of [['parseISO', 'js/dates.js'], ['toISO', 'js/dates.js'], ['daysInMonth', 'js/dates.js'], ['isTouchDevice', 'js/device.js']]) {
     const where = defining(new RegExp(`^\\s*(?:export\\s+)?function\\s+${name}\\s*\\(`, 'm'));
     ok(`${name} is defined only in ${home}`, where.length === 1 && where[0] === home, `found in: ${where.join(', ') || 'nowhere'}`);
   }
-  const hardCoded = defining(/shortSide\s*<=\s*\d+/).filter((f) => f !== 'js/device.js');
-  ok('no file types the phone limit in by hand', hardCoded.length === 0, hardCoded.join(', '));
+  const hardCoded = defining(/shortSide\s*<=\s*\d+/);
+  ok('no file decides "phone" by screen size any more', hardCoded.length === 0, hardCoded.join(', '));
+  const askingTouch = defining(/matchMedia\(["']\(pointer: coarse\)["']\)/).filter((f) => f !== 'js/device.js');
+  ok('only js/device.js asks whether the pointer is coarse', askingTouch.length === 0, askingTouch.join(', '));
 }
 
 console.log(fail ? `\n${fail} check(s) FAILED` : '\nAll shared-helper checks passed');

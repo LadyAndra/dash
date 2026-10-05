@@ -66,25 +66,22 @@ const MUST = [
   ['Add tag input (editor)', /^\.editor-details \.chip-input input$/, 'min-height'],
   ['attachment Remove', /^\.attach-remove$/, 'min-height'],
   ['sidebar index rows', /^\.nav-btn$/, 'min-height'],
-  ['view tabs: List and Board width', /^\.view-tab$/, 'min-width', true],
+  ['view tabs: List and Board width', /^\.view-tab$/, 'min-width'],
   ['editor Done button', /^\.editor-head \.btn-primary$/, 'min-height'],
   ['editor Read-aloud button', /^\.editor-head \.icon-btn$/, 'min-height'],
   ['editor Read-aloud button (width)', /^\.editor-head \.icon-btn$/, 'min-width'],
   ['editor Type / Status selects', /^\.editor-sheet \.row \.field select$/, 'min-height'],
   ['editor Assign-to-project select', /^\.editor-detail-section select$/, 'min-height'],
   ['Group by / Sort by selects', /^\.catalog-band \.band-sel$/, 'min-height'],
-  ['phone Select button', /^\.catalog-band \.band-select-btn\.btn$/, 'min-height'],
   ['calendar previous / next month', /^\.cal-ctl$/, 'min-width'],
   ['calendar controls', /^\.cal-ctl$/, 'min-height'],
   ['date field clear / set buttons', /^\.fd-btn$/, 'min-height'],
   ['date field clear / set buttons (width)', /^\.fd-btn$/, 'min-width'],
   ['Text size slider', /^input\[type="range"\]$/, 'min-height'],
 ];
-for (const [what, re, p, zeroOk] of MUST) {
-  // zeroOk: the phone strip lets each tab share the full row equally
-  // (min-width: 0 with flex: 1 1 0), so a bare 0 is allowed there and only there.
+for (const [what, re, p] of MUST) {
   const vals = prop(declsFor(re), p);
-  ok(`${what}: ${p} comes from a token`, vals.length > 0 && vals.every(v => /^var\(--(control-min|tap-min)\)$/.test(v) || (zeroOk && v === '0')),
+  ok(`${what}: ${p} comes from a token`, vals.length > 0 && vals.every(v => /^var\(--(control-min|tap-min)\)$/.test(v)),
      `${p} is ${JSON.stringify(vals)}`);
 }
 

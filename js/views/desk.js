@@ -49,13 +49,9 @@ import * as D from "../desk.js";
 // ===================================================================
 //  THE PLATFORM GATE (§12.6, §8.29)
 // ===================================================================
-// A precise pointer AND a wide viewport. Phones and today's iPad report a
-// coarse pointer and get the Peek page instead — the same `pointer: fine`
-// precedent tokens.css already uses for --control-min, plus a width, because
-// a desk needs room as well as a mouse.
-//
-// Enabling iPad later is LOOSENING THIS FUNCTION and nothing else. That was
-// the whole point of writing the gate as one predicate.
+// A precise pointer AND a wide viewport. Touch devices never get this far
+// (Dash is desktop only); a narrow desktop window gets the Peek page instead,
+// because a desk needs room as well as a mouse.
 const DESK_MIN_WIDTH = 900;
 export function supportsDesk() {
   try {

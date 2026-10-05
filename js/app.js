@@ -25,19 +25,14 @@ import { listView } from "./views/list.js";
 import { boardView } from "./views/board.js";
 import { projectView } from "./views/project.js";
 import { calendarView } from "./views/calendar.js";
-// DESKTOP ONLY (October 4, 2026). A phone now gets one plain screen that says
-// so, instead of the capture screen. Phone and iPad come back next year as
-// connected companions; the data model and sync stay device-agnostic so that
-// is possible.
-//
-// The capture screen is UNREGISTERED, not deleted (standing Dash rule):
-// js/views/phone-capture.js is untouched on disk and still in sw.js's SHELL.
-// Bringing it back is uncommenting this import and swapping the one line in
-// activeView() back. Nothing else.
-// import { phoneCaptureView } from "./views/phone-capture.js";
+// DESKTOP ONLY (October 2026). A phone or an iPad gets one plain screen that
+// says so, and none of the app. The phone capture screen and the phone and
+// iPad layout code were deleted on October 5, 2026; they are in git history
+// (the commit before "Desktop only: remove the phone and iPad code"). The data
+// model and sync stay device-agnostic so a companion app is possible later.
 import { desktopOnlyView } from "./views/desktop-only.js";
 import { openTrash, trashCount } from "./views/trash.js";
-import { isPhoneUI } from "./device.js";
+import { isTouchDevice } from "./device.js";
 
 // ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
 // Andra doesn't use either one, so they've come out of the view switcher.
@@ -55,15 +50,6 @@ import { isPhoneUI } from "./device.js";
 // import { finderView } from "./views/finder.js";
 
 const VIEWS = [homeView, listView, boardView, projectView, calendarView];
-
-// What counts as a phone (isPhoneUI) is decided in one place, js/device.js.
-// Views deliberately not offered on phone-class screens. Project is a large
-// workspace feature whose narrow information architecture is unresolved.
-// Calendar (August 2026) is a desktop instrument by design — see §6 of the
-// calendar architecture: Home/Today stays the phone's surface for dates, and
-// js/mobile-chrome.js needs no change because Calendar is simply absent from
-// the phone's tab set rather than hidden inside it.
-const PHONE_HIDDEN_VIEWS = new Set(["project", "calendar"]);
 
 // The Home tab shows this paw print instead of its text label — the word
 // "Home" was getting lost among the other tabs on narrow mobile screens, and
@@ -185,7 +171,8 @@ store.subscribe(() => {
 
   if (sync.dirHandle) loadThemeFromFolder(sync.dirHandle);
   // gentle first-run guidance
-  if (store.all().length === 0 && sync.mode === "folder" && !sync.dirHandle) {
+  // (Not on a touch device: it only sees the "desktop only" screen, which has no top-right.)
+  if (store.all().length === 0 && sync.mode === "folder" && !sync.dirHandle && !isTouchDevice()) {
     toast("Tip: connect your Dash folder (top-right) so everything syncs across devices.", "info", 9000);
   }
   render();
@@ -267,13 +254,11 @@ function buildChrome() {
     viewTabs.appendChild(tab);
   }
 
-  // On a phone there is exactly one screen, so a strip that switches between
-  // screens has nothing to say. The element STAYS in the DOM: js/mobile-chrome.js
-  // anchors its action row to it, and app.js's render() still writes aria-current
-  // onto the tabs. It is only invisible.
-  // October 2026: the phone gets the "desktop only" screen and no chrome at
-  // all. css/desktop-only.css hides the topbar under this class.
-  if (isPhoneUI()) {
+  // A touch device gets the "desktop only" screen and no chrome at all.
+  // css/desktop-only.css hides the topbar under this class. The elements stay
+  // in the DOM (render() still writes aria-current onto the tabs); they are
+  // only invisible.
+  if (isTouchDevice()) {
     viewTabs.style.display = "none";
     document.documentElement.classList.add("desktop-only-on");
   }
@@ -459,29 +444,13 @@ function applyCatalogChrome(view) {
 //  RENDER
 // ===================================================
 function activeView() {
-  // DESKTOP ONLY (October 2026). A phone gets one plain screen saying so.
-  // Until then (August 2026) this line returned phoneCaptureView, the Text /
-  // Sketch / Image capture screen; see the import note at the top of the file.
-  // Everything below this line is still exactly what desktop and iPad do —
-  // iPad already ran the desktop UI, so nothing changes there.
-  if (isPhoneUI()) return desktopOnlyView;
-
-  const requested = VIEWS.find(v => v.name === state.viewName) || listView;
-  // Kept as-is. Unreachable while phone capture is on (the gate above returns
-  // first), and it is the rule again the moment that gate is removed.
-  if (PHONE_HIDDEN_VIEWS.has(requested.name) && isPhoneUI()) {
-    state.viewName = "home";
-    return homeView;
-  }
-  return requested;
+  // DESKTOP ONLY (October 2026). A phone or an iPad gets one plain screen.
+  if (isTouchDevice()) return desktopOnlyView;
+  return VIEWS.find(v => v.name === state.viewName) || listView;
 }
 
 function setView(name) {
-  // Even if a stale button, history path or future caller asks for one of the
-  // desktop-only views on a phone, keep the phone in its capture/list workflow
-  // rather than exposing a page that was never laid out for it. No data is
-  // removed or hidden — Home still carries every date the Calendar would.
-  state.viewName = (PHONE_HIDDEN_VIEWS.has(name) && isPhoneUI()) ? "home" : name;
+  state.viewName = name;
   state.viewLocal = {};
   // Changing view drops any selection: the entries you'd picked probably
   // aren't even on screen any more, and acting on invisible items is exactly
@@ -845,7 +814,7 @@ function updateSyncUI() {
   label.textContent = text;
 }
 
-// portable (iPhone/iPad) sync sheet
+// portable (export / import) sync sheet
 function openPortableSync() {
   const scrim = el("div", { class: "modal-scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
   const fileInput = el("input", { type: "file", accept: "application/json", style: "display:none",
@@ -853,7 +822,7 @@ function openPortableSync() {
 
   const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": "Sync" }, [
     el("h2", { text: "Sync this device" }),
-    el("p", { class: "hint", text: "On iPhone and iPad, syncing is two taps. Export a file into your Dash folder; on your Mac it merges automatically. To pull in changes made elsewhere, Import the latest file." }),
+    el("p", { class: "hint", text: "In a browser that cannot open folders (Safari, for one), syncing is two taps. Export a file into your Dash folder; on your Mac it merges automatically. To pull in changes made elsewhere, Import the latest file." }),
     el("div", { class: "modal-actions" }, [
       el("button", { class: "btn btn-primary", text: "Export my changes", onclick: () => { sync.exportForSync().then(() => sync.markSynced()); } }),
       el("button", { class: "btn", text: "Import a sync file", onclick: () => fileInput.click() }),
@@ -877,10 +846,9 @@ function readCurrentView() {
   // serves the eye-strain constraint directly — you can hear where you stand
   // without reading anything.
   //
-  // The phone capture screen has no list of its own either, and reciting the
-  // whole archive is not what "read this view" could usefully mean there — so
-  // it gets the same daily brief.
-  if (view.name === "home" || view.name === "phone-capture" || view.name === "desktop-only") { readAloud(speakToday(store)); return; }
+  // The desktop-only screen has no list of its own either, so it gets the same
+  // daily brief.
+  if (view.name === "home" || view.name === "desktop-only") { readAloud(speakToday(store)); return; }
 
   const groupBy = view.forceGroupBy || state.groupBy;
   const result = query(store, { filter: state.filter, groupBy, sortBy: state.sortBy });

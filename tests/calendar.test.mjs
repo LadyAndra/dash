@@ -436,10 +436,11 @@ console.log("\n--- theme-swap audit: no colour is ever baked ---");
 }
 
 // ===================================================================
-console.log("\n--- registration and the phone gate, in the real app.js (§6, §7) ---");
+console.log("\n--- registration and the touch gate, in the real app.js (§6, §7) ---");
 // app.js boots the whole application on import, so this is read rather than
 // run. It is still the check that matters: a view that is not in VIEWS has no
-// tab, and a desktop instrument that is not gated turns up on a phone.
+// tab. (Touch devices are gated out of the whole app now, so Calendar needs no
+// gate of its own; the check below is for that single gate.)
 {
   const app = fs.readFileSync(path.join(ROOT, "js/app.js"), "utf8");
   ok("calendar.js is imported", /import \{ calendarView \} from "\.\/views\/calendar\.js";/.test(app));
@@ -447,14 +448,12 @@ console.log("\n--- registration and the phone gate, in the real app.js (§6, §7
      /const VIEWS = \[homeView, listView, boardView, projectView, calendarView\];/.test(app));
   ok("the existing views keep their order and their behaviour",
      /VIEWS = \[homeView, listView, boardView, projectView/.test(app));
-  ok("Calendar is gated off phone-class screens, using the same isPhoneUI() Project already uses",
-     /PHONE_HIDDEN_VIEWS = new Set\(\["project", "calendar"\]\)/.test(app) &&
-     /PHONE_HIDDEN_VIEWS\.has\(requested\.name\) && isPhoneUI\(\)/.test(app) &&
-     /PHONE_HIDDEN_VIEWS\.has\(name\) && isPhoneUI\(\)/.test(app));
-  ok("there is still exactly ONE isPhoneUI(): it lives in js/device.js, and app.js imports it and keeps no copy",
-     (app.match(/function isPhoneUI\(\)/g) || []).length === 0 &&
-     /import \{ isPhoneUI \} from "\.\/device\.js"/.test(app) &&
-     (fs.readFileSync(path.join(ROOT, "js/device.js"), "utf8").match(/function isPhoneUI\(\)/g) || []).length === 1);
+  ok("a touch device never reaches Calendar: activeView() sends it to the desktop-only screen first",
+     /if \(isTouchDevice\(\)\) return desktopOnlyView;/.test(app) && !/PHONE_HIDDEN_VIEWS/.test(app));
+  ok("there is exactly ONE isTouchDevice(): it lives in js/device.js, and app.js imports it and keeps no copy",
+     (app.match(/function isTouchDevice\(\)/g) || []).length === 0 &&
+     /import \{ isTouchDevice \} from "\.\/device\.js"/.test(app) &&
+     (fs.readFileSync(path.join(ROOT, "js/device.js"), "utf8").match(/function isTouchDevice\(\)/g) || []).length === 1);
   ok("js/entries.js was not touched to make any of this work",
      !/order:/.test(fs.readFileSync(path.join(ROOT, "js/entries.js"), "utf8")
         .split("fromItem(item, emit, ctx) {")[1].split("const itemDueSource")[0]),

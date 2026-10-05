@@ -381,9 +381,8 @@
   font-family: var(--font-display);
 }
 
-/* The Project view is intentionally unavailable on phone-sized coarse-pointer
-   devices. This narrow fallback is therefore mainly for split-window desktop
-   use; it preserves the same two-part composition rather than inventing a
+/* Touch devices never reach this view (Dash is desktop only). This narrow
+   fallback is for a small or split-window desktop browser; it preserves the same two-part composition rather than inventing a
    second mobile Projects design. */
 @media (max-width: 760px) {
   .project-index-layout {

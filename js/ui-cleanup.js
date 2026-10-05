@@ -11,7 +11,6 @@
 // existing groundStyle() readers continue to do the persistence/render work.
 
 import { resolveHex } from "./theme.js";
-import { isPhoneUI } from "./device.js";
 
 const SYNC_MARK = "<—>";
 const SETTINGS_MARK = "/////////////";
@@ -94,11 +93,6 @@ function markNewButton() {
 }
 
 function applyTopbarCleanup() {
-  // Phone already has a purpose-built More menu and designed + New row. Keep
-  // its readable action labels intact; this pass is for the desktop/tablet
-  // instrument strip shown in the Projects workspace.
-  if (isPhoneUI()) return;
-
   markSelectButton();
   markNewButton();
   markButton(document.getElementById("sync-btn"), "sync", "Sync now", "Sync now", SYNC_MARK);

@@ -1,15 +1,14 @@
 /* ============================================================
-   desktop-only.css — the phone's "desktop only" screen (Oct 2026)
+   desktop-only.css — the "desktop only" screen (Oct 2026)
    ------------------------------------------------------------
    Scoped under .desktop-only-on, a class js/app.js puts on <html>
-   ONLY when the phone gate says so, so nothing here can reach the
-   desktop or the iPad. All values come from tokens.css.
+   ONLY on a touch device (phone or iPad), so nothing here can reach
+   the desktop. All values come from tokens.css.
    ============================================================ */
 
-/* The phone gets no verbs at all: no New, no Settings, no tabs. The
-   topbar (which also carries mobile-chrome.js's action row) and the
-   select bar are hidden rather than removed, so app.js keeps finding
-   the elements it updates. */
+/* A touch device gets no verbs at all: no New, no Settings, no tabs. The
+   topbar and the select bar are hidden rather than removed, so app.js
+   keeps finding the elements it updates. */
 .desktop-only-on .topbar,
 .desktop-only-on #select-bar-host,
 .desktop-only-on .catalog-band,
