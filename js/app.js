@@ -37,6 +37,7 @@ import { calendarView } from "./views/calendar.js";
 // import { phoneCaptureView } from "./views/phone-capture.js";
 import { desktopOnlyView } from "./views/desktop-only.js";
 import { openTrash, trashCount } from "./views/trash.js";
+import { isPhoneUI } from "./device.js";
 
 // ---- Kanban and Columns are UNREGISTERED (August 1, 2026) ---------------
 // Andra doesn't use either one, so they've come out of the view switcher.
@@ -55,13 +56,7 @@ import { openTrash, trashCount } from "./views/trash.js";
 
 const VIEWS = [homeView, listView, boardView, projectView, calendarView];
 
-// Phone mode is intentionally capture-first for now. Project/Desk is a large
-// workspace feature and is deliberately not offered on a phone while its
-// mobile information architecture is unresolved. Use the SHORT side rather
-// than viewport width so rotating an iPhone cannot accidentally turn Project
-// back on; iPad-sized coarse-pointer devices remain eligible.
-const PHONE_SHORT_SIDE_MAX = 600;
-
+// What counts as a phone (isPhoneUI) is decided in one place, js/device.js.
 // Views deliberately not offered on phone-class screens. Project is a large
 // workspace feature whose narrow information architecture is unresolved.
 // Calendar (August 2026) is a desktop instrument by design — see §6 of the
@@ -69,16 +64,6 @@ const PHONE_SHORT_SIDE_MAX = 600;
 // js/mobile-chrome.js needs no change because Calendar is simply absent from
 // the phone's tab set rather than hidden inside it.
 const PHONE_HIDDEN_VIEWS = new Set(["project", "calendar"]);
-
-function isPhoneUI() {
-  try {
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
-    return coarse && shortSide <= PHONE_SHORT_SIDE_MAX;
-  } catch {
-    return false;
-  }
-}
 
 // The Home tab shows this paw print instead of its text label — the word
 // "Home" was getting lost among the other tabs on narrow mobile screens, and

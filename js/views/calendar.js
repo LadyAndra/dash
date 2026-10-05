@@ -58,6 +58,7 @@ import { itemColor } from "./shared.js";
 import { openTrashMenu } from "../trash-actions.js";
 import { mount as mountDateInput } from "../widgets/flipdate.js";
 import { colorToken } from "../theme.js";
+import { parseISO, toISO, daysInMonth } from "../dates.js";
 
 // ===================================================================
 //  CONSTANTS — behaviour, not appearance
@@ -135,14 +136,9 @@ const LS_MOTION = "dash.calendar.motion";
 //  PURE: dates
 // ===================================================================
 
-export function parseISO(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-  return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
-}
-export function toISO(y, mo, d) {
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-export function daysInMonth(y, mo) { return new Date(y, mo, 0).getDate(); }
+// parseISO, toISO and daysInMonth live in js/dates.js (shared with the date
+// input). They are re-exported here under the same names.
+export { parseISO, toISO, daysInMonth };
 
 // Day-of-year, counted at noon so no DST day can shunt it (the same reason
 // milestones.js does all its arithmetic at noon).

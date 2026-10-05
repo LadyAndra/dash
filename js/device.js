@@ -45,3 +45,23 @@ function guessLabel() {
   if (/Windows/.test(ua)) return "Windows";
   return "Device";
 }
+
+// Is this a phone? One answer for the whole app (app.js, mobile-chrome.js and
+// ui-cleanup.js each used to carry their own copy).
+//
+// Phone mode is intentionally capture-first for now. Project/Desk is a large
+// workspace feature and is deliberately not offered on a phone while its
+// mobile information architecture is unresolved. It uses the SHORT side rather
+// than viewport width so rotating an iPhone cannot accidentally turn Project
+// back on; iPad-sized coarse-pointer devices remain eligible.
+export const PHONE_SHORT_SIDE_MAX = 600;
+
+export function isPhoneUI() {
+  try {
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
+    return coarse && shortSide <= PHONE_SHORT_SIDE_MAX;
+  } catch {
+    return false;
+  }
+}

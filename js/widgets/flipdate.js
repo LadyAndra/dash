@@ -107,20 +107,10 @@ export const YEAR_MAX = 2100;
 // carry rules (the part that is actually easy to get wrong) can be tested at
 // every boundary without a browser.
 
-export function parseISO(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-  return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
-}
-
-export function toISO(y, mo, d) {
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-
-// Day 0 of the NEXT month is the last day of this one — which gets February
-// and every leap year right without a rule about leap years.
-export function daysInMonth(y, mo) {
-  return new Date(y, mo, 0).getDate();
-}
+// parseISO, toISO and daysInMonth live in js/dates.js (shared with the
+// Calendar). They are re-exported here under the same names.
+import { parseISO, toISO, daysInMonth } from "../dates.js";
+export { parseISO, toISO, daysInMonth };
 
 // A month change can leave the day out of range (Jan 31 -> Feb). Clamp rather
 // than roll: someone moving the MONTH card meant to change the month.

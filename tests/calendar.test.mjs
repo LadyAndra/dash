@@ -451,8 +451,10 @@ console.log("\n--- registration and the phone gate, in the real app.js (§6, §7
      /PHONE_HIDDEN_VIEWS = new Set\(\["project", "calendar"\]\)/.test(app) &&
      /PHONE_HIDDEN_VIEWS\.has\(requested\.name\) && isPhoneUI\(\)/.test(app) &&
      /PHONE_HIDDEN_VIEWS\.has\(name\) && isPhoneUI\(\)/.test(app));
-  ok("there is still exactly ONE isPhoneUI() in app.js — no third copy was added",
-     (app.match(/function isPhoneUI\(\)/g) || []).length === 1);
+  ok("there is still exactly ONE isPhoneUI(): it lives in js/device.js, and app.js imports it and keeps no copy",
+     (app.match(/function isPhoneUI\(\)/g) || []).length === 0 &&
+     /import \{ isPhoneUI \} from "\.\/device\.js"/.test(app) &&
+     (fs.readFileSync(path.join(ROOT, "js/device.js"), "utf8").match(/function isPhoneUI\(\)/g) || []).length === 1);
   ok("js/entries.js was not touched to make any of this work",
      !/order:/.test(fs.readFileSync(path.join(ROOT, "js/entries.js"), "utf8")
         .split("fromItem(item, emit, ctx) {")[1].split("const itemDueSource")[0]),

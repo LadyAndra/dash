@@ -55,8 +55,9 @@ ok("js/views/phone-capture.js is still on disk", existsSync(new URL('../js/views
 ok("...and still in sw.js's SHELL", sw.includes('"./js/views/phone-capture.js"'));
 ok("app.js no longer imports it (the line is kept, commented)",
    /^\/\/ import \{ phoneCaptureView \}/m.test(app) && !/^import \{ phoneCaptureView \}/m.test(app));
-ok("app.js keeps isPhoneUI() and routes phones to the desktop-only view",
-   /function isPhoneUI\(\)/.test(app) && /if \(isPhoneUI\(\)\) return desktopOnlyView;/.test(app));
+ok("app.js uses isPhoneUI() (imported from device.js) and routes phones to the desktop-only view",
+   /import \{ isPhoneUI \} from "\.\/device\.js"/.test(app) && !/function isPhoneUI\(\)/.test(app) &&
+   /if \(isPhoneUI\(\)\) return desktopOnlyView;/.test(app));
 
 console.log(`\n${fail ? `${fail} of ${n} desktop-only checks FAILED` : `all ${n} desktop-only checks passed`}`);
 process.exit(fail ? 1 : 0);

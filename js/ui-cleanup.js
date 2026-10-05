@@ -11,6 +11,7 @@
 // existing groundStyle() readers continue to do the persistence/render work.
 
 import { resolveHex } from "./theme.js";
+import { isPhoneUI } from "./device.js";
 
 const SYNC_MARK = "<—>";
 const SETTINGS_MARK = "/////////////";
@@ -19,16 +20,6 @@ const SPEAKER_SVG = `
   <path d="M4 10v4h4l5 4V6L8 10H4Z" fill="currentColor"/>
   <path d="M16 9.25c1.25 1.35 1.25 4.15 0 5.5M18.75 7c2.5 2.7 2.5 7.3 0 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
 </svg>`.trim();
-
-function isPhoneUI() {
-  try {
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
-    return coarse && shortSide <= 600;
-  } catch {
-    return false;
-  }
-}
 
 function markButton(button, kind, label, title, content) {
   if (!button) return;

@@ -4,18 +4,9 @@
 // It moves the real buttons app.js already owns, so New / Select / Read /
 // Settings / Sync keep exactly the same handlers and state updates.
 
-const PHONE_SHORT_SIDE_MAX = 600;
-let installed = false;
+import { isPhoneUI } from "./device.js";
 
-function isPhoneUI() {
-  try {
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const shortSide = Math.min(window.innerWidth || Infinity, window.innerHeight || Infinity);
-    return coarse && shortSide <= PHONE_SHORT_SIDE_MAX;
-  } catch {
-    return false;
-  }
-}
+let installed = false;
 
 function closeMore() {
   const wrap = document.getElementById("phone-more-wrap");
