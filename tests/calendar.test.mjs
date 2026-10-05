@@ -354,6 +354,32 @@ console.log("\n--- reduced motion is a real path, not a hope ---");
 }
 
 // ===================================================================
+console.log("\n--- the month list, and project-coloured finished marks (October 2026) ---");
+{
+  const css = fs.readFileSync(path.join(ROOT, "css/calendar.css"), "utf8");
+  const js = fs.readFileSync(path.join(ROOT, "js/views/calendar.js"), "utf8");
+  const paintSrc = js.slice(js.indexOf("function paint("), js.indexOf("function isoPlusDays"));
+
+  ok("a finished mark's ring is its project's colour, softened — not a plain grey",
+     /\.cal-mark\.ramp-done\s*\{[^}]*color-mix\(in srgb, var\(--pc/s.test(css),
+     "a grey ring read as 'not in any project'");
+  ok("a list row is at least as tall as a control, so it is a proper tap target",
+     /\.cal-item\s*\{[^}]*min-height:\s*var\(--control-min\)/s.test(css));
+  ok("the list's dot takes its colour from --pc, the project's own",
+     /\.cal-item-dot\s*\{[^}]*var\(--pc/s.test(css));
+  ok("the list scrolls inside its own panel, so the page itself never does",
+     /\.cal-list-body\s*\{[^}]*overflow:\s*auto/s.test(css));
+  ok("paint() draws the month list",
+     /renderList\(view, shared\)/.test(paintSrc));
+  ok("...and no longer draws the retired dial, gauge or radar",
+     !/render(Dial|Gauge|Year)\(view, shared\)/.test(paintSrc),
+     "retired from the screen, kept in the file — see THE RETIRED SHELF");
+  ok("the retired instruments' pure helpers are still exported, so bringing one back needs nothing new",
+     typeof cal.loadScore === "function" && typeof cal.fogLayers === "function" &&
+     typeof cal.shelfShedFor === "function");
+}
+
+// ===================================================================
 console.log("\n--- theme-swap audit: no colour is ever baked ---");
 // The v3 prototype read computed colours into SVG attributes and had to
 // redraw the whole instrument on a theme toggle. §7 says the build must not.

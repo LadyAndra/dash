@@ -33,7 +33,7 @@
   height: 100%;
   min-height: 0;
   display: grid;
-  /* bar · the approach · the shelf · the tray's line of chrome */
+  /* bar · the approach · the month list · the tray's line of chrome */
   grid-template-rows: auto minmax(0, 1.15fr) minmax(0, 1fr) auto;
   background: var(--surface);
 }
@@ -139,8 +139,15 @@
    and nothing else — the one thing on this screen whose hue is not identity. */
 .cal-mark.ramp-overdue { fill: var(--ember); stroke: none; }
 
-/* Finished things are hollow or struck: still on the face, no longer weight. */
-.cal-mark.ramp-done { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; }
+/* Finished things are hollow: still on the face, no longer weight. The ring is
+   still their project's colour (softened) so a finished thing stays findable
+   by project — it used to be a plain grey ring, which read as "not in any
+   project". Items in no project fall back to the neutral ink, as before. */
+.cal-mark.ramp-done {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--pc, var(--border-strong)) 70%, var(--surface));
+  stroke-width: 1.4;
+}
 
 /* A reminder is a nudge, not a deadline — hollow, dashed, never filled. */
 .cal-mark.ramp-remind {
@@ -196,8 +203,114 @@
 }
 
 /* ============================================================
-   THE ACCENT SHELF  (§3, §3a)
+   THE MONTH LIST  (October 2026)
    ------------------------------------------------------------
+   Takes the shelf's row of the Calendar grid. Scrolls inside its
+   own panel — the page itself never scrolls on this screen. Every
+   size is a token; the one colour that is DATA, the project's own,
+   arrives as --pc on each row.
+   ============================================================ */
+.cal-list {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  border-top: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+.cal-list-head {
+  flex: none; display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.cal-list-title {
+  margin: 0; font-family: var(--font-display); font-weight: 400;
+  font-size: var(--text-lg); color: var(--text-primary);
+}
+.cal-list-count {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted);
+}
+.cal-listnav { margin-left: auto; display: flex; gap: var(--space-1); }
+.cal-listnav[hidden] { display: none; }
+
+/* position:relative so a row's offsetTop is measured from the top of THIS
+   panel — that is what lets the list open scrolled to today's line. */
+.cal-list-body { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.cal-list-empty {
+  margin: 0; padding: var(--space-5);
+  font-size: var(--text-base); color: var(--text-muted);
+}
+
+/* The TODAY line: the same voice as the strip's NOW label, with the strip's
+   heavy rule above it. */
+.cal-list-today {
+  padding: var(--space-2) var(--space-5);
+  border-top: 2px solid var(--text-primary);
+  font-family: var(--font-mono); font-size: var(--text-label); font-weight: 700;
+  letter-spacing: 0.25em; text-transform: uppercase; color: var(--text-primary);
+}
+
+/* One row per entry. A real button, so Enter and Space open it and the tap
+   target is at least --control-min tall. */
+.cal-item {
+  display: grid;
+  grid-template-columns: var(--space-6) var(--space-3) minmax(0, 1fr) auto;
+  align-items: center; column-gap: var(--space-3);
+  width: 100%; min-height: var(--control-min);
+  padding: var(--space-1) var(--space-5);
+  border: none; border-bottom: 1px solid var(--border);
+  background: none; color: var(--text-primary);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.cal-item:hover { background: var(--surface-raised); }
+.cal-item:focus { outline: none; }
+.cal-item:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+
+.cal-item-day { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.cal-item-num { font-family: var(--font-display); font-size: var(--text-lg); color: var(--text-primary); }
+.cal-item-wd {
+  font-family: var(--font-mono); font-size: var(--text-label);
+  letter-spacing: 0.14em; color: var(--text-muted);
+}
+
+/* The dot: the project's colour, always. Solid when live, a ring when
+   finished, a dashed ring for a reminder — the strip's grammar. */
+.cal-item-dot {
+  box-sizing: border-box; width: var(--space-3); height: var(--space-3);
+  border-radius: var(--radius-pill); background: var(--pc, var(--text-faint));
+}
+.cal-item.ramp-done .cal-item-dot {
+  background: transparent; border: 2px solid var(--pc, var(--text-faint));
+}
+.cal-item.ramp-remind .cal-item-dot {
+  background: transparent; border: 2px dashed var(--pc, var(--text-faint));
+}
+
+.cal-item-main { min-width: 0; display: flex; flex-direction: column; }
+.cal-item-label {
+  font-family: var(--font-body); font-size: var(--text-base);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-item-ctx {
+  font-size: var(--text-sm); color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-item-when {
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  color: var(--text-muted); white-space: nowrap;
+}
+.cal-item-when.is-overdue { color: var(--ember); }
+.cal-item.is-today .cal-item-when { color: var(--text-primary); font-weight: 700; }
+
+/* Finished and passed things read as history: quieter words, same dot. */
+.cal-item.ramp-done .cal-item-label { color: var(--text-muted); }
+
+/* ============================================================
+   THE RETIRED SHELF  (§3, §3a) — not on screen since October 2026
+   ------------------------------------------------------------
+   The month dial, year radar and load gauge were taken off the
+   Calendar screen at Andra's request (clutter). Their rules stay
+   here, unused, on purpose: "unregister, don't delete" — see the
+   banner in js/views/calendar.js for how to bring them back.
+
    Glances, not workspaces. Nothing is ONLY reachable through them.
    The shedding order is decided in calendar.js (shelfShedFor) and
    arrives here as data-shed, so there is one authority for it and a

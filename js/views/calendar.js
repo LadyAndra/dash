@@ -5,10 +5,11 @@
 //
 //   AN INSTRUMENT, NOT A SPREADSHEET. Calendar's main surface is THE
 //   APPROACH — a fixed NOW line with everything drifting toward it. Time is
-//   distance, not boxes. Beside it sits a shelf of smaller instruments (a
-//   month dial, a load gauge, a year radar, and one slot left deliberately
-//   empty), and along the bottom edge a single line of chrome for the
-//   unscheduled tray, where the flip mechanism opens.
+//   distance, not boxes. Below it sits THE MONTH LIST (October 2026: it
+//   replaced the shelf of month dial, load gauge and year radar, which are
+//   retired but kept in this file — see "THE RETIRED SHELF" below), and along
+//   the bottom edge a single line of chrome for the unscheduled tray, where
+//   the flip mechanism opens.
 //
 // Three rules do all the drawing, everywhere on this screen (§1):
 //
@@ -24,11 +25,11 @@
 //
 // ---- THINGS THAT WILL BITE A FUTURE SESSION ----
 //
-// 1. ONE ARCHIVE PASS PER FRAME. The strip, Month mode, the dial, the load
-//    gauge and the year radar are all fed by a SINGLE calendarData() call
-//    with an open lower bound (so nothing overdue is ever silently dropped)
-//    and an end far enough out to cover all five. Everything after that is
-//    filtering in memory. Do not add a second query for a new instrument.
+// 1. ONE ARCHIVE PASS PER FRAME. The strip, Month mode and the month list
+//    are all fed by a SINGLE calendarData() call with an open lower bound (so
+//    nothing overdue is ever silently dropped) and an end far enough out to
+//    cover them. Everything after that is filtering in memory. Do not add a
+//    second query for a new instrument.
 //
 // 2. NO BAKED COLOURS. Every fill and stroke on this screen is a var() or a
 //    color-mix() of one, either from a CSS class in css/calendar.css or from
@@ -39,9 +40,17 @@
 //
 // 3. THE DOM IS KEPT, NOT REBUILT. Dash re-renders the active view on every
 //    store change. If this file rebuilt its shell each time, an open flip
-//    widget in the tray would be destroyed mid-edit and the dial's sweep
-//    would restart on every unrelated write. So the shell is built once and
-//    only the instruments repaint — the same rule the Projects shelf follows.
+//    widget in the tray would be destroyed mid-edit. So the shell is built
+//    once and only the instruments repaint — the same rule the Projects shelf
+//    follows. The month list goes one step further: it only redraws when its
+//    own rows actually changed, so an unrelated write can't snap its scroll
+//    position back to today or drop keyboard focus off a row.
+//
+// 4. WHICH PROJECT AN ENTRY BELONGS TO is worked out HERE, once per frame, by
+//    annotateOwners() — not in js/entries.js, which Home also depends on and
+//    which stays untouched. A milestone and a date mark carry it already; an
+//    ordinary entry gets it from its "in project" links. Lane, colour and the
+//    month list's project name all read that one answer.
 
 import { calendarData } from "../entries.js";
 import { todayISO, daysUntil, visibleMilestones } from "../milestones.js";
@@ -106,6 +115,7 @@ const SCENE_URL = new URL("../../assets/window-scene.svg", import.meta.url).href
 const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 const MONTHS_FULL = ["January","February","March","April","May","June","July",
                      "August","September","October","November","December"];
+const WEEKDAYS = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
 
 // Per-device, exactly as settled.
 const LS_MODE = "dash.calendar.mode";
@@ -361,16 +371,59 @@ function safeColor(value) {
   return /^[#\w\-(),.%\s]+$/.test(token) ? token : "var(--color-gray)";
 }
 
-// Rule 1: hue is the PROJECT's colour. A plain item has no project identity
-// to carry, so it reads in the neutral faint ink rather than borrowing one.
+// ---- which project does an entry belong to? (October 2026) ----
+// Until now only a milestone counted as "in" a project here. A date mark filed
+// under the Studio project, or a note assigned to Studio with a due date, was
+// drawn in the grey Items lane — which is exactly the bug Andra reported.
+//
+//   milestone  its itemId IS the project.
+//   datemark   the project it was marked for (store.dateMarkProject).
+//   item-due   the project(s) it is assigned to. An entry can be in several
+//              (links is a set), and a dot can only sit in one lane, so the
+//              first one in the hand-sorted project order wins — the same
+//              order on every device. That order costs a scan of the archive,
+//              so it is only asked for when an entry really is in two or more.
+//
+// The answer is written onto the entries as `projectId` (and `context`, so the
+// tooltip and the list say the project's name where an item used to say
+// "Item"). These objects are this frame's own copies, built fresh by
+// calendarData(), so writing to them changes nothing anywhere else.
+export function annotateOwners(store, entries) {
+  let rank = null;
+  const byItem = new Map();
+  const ownerOfItem = (id) => {
+    if (byItem.has(id)) return byItem.get(id);
+    const mine = store.projectsOf(id);
+    let pick = mine[0] || null;
+    if (mine.length > 1) {
+      if (!rank) rank = new Map(store.projects().map((p, i) => [p.id, i]));
+      pick = mine.slice().sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9))[0];
+    }
+    byItem.set(id, pick);
+    return pick;
+  };
+  for (const e of entries || []) {
+    let project = null;
+    if (e.source === "milestone") project = e.itemId ? store.get(e.itemId) : null;
+    else if (e.source === "datemark") project = store.dateMarkProject(e.itemId);
+    else if (e.itemId) project = ownerOfItem(e.itemId);
+    e.projectId = project ? project.id : null;
+    if (project) e.context = project.title || "Untitled project";
+  }
+  return entries;
+}
+
+// Rule 1: hue is the PROJECT's colour. An entry that is in no project has no
+// project identity to carry, so it reads in the neutral faint ink rather than
+// borrowing one.
 function hueOf(store, entry) {
-  if (!entry || entry.source !== "milestone" || !entry.itemId) return "var(--text-faint)";
-  const project = store.get(entry.itemId);
+  if (!entry || !entry.projectId) return "var(--text-faint)";
+  const project = store.get(entry.projectId);
   return project ? safeColor(itemColor(store, project)) : "var(--text-faint)";
 }
 
 function laneKeyOf(entry) {
-  return entry.source === "milestone" && entry.itemId ? entry.itemId : null;
+  return entry.projectId || null;
 }
 
 function whenText(entry, today) {
@@ -462,33 +515,18 @@ function ensureShell(ctx, container) {
       <div class="cal-tip" role="status" hidden></div>
     </div>
 
-    <div class="cal-shelf" data-shed="">
-      <section class="cal-panel cal-panel-dial" aria-label="Month at a glance">
-        <svg class="cal-dial" viewBox="0 0 ${DIAL_VB} ${DIAL_VB}"></svg>
-        <span class="mk cal-cap cal-dial-cap"></span>
-        <div class="cal-tip cal-tip-dial" role="status" hidden></div>
-      </section>
-
-      <section class="cal-panel cal-panel-gauge" aria-label="Load">
-        <div class="cal-window">
-          <div class="cal-glass">
-            <svg class="cal-scene" viewBox="0 0 ${SCENE_W} ${SCENE_H}" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
-            <div class="cal-gauge-grain" aria-hidden="true"></div>
-            <div class="cal-mullion-v" aria-hidden="true"></div>
-            <div class="cal-mullion-h" aria-hidden="true"></div>
-          </div>
+    <section class="cal-list" aria-label="This month, in order">
+      <div class="cal-list-head">
+        <h2 class="cal-list-title"></h2>
+        <span class="cal-list-count"></span>
+        <div class="cal-listnav">
+          <button type="button" class="cal-ctl" data-act="prev" aria-label="Previous month">‹</button>
+          <button type="button" class="cal-ctl" data-act="next" aria-label="Next month">›</button>
+          <button type="button" class="cal-ctl" data-act="today">Today</button>
         </div>
-        <div class="cal-sill" aria-hidden="true"></div>
-        <span class="mk cal-cap cal-gauge-cap"></span>
-      </section>
-
-      <section class="cal-panel cal-panel-year" aria-label="The year">
-        <svg class="cal-year" viewBox="0 0 ${YEAR_VB} ${YEAR_VB}" aria-hidden="true"></svg>
-        <span class="mk cal-cap cal-year-cap"></span>
-      </section>
-
-      <section class="cal-panel cal-panel-open" aria-hidden="true"></section>
-    </div>
+      </div>
+      <div class="cal-list-body"></div>
+    </section>
 
     <div class="cal-tray">
       <button type="button" class="cal-tray-head mk" aria-expanded="false"></button>
@@ -504,15 +542,13 @@ function ensureShell(ctx, container) {
     strip: root.querySelector(".cal-strip"),
     stripzone: root.querySelector(".cal-stripzone"),
     tip: root.querySelector(".cal-stripzone .cal-tip"),
-    shelf: root.querySelector(".cal-shelf"),
-    dial: root.querySelector(".cal-dial"),
-    dialCap: root.querySelector(".cal-dial-cap"),
-    dialTip: root.querySelector(".cal-tip-dial"),
-    scene: root.querySelector(".cal-scene"),
-    gaugeGrain: root.querySelector(".cal-gauge-grain"),
-    gaugeCap: root.querySelector(".cal-gauge-cap"),
-    year: root.querySelector(".cal-year"),
-    yearCap: root.querySelector(".cal-year-cap"),
+    listTitle: root.querySelector(".cal-list-title"),
+    listCount: root.querySelector(".cal-list-count"),
+    listnav: root.querySelector(".cal-listnav"),
+    listBody: root.querySelector(".cal-list-body"),
+    listSig: null,       // what the list last drew, so an unchanged list is left alone
+    listMonth: null,     // which month it last drew, so a NEW month scrolls to today
+    listEntries: new Map(),
     trayHead: root.querySelector(".cal-tray-head"),
     trayBody: root.querySelector(".cal-tray-body"),
     mode: readMode(),
@@ -542,7 +578,10 @@ function ensureShell(ctx, container) {
     paint(view, ctx);
   });
 
-  view.monthnav.addEventListener("click", (ev) => {
+  // Two sets of month buttons drive ONE cursor: the bar's (shown in Month mode,
+  // next to the strip it moves) and the list's own (shown otherwise, so the
+  // list can always change month). Only one set is ever on screen.
+  const onMonthNav = (ev) => {
     const btn = ev.target.closest("button[data-act]");
     if (!btn) return;
     if (btn.dataset.act === "today") view.cursor = readCursorFromToday();
@@ -556,6 +595,18 @@ function ensureShell(ctx, container) {
     }
     writeCursor(view.cursor);
     paint(view, ctx);
+  };
+  view.monthnav.addEventListener("click", onMonthNav);
+  view.listnav.addEventListener("click", onMonthNav);
+
+  // One listener for every row of the list. It reads the LATEST frame's context
+  // (view.lastShared), not the one this shell was built with, because app.js
+  // makes a fresh ctx on every render.
+  view.listBody.addEventListener("click", (ev) => {
+    const row = ev.target.closest(".cal-item");
+    if (!row || !view.lastShared) return;
+    const e = view.listEntries.get(row.dataset.eid);
+    if (e && e.itemId) view.lastShared.ctx.onOpen(e.itemId);
   });
 
   view.trayHead.addEventListener("click", () => {
@@ -628,7 +679,6 @@ function ensureShell(ctx, container) {
 
   mounted = view;
   ctx.viewLocal.cal = view;
-  loadScene(view);
   return view;
 }
 
@@ -657,6 +707,8 @@ function paint(view, ctx) {
   ];
   const end = ends.reduce((a, b) => (a > b ? a : b));
   const data = calendarData(store, null, end, { today });
+  // Before anything reads a lane, a colour or a project name off an entry.
+  annotateOwners(store, data.entries);
 
   const finals = finalMilestoneIndex(store, data.entries);
   const weightFor = (e) => weightOf(e, finals.get(e.itemId) === e.mid);
@@ -676,9 +728,9 @@ function paint(view, ctx) {
   renderBar(view, shared);
   renderTray(view, shared);
   renderStrip(view, shared);
-  renderDial(view, shared);
-  renderGauge(view, shared);
-  renderYear(view, shared);
+  renderList(view, shared);
+  // renderDial / renderGauge / renderYear are retired from the screen (October
+  // 2026) and deliberately NOT called. See "THE RETIRED SHELF" below.
 }
 
 function isoPlusDays(dateStr, n) {
@@ -708,6 +760,7 @@ function lanesFor(store, entries) {
 function renderBar(view, s) {
   const isMonth = view.mode === "month";
   view.monthnav.hidden = !isMonth;
+  view.listnav.hidden = isMonth;      // one set of month buttons on screen, never two
   view.title.textContent = isMonth
     ? `${MONTHS_FULL[view.cursor.mo - 1]} ${view.cursor.y}`
     : "The approach · next four months";
@@ -831,10 +884,6 @@ function renderStrip(view, s) {
   svg.innerHTML = out;
   pruneLabels(svg);
   wireMarks(view, s, svg, view.tip, view.stripzone, (x, y) => ({ x, y }), 1);
-
-  // The shelf is measured from the same pass that measured the strip.
-  const shed = shelfShedFor(view.root.clientWidth || W);
-  view.shelf.dataset.shed = shed.join(" ");
 }
 
 // A busy fortnight can put more labels on one lane than the lane has room
@@ -999,7 +1048,151 @@ function openEntry(view, s, el) {
 }
 
 // ===================================================================
-//  ACCENT 1 — the month dial  (§3)
+//  THE MONTH LIST  (October 2026)
+// ===================================================================
+// Everything dated in one month, in order, as plain readable rows — the thing
+// Andra asked for in place of the three instruments she found cluttered. It
+// shows the month the cursor is on (today's month to begin with), and its own
+// ‹ › Today buttons move that cursor.
+//
+// One row per entry, milestones, date marks, ordinary entries and reminders
+// alike, because that is what "all of the calendar items" means. Finished and
+// past things stay in, muted: a month should read as the whole month, not as
+// whatever is left of it. Overdue is ember in the words only. The dot is the
+// project's colour, always — hue is identity (§1 rule 1) — drawn solid for a
+// live thing, as a ring for a finished one and a dashed ring for a reminder,
+// the same grammar the strip's marks use.
+//
+// A TODAY divider sits where today falls, and the list opens scrolled to it,
+// so "what's next" is the first thing you see rather than the 1st of the month.
+
+function listWhen(e, today) {
+  if (e.done) return { text: e.source === "datemark" ? "passed" : "done", ember: false };
+  const n = daysUntil(e.start, today);
+  if (n === null) return { text: "", ember: false };
+  if (n < 0) return { text: `${-n} day${n === -1 ? "" : "s"} overdue`, ember: true };
+  const tail = e.kind === "remind" ? " · reminder" : "";
+  if (n === 0) return { text: `today${tail}`, ember: false };
+  return { text: `in ${n} day${n === 1 ? "" : "s"}${tail}`, ember: false };
+}
+
+function renderList(view, s) {
+  const { y, mo } = view.cursor;
+  const prefix = `${y}-${String(mo).padStart(2, "0")}-`;
+  // entries.js already sorted these by date, then due-before-reminder, then name
+  const rows = s.data.entries.filter(e => String(e.start).startsWith(prefix));
+  const isThisMonth = s.t.y === y && s.t.mo === mo;
+  const monthKey = `${y}-${mo}`;
+
+  view.listTitle.textContent = `${MONTHS_FULL[mo - 1]} ${y}`;
+  view.listCount.textContent = `${rows.length} ${rows.length === 1 ? "item" : "items"}`;
+
+  // Nothing to redraw if nothing the list shows has changed. This is what keeps
+  // an unrelated store write from yanking the scroll position or keyboard focus
+  // out from under a list being read.
+  const hues = rows.map(e => hueOf(s.store, e));
+  const sig = [monthKey, isThisMonth ? s.today : "", rows.map((e, i) =>
+    [e.id, e.label, e.context, e.start, e.done ? 1 : 0, e.kind, hues[i]].join("~")).join("|")].join("#");
+  if (sig === view.listSig) return;
+  view.listSig = sig;
+  view.listEntries = new Map(rows.map(e => [e.id, e]));
+
+  const todayDivider = () => {
+    const wd = WEEKDAYS[new Date(s.t.y, s.t.mo - 1, s.t.d, 12).getDay()];
+    return `<div class="cal-list-today" role="separator">Today · ${wd} ${s.t.d} ${MONTHS[s.t.mo - 1]}</div>`;
+  };
+
+  let html = "";
+  let lastDay = null;
+  let dividerDrawn = false;
+  rows.forEach((e, i) => {
+    if (isThisMonth && !dividerDrawn && e.start >= s.today) { html += todayDivider(); dividerDrawn = true; }
+    const p = parseISO(e.start);
+    const showDay = e.start !== lastDay;
+    lastDay = e.start;
+    const wd = WEEKDAYS[new Date(p.y, p.mo - 1, p.d, 12).getDay()];
+    const ramp = rampOf(e, s.today);
+    const when = listWhen(e, s.today);
+    const aria = `${e.context || "No project"}: ${e.label}, ${whenText(e, s.today).text}`;
+    html += `<button type="button" class="cal-item ramp-${ramp.key}${e.start === s.today ? " is-today" : ""}"`
+      + ` data-eid="${esc(e.id)}" style="--pc:${hues[i]}" aria-label="${esc(aria)}">`
+      + `<span class="cal-item-day" aria-hidden="true">`
+      + (showDay ? `<span class="cal-item-num">${p.d}</span><span class="cal-item-wd">${wd}</span>` : "")
+      + `</span>`
+      + `<span class="cal-item-dot" aria-hidden="true"></span>`
+      + `<span class="cal-item-main"><span class="cal-item-label">${esc(e.label)}</span>`
+      + `<span class="cal-item-ctx">${esc(e.context || "No project")}</span></span>`
+      + `<span class="cal-item-when${when.ember ? " is-overdue" : ""}">${esc(when.text)}</span>`
+      + `</button>`;
+  });
+  if (isThisMonth && !dividerDrawn) html += todayDivider();      // today is past the last row
+  if (!rows.length) html = `<p class="cal-list-empty">Nothing dated in ${MONTHS_FULL[mo - 1]}.</p>`;
+
+  const body = view.listBody;
+  const keep = body.scrollTop;
+  body.innerHTML = html;
+  if (view.listMonth !== monthKey) {
+    // A different month (or the first draw): open at today's line, or the top.
+    view.listMonth = monthKey;
+    const mark = body.querySelector(".cal-list-today");
+    body.scrollTop = mark ? mark.offsetTop : 0;
+  } else {
+    body.scrollTop = keep;
+  }
+}
+
+// ===================================================================
+//  THE RETIRED SHELF — month dial, year radar, load gauge  (October 2026)
+// ===================================================================
+// Andra asked for these three to come off the Calendar screen: "they just
+// aren't necessary and they create a lot of clutter." They are RETIRED, not
+// deleted — the house rule (START-HERE.md, "unregister, don't delete") for
+// anything that might come back. Nothing below is called any more.
+//
+// To bring them back (all three, or one):
+//   1. Put this markup back in ensureShell's template, between the strip and
+//      the month list (and give the .cal-root grid in css/calendar.css one
+//      more row for it):
+//
+//        <div class="cal-shelf" data-shed="">
+//          <section class="cal-panel cal-panel-dial" aria-label="Month at a glance">
+//            <svg class="cal-dial" viewBox="0 0 ${DIAL_VB} ${DIAL_VB}"></svg>
+//            <span class="mk cal-cap cal-dial-cap"></span>
+//            <div class="cal-tip cal-tip-dial" role="status" hidden></div>
+//          </section>
+//          <section class="cal-panel cal-panel-gauge" aria-label="Load">
+//            <div class="cal-window"><div class="cal-glass">
+//              <svg class="cal-scene" viewBox="0 0 ${SCENE_W} ${SCENE_H}"
+//                   preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+//              <div class="cal-gauge-grain" aria-hidden="true"></div>
+//              <div class="cal-mullion-v" aria-hidden="true"></div>
+//              <div class="cal-mullion-h" aria-hidden="true"></div>
+//            </div></div>
+//            <div class="cal-sill" aria-hidden="true"></div>
+//            <span class="mk cal-cap cal-gauge-cap"></span>
+//          </section>
+//          <section class="cal-panel cal-panel-year" aria-label="The year">
+//            <svg class="cal-year" viewBox="0 0 ${YEAR_VB} ${YEAR_VB}" aria-hidden="true"></svg>
+//            <span class="mk cal-cap cal-year-cap"></span>
+//          </section>
+//          <section class="cal-panel cal-panel-open" aria-hidden="true"></section>
+//        </div>
+//
+//   2. In ensureShell's `view` object, add back: shelf (.cal-shelf), dial,
+//      dialCap, dialTip, scene, gaugeGrain, gaugeCap, year, yearCap — each a
+//      root.querySelector of the class above — and call loadScene(view) once
+//      the view is built.
+//   3. In renderStrip, after the marks are drawn, add back:
+//        view.shelf.dataset.shed = shelfShedFor(view.root.clientWidth || W).join(" ");
+//   4. In paint(), call renderDial(view, shared), renderGauge(view, shared) and
+//      renderYear(view, shared).
+//
+// Their pure helpers (loadScore, fogLayers, ridgeOpacity, shelfShedFor …) are
+// still exported and still tested, and css/calendar.css still carries their
+// rules, so none of this needs anything new to be written.
+
+// ===================================================================
+//  ACCENT 1 — the month dial  (§3)  — RETIRED, see above
 // ===================================================================
 // The month as a clock face. Its best moment, kept from v1: OVERDUE FALLS
 // OUT OF ORBIT — pulled to the centre in ember, dash-tethered to where it
